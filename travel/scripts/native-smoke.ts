@@ -352,7 +352,12 @@ try {
     .scrollIntoViewIfNeeded();
   await imageReady(frame.getByRole('img', { name: 'Lakeside park, photo 1', exact: true }));
   assert.deepEqual(journal(), saved, 'Reopening should preserve the saved journal and images.');
-  await frame.getByLabel('Trip filter').selectOption(saved.trips[0].id);
+  await frame.getByRole('button', { name: /^Trip filter:/ }).click();
+  await frame
+    .getByRole('dialog', { name: 'Filter trips', exact: true })
+    .getByRole('listbox', { name: 'Trips', exact: true })
+    .getByRole('option', { name: saved.trips[0].title, exact: true })
+    .click();
   const assertNativeLayout = async () => {
     const geometry = await native_frame.evaluate(() => {
       const footer = document.querySelector('.bottom-bar')!.getBoundingClientRect();
@@ -437,7 +442,10 @@ try {
     .getByRole('navigation', { name: 'Main views' })
     .getByRole('button', { name: 'Timeline', exact: true })
     .click();
-  assert.equal(await frame.getByLabel('Trip filter').inputValue(), saved.trips[0].id);
+  assert.equal(
+    (await frame.getByRole('button', { name: /^Trip filter:/ }).innerText()).trim(),
+    saved.trips[0].title,
+  );
   await assertNativeLayout();
   assert(http_urls.length > 0, 'Native map must use the mocked HTTP bridge.');
   assert(

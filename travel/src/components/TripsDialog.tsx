@@ -7,6 +7,7 @@ export function TripsDialog({
   trips,
   visits,
   choosing,
+  anchor,
   onSelect,
   onCreate,
   onEdit,
@@ -16,6 +17,7 @@ export function TripsDialog({
   trips: Trip[];
   visits: CheckIn[];
   choosing: boolean;
+  anchor: HTMLElement;
   onSelect(trip: Trip): void;
   onCreate(): void;
   onEdit(trip: Trip): void;
@@ -23,7 +25,7 @@ export function TripsDialog({
   onClose(): void;
 }) {
   return (
-    <Dialog title={choosing ? 'Choose a trip' : 'Your trips'} onDismiss={onClose}>
+    <Dialog title={choosing ? 'Choose a trip' : 'Your trips'} onDismiss={onClose} anchor={anchor}>
       <div className="trips-list">
         {trips.length === 0 && <p className="muted">Start a trip to group your check-ins.</p>}
         {trips.map((trip) => (

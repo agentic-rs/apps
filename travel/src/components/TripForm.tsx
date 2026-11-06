@@ -51,6 +51,7 @@ export function TripForm({
   return (
     <Dialog
       title={trip ? 'Edit trip' : 'A new adventure'}
+      full_screen
       onDismiss={() => {
         if (!busy) dirty ? setDiscard(true) : onCancel();
       }}

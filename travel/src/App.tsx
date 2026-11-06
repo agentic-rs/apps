@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPlatform } from './lib/platform';
 import { emptyJournal, removeCheckIn, removeTrip, saveCheckIn, upsertTrip } from './lib/model';
 import type { CheckIn, Journal, PhotoAsset, TravelPlatform, Trip } from './lib/types';
@@ -10,6 +10,7 @@ import { Photo } from './components/Photo';
 import { TimelineView } from './components/TimelineView';
 import { MapView } from './components/MapView';
 import { TripsDialog } from './components/TripsDialog';
+import { TripFilter } from './components/TripFilter';
 import { VisitCard } from './components/VisitCard';
 
 type Editor =
@@ -32,7 +33,11 @@ export function App() {
   const [map_opened, setMapOpened] = useState(false);
   const [search, setSearch] = useState('');
   const [editor, setEditor] = useState<Editor>(null);
-  const [trip_dialog, setTripDialog] = useState<'manage' | 'check_in' | null>(null);
+  const [trip_dialog, setTripDialog] = useState<{
+    mode: 'manage' | 'check_in';
+    anchor: HTMLElement;
+  } | null>(null);
+  const add_button = useRef<HTMLButtonElement>(null);
   const [detail_id, setDetailId] = useState<string | null>(null);
   const [removal, setRemoval] = useState<Removal>(null);
   const [deleting, setDeleting] = useState(false);
@@ -86,7 +91,7 @@ export function App() {
     const trip = selected_trip ?? (journal.trips.length === 1 ? journal.trips[0] : undefined);
     if (trip) setEditor({ kind: 'visit', trip });
     else if (!journal.trips.length) setEditor({ kind: 'trip', then_check_in: true });
-    else setTripDialog('check_in');
+    else if (add_button.current) setTripDialog({ mode: 'check_in', anchor: add_button.current });
   }
   async function persist(next: Journal) {
     await platform!.save(next);
@@ -151,22 +156,17 @@ export function App() {
     <div className={`app-shell${platform.native ? ' native' : ''}`}>
       <header className="view-header">
         <h1>{view === 'timeline' ? 'Timeline' : 'Map'}</h1>
-        <label className="trip-filter">
-          <span className="sr-only">Trip filter</span>
-          <select
-            value={selected_trip_id}
-            onChange={(event) => setSelectedTripId(event.target.value)}
-          >
-            <option value="">All trips</option>
-            {journal.trips.map((trip) => (
-              <option key={trip.id} value={trip.id}>
-                {trip.title}
-              </option>
-            ))}
-          </select>
-          <Icon name="chevron" size={14} />
-        </label>
-        <button className="header-trips" onClick={() => setTripDialog('manage')}>
+        <TripFilter
+          trips={journal.trips}
+          selected_trip_id={selected_trip_id}
+          onSelect={setSelectedTripId}
+        />
+        <button
+          className="header-trips"
+          aria-haspopup="dialog"
+          aria-expanded={trip_dialog?.mode === 'manage'}
+          onClick={(event) => setTripDialog({ mode: 'manage', anchor: event.currentTarget })}
+        >
           <Icon name="book" size={17} />
           Trips
         </button>
@@ -223,7 +223,12 @@ export function App() {
             <span>Map</span>
           </button>
         </nav>
-        <button className="add-check-in" aria-label="New check-in" onClick={startCheckIn}>
+        <button
+          ref={add_button}
+          className="add-check-in"
+          aria-label="New check-in"
+          onClick={startCheckIn}
+        >
           <Icon name="plus" size={27} />
         </button>
       </footer>
@@ -231,16 +236,17 @@ export function App() {
         <TripsDialog
           trips={journal.trips}
           visits={journal.check_ins}
-          choosing={trip_dialog === 'check_in'}
+          choosing={trip_dialog.mode === 'check_in'}
+          anchor={trip_dialog.anchor}
           onClose={() => setTripDialog(null)}
           onSelect={(trip) => {
-            const choosing = trip_dialog === 'check_in';
+            const choosing = trip_dialog.mode === 'check_in';
             setTripDialog(null);
             if (choosing) setEditor({ kind: 'visit', trip });
             else setSelectedTripId(trip.id);
           }}
           onCreate={() => {
-            const choosing = trip_dialog === 'check_in';
+            const choosing = trip_dialog.mode === 'check_in';
             setTripDialog(null);
             setEditor({ kind: 'trip', then_check_in: choosing });
           }}

@@ -149,28 +149,26 @@ p {
   margin: 0 auto 0 0;
 }
 .trip-filter {
-  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   min-width: 0;
   max-width: 40%;
   margin: 0;
-}
-.trip-filter select {
-  width: 100%;
-  appearance: none;
   background: transparent;
   border: 1px solid #dbe2d2;
   border-radius: 20px;
-  padding: 10px 28px 10px 10px;
+  padding: 10px;
   font-size: 12px;
-  text-overflow: ellipsis;
   min-height: 44px;
   color: #5b725e;
 }
+.trip-filter > span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
 .trip-filter svg {
-  position: absolute;
-  top: 15px;
-  right: 11px;
-  pointer-events: none;
   color: #7d8d73;
 }
 .app-content {
@@ -1030,6 +1028,96 @@ summary {
     height: 45px;
     margin-bottom: 15px;
   }
+}
+.dialog.full-screen {
+  inset: 0;
+  margin: 0;
+  width: 100%;
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  border: 0;
+  border-radius: 0;
+  overflow: hidden;
+}
+.dialog.full-screen[open] {
+  display: flex;
+  flex-direction: column;
+}
+.full-screen .dialog-header {
+  flex-shrink: 0;
+  padding: calc(10px + var(--safe-area-top)) 16px 10px;
+}
+.full-screen .dialog-header h2 {
+  font-size: 26px;
+}
+.full-screen > form {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-padding-bottom: 90px;
+}
+.full-screen .form-body {
+  flex: 1 0 auto;
+}
+.full-screen .dialog-footer {
+  flex-shrink: 0;
+  padding: 12px 20px calc(12px + var(--safe-area-bottom));
+}
+.dialog.popover {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  width: min(360px, calc(100% - 16px));
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 8px 32px #1e392d29;
+}
+.popover::backdrop {
+  background: transparent;
+  backdrop-filter: none;
+}
+.popover:has(.trip-options) {
+  width: min(280px, calc(100% - 16px));
+}
+.popover .dialog-header {
+  padding: 6px 12px;
+}
+.popover .dialog-header h2 {
+  font-size: 21px;
+}
+.popover .dialog-footer {
+  padding: 10px 12px;
+}
+.popover .trips-list {
+  padding: 0 12px;
+}
+.trip-options {
+  padding: 6px;
+}
+.trip-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  text-align: left;
+  padding: 12px;
+  width: 100%;
+  min-height: 44px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 14px;
+}
+.trip-option > span {
+  overflow-wrap: anywhere;
+}
+.trip-option[aria-selected='true'],
+.trip-option:hover {
+  background: #e8ecdf;
 }
 @media (prefers-reduced-motion: reduce) {
   *,

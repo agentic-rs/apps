@@ -1,4 +1,4 @@
-import { firefox } from 'playwright-core';
+import { firefox, type Locator } from 'playwright-core';
 import { mkdir } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 import assert from 'node:assert/strict';
@@ -148,6 +148,92 @@ try {
         }),
     );
   const waitClosed = () => page.locator('dialog').waitFor({ state: 'detached' });
+  const filterButton = () => page.getByRole('button', { name: /^Trip filter:/ });
+  const tripTitle = async (id: string) =>
+    id ? (await readJournal()).trips.find((trip) => trip.id === id)!.title : 'All trips';
+  const chooseTripFilter = async (id: string) => {
+    const title = await tripTitle(id);
+    await filterButton().click();
+    const popup = page.getByRole('dialog', { name: 'Filter trips', exact: true });
+    await popup
+      .getByRole('listbox', { name: 'Trips', exact: true })
+      .getByRole('option', { name: title, exact: true })
+      .click();
+    await popup.waitFor({ state: 'detached' });
+    assert.equal((await filterButton().innerText()).trim(), title);
+  };
+  const assertFullScreenEditor = async (editor: Locator) => {
+    await editor.waitFor({ state: 'visible' });
+    const geometry = await editor.evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      return {
+        left: bounds.left,
+        top: bounds.top,
+        right: bounds.right,
+        bottom: bounds.bottom,
+        width: innerWidth,
+        height: innerHeight,
+      };
+    });
+    assert(
+      Math.abs(geometry.left) <= 1 && Math.abs(geometry.top) <= 1,
+      `Editor must begin at the viewport origin: ${JSON.stringify(geometry)}`,
+    );
+    assert(
+      Math.abs(geometry.right - geometry.width) <= 1 &&
+        Math.abs(geometry.bottom - geometry.height) <= 1,
+      `Editor must fill the viewport: ${JSON.stringify(geometry)}`,
+    );
+  };
+  const assertAnchoredPopover = async (trigger: Locator, popup: Locator) => {
+    await popup.waitFor({ state: 'visible' });
+    const [anchor, bounds] = await Promise.all([trigger.boundingBox(), popup.boundingBox()]);
+    assert(anchor && bounds, 'The popover and its trigger must be visible.');
+    const viewport = page.viewportSize()!;
+    assert(
+      bounds.width <= viewport.width - 16 && bounds.height < viewport.height - 60,
+      'A small menu must not occupy the full screen.',
+    );
+    assert(
+      bounds.x >= 0 &&
+        bounds.y >= 0 &&
+        bounds.x + bounds.width <= viewport.width + 1 &&
+        bounds.y + bounds.height <= viewport.height + 1,
+      'Popover must fit inside the viewport.',
+    );
+    assert(
+      Math.min(
+        Math.abs(bounds.y - anchor.y - anchor.height),
+        Math.abs(bounds.y + bounds.height - anchor.y),
+      ) <= 16,
+      `Popover must stay next to its trigger: ${JSON.stringify({ anchor, bounds })}`,
+    );
+    assert(
+      Math.min(bounds.x + bounds.width, anchor.x + anchor.width) > Math.max(bounds.x, anchor.x),
+      'Popover must align horizontally with its trigger.',
+    );
+  };
+  const checkPopoverDismissal = async (trigger: Locator, title: string) => {
+    const popup = page.getByRole('dialog', { name: title, exact: true });
+    await trigger.click();
+    await assertAnchoredPopover(trigger, popup);
+    await page.screenshot({
+      path: resolve(output, `${title === 'Your trips' ? 'trips' : 'filter'}-popover.png`),
+    });
+    await page.mouse.click(2, page.viewportSize()!.height - 80);
+    await popup.waitFor({ state: 'detached' });
+    assert(
+      await trigger.evaluate((element) => element === document.activeElement),
+      'Outside dismissal must restore focus to the triggering button.',
+    );
+    await trigger.click();
+    await page.keyboard.press('Escape');
+    await popup.waitFor({ state: 'detached' });
+    assert(
+      await trigger.evaluate((element) => element === document.activeElement),
+      'Escape dismissal must restore focus to the triggering button.',
+    );
+  };
   const closeDetail = async () => {
     await page
       .getByRole('dialog', { name: 'Check-in', exact: true })
@@ -313,23 +399,71 @@ try {
   await page.getByLabel('Trip name').fill('City wander');
   await page.getByRole('button', { name: 'Create trip', exact: true }).click();
   await waitClosed();
-  await page.getByLabel('Trip filter').selectOption(trip_id);
+  await chooseTripFilter(trip_id);
   await page.reload();
   await page.locator('.timeline-list .visit-card').nth(2).waitFor();
   assert.equal(await page.locator('.timeline-list .visit-card').count(), 3);
-  await page.getByLabel('Trip filter').selectOption(trip_id);
+  await chooseTripFilter(trip_id);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await checkPopoverDismissal(
+    page.getByRole('button', { name: 'Trips', exact: true }),
+    'Your trips',
+  );
+  await checkPopoverDismissal(filterButton(), 'Filter trips');
+  await filterButton().click();
+  assert.equal(
+    await page
+      .getByRole('dialog', { name: 'Filter trips' })
+      .getByRole('option', { name: 'Coastal days', exact: true })
+      .getAttribute('aria-selected'),
+    'true',
+  );
+  await page.keyboard.press('Escape');
+  await waitClosed();
+  for (const height of [844, 500]) {
+    await page.setViewportSize({ width: 390, height });
+    await page.getByRole('button', { name: 'Trips', exact: true }).click();
+    await page
+      .getByRole('dialog', { name: 'Your trips', exact: true })
+      .getByRole('button', { name: 'New trip', exact: true })
+      .click();
+    const editor = page.getByRole('dialog', { name: 'A new adventure', exact: true });
+    await assertFullScreenEditor(editor);
+    await page.screenshot({ path: resolve(output, `trip-form-${height}.png`) });
+    await editor.getByLabel('Trip name').fill('Unsaved travel idea');
+    await page.keyboard.press('Escape');
+    await editor.getByText('Discard your unsaved changes?').waitFor();
+    await editor.getByRole('button', { name: 'Keep editing', exact: true }).click();
+    assert.equal(await editor.getByLabel('Trip name').inputValue(), 'Unsaved travel idea');
+    await editor.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await editor.getByRole('button', { name: 'Discard changes', exact: true }).click();
+    await waitClosed();
+    assert.equal(
+      (await readJournal()).trips.length,
+      2,
+      'Discarding a full-screen editor must not create a trip.',
+    );
+  }
   await page.setViewportSize({ width: 390, height: 844 });
   await assertMobileLayout();
   await page.screenshot({ path: resolve(output, 'mobile-timeline.png'), fullPage: true });
   await page.getByRole('button', { name: 'New check-in', exact: true }).click();
+  await assertFullScreenEditor(page.getByRole('dialog', { name: 'Keep this moment', exact: true }));
   await page.getByLabel('Choose a saved place').selectOption(place_id);
   await page.getByLabel('Visit latitude', { exact: true }).fill('12');
   await page.screenshot({ path: resolve(output, 'mobile-form.png'), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 500 });
+  await assertFullScreenEditor(page.getByRole('dialog', { name: 'Keep this moment', exact: true }));
+  await page.screenshot({ path: resolve(output, 'compact-form.png'), fullPage: true });
   await page.getByRole('button', { name: 'Save check-in' }).click();
   await page.getByRole('alert').filter({ hasText: 'Enter both latitude and longitude' }).waitFor();
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.getByRole('button', { name: 'Keep editing', exact: true }).click();
+  assert.equal(await page.getByLabel('Visit latitude', { exact: true }).inputValue(), '12');
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   await page.getByRole('button', { name: 'Discard changes' }).click();
   await waitClosed();
+  await page.setViewportSize({ width: 390, height: 844 });
   await page
     .getByRole('navigation', { name: 'Main views' })
     .getByRole('button', { name: 'Map', exact: true })
@@ -393,7 +527,7 @@ try {
     (trip) => trip.title === 'City wander',
   )!.id;
   await page.getByRole('region', { name: 'Check-ins without coordinates' }).waitFor();
-  await page.getByLabel('Trip filter').selectOption(empty_trip_id);
+  await chooseTripFilter(empty_trip_id);
   await page.locator('.map-selection-card').waitFor({ state: 'detached' });
   assert.equal(await page.locator('.journal-map-pin').count(), 0);
   assert.equal(
@@ -402,7 +536,7 @@ try {
       .getAttribute('aria-pressed'),
     'true',
   );
-  await page.getByLabel('Trip filter').selectOption(trip_id);
+  await chooseTripFilter(trip_id);
   await page.locator('.journal-map-pin[data-visit-count="2"]').waitFor();
   assert.equal(
     await page.locator('.map-selection-card').count(),
@@ -422,9 +556,9 @@ try {
   await page.getByRole('button', { name: 'Close map selection' }).click();
   await page.locator('.journal-map-pin').click();
   await page.getByRole('region', { name: 'Check-ins at selected map pin' }).waitFor();
-  await page.getByLabel('Trip filter').selectOption(empty_trip_id);
+  await chooseTripFilter(empty_trip_id);
   await page.locator('.map-selection-card').waitFor({ state: 'detached' });
-  await page.getByLabel('Trip filter').selectOption(trip_id);
+  await chooseTripFilter(trip_id);
   await page.locator('.journal-map-pin[data-visit-count="2"]').waitFor();
   assert.equal(
     await page.locator('.map-selection-card').count(),
@@ -481,12 +615,12 @@ try {
     successful_tile_requests > successes_before_retry,
     'Retry must obtain replacement tiles after the outage.',
   );
-  assert.equal(await page.getByLabel('Trip filter').inputValue(), trip_id);
+  assert.equal((await filterButton().innerText()).trim(), await tripTitle(trip_id));
   await page
     .getByRole('navigation', { name: 'Main views' })
     .getByRole('button', { name: 'Timeline', exact: true })
     .click();
-  assert.equal(await page.getByLabel('Trip filter').inputValue(), trip_id);
+  assert.equal((await filterButton().innerText()).trim(), await tripTitle(trip_id));
   await assertMobileLayout();
   await page.setViewportSize({ width: 390, height: 500 });
   await assertMobileLayout();
@@ -527,7 +661,7 @@ try {
     'Smoke tests must never use unmocked external services.',
   );
   console.log(
-    'Firefox smoke passed: Timeline + Map, separate locations, missing coordinates, filter reset, offline pins/retry, mocked tiles, photos/save recovery, and fixed mobile navigation down to 320px.',
+    'Firefox smoke passed: anchored popovers/dismissal/focus return, full-screen editors/discard recovery, Timeline + Map, separate locations, missing coordinates, filter reset, offline pins/retry, mocked tiles, photos/save recovery, and fixed mobile navigation down to 320px.',
   );
 } finally {
   await browser.close();

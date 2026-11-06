@@ -4,6 +4,8 @@ A mobile travel journal with two main views: **Timeline** and **Map**. The fixed
 
 A single compact toolbar keeps the main view in focus. Inside Apell, the host owns device safe-area insets; standalone browser use adds its own. Search and the check-in count share one row and appear once the selected timeline has entries.
 
+Trip and check-in editors fill the applet screen, with a scrolling form and reachable save controls. Trips and the trip filter open beside their buttons and dismiss on an outside tap or Escape. Closing an edited draft still asks whether to discard it.
+
 Each check-in keeps two separate locations:
 
 - **Actual visit:** the coordinates where the event happened, optionally captured from foreground GPS or entered manually. Device fixes retain their capture time and accuracy. Unknown coordinates stay empty.

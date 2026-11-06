@@ -217,7 +217,7 @@ export function CheckInForm({
   }
 
   return (
-    <Dialog title={check_in ? 'Edit check-in' : 'Keep this moment'} onDismiss={dismiss} wide>
+    <Dialog title={check_in ? 'Edit check-in' : 'Keep this moment'} onDismiss={dismiss} full_screen>
       <EditorForm onSave={submit} onChange={() => setDirty(true)}>
         {(save) => (
           <>
