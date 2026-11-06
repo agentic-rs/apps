@@ -40,6 +40,7 @@ export function AudioPlayer({
       <div className="player-track">
         <input
           aria-label="Playback position"
+          aria-valuetext={`${formatTime(seeking ? seek_ms : position_ms)} of ${formatTime(duration_ms)}`}
           type="range"
           min="0"
           max={Math.max(duration_ms, 1)}

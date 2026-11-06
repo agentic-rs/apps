@@ -100,7 +100,7 @@ p {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 0 0 27px;
+  padding: 0 0 16px;
 }
 .brand {
   display: flex;
@@ -122,12 +122,6 @@ p {
   font-size: 22px;
   letter-spacing: -0.7px;
   font-weight: 650;
-}
-.brand-caption {
-  color: var(--muted);
-  font-size: 12px;
-  display: block;
-  margin-top: 3px;
 }
 .model-status {
   display: flex;
@@ -209,6 +203,9 @@ p {
   min-height: 540px;
   flex: 1;
 }
+.workspace-content {
+  min-width: 0;
+}
 .library {
   background: #eeeee7;
   border-right: 1px solid var(--line);
@@ -231,7 +228,7 @@ p {
   color: #8a8e82;
 }
 .library-heading h2 {
-  margin-top: 8px;
+  margin-top: 0;
   font-size: 18px;
   font-weight: 600;
   letter-spacing: -0.5px;
@@ -1017,7 +1014,7 @@ progress::-moz-progress-bar {
     padding: max(17px, env(safe-area-inset-top)) 15px max(15px, env(safe-area-inset-bottom));
   }
   .app-header {
-    padding-bottom: 21px;
+    padding-bottom: 14px;
   }
   .brand {
     gap: 10px;
@@ -1029,9 +1026,6 @@ progress::-moz-progress-bar {
   }
   .brand h1 {
     font-size: 20px;
-  }
-  .brand-caption {
-    font-size: 10px;
   }
   .model-status {
     font-size: 0;
@@ -1199,11 +1193,6 @@ progress::-moz-progress-bar {
   border-color: #d6deca;
   color: #48613a;
   box-shadow: 0 1px 3px #33471e0c;
-}
-.mode-navigation > p {
-  color: #7c8770;
-  font-size: 12px;
-  line-height: 1.6;
 }
 .welcome-feature-row {
   display: flex;
@@ -1395,261 +1384,9 @@ progress::-moz-progress-bar {
 .new-channel-form .text-button {
   font-size: 11px;
 }
-.channel-art {
-  font-family: Georgia, 'Times New Roman', serif;
-  font-size: 27px;
-}
-.channel-preview {
-  max-width: 100%;
-  font-size: 11px;
-  color: #829374;
-  margin-top: 7px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.channel-detail {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  background: #f5f8ef;
-}
-.channel-header {
-  padding: 27px 32px 23px;
-  background: #fafcf5;
-  border-bottom: 1px solid #dfe6d5;
-}
-.channel-header .detail-topline {
-  margin-bottom: 17px;
-}
-.channel-header .detail-topline .inline-actions {
-  margin-left: auto;
-  margin-top: -7px;
-  margin-bottom: -7px;
-}
-.channel-header h2 {
-  font-size: 27px;
-  font-weight: 500;
-  letter-spacing: -0.6px;
-  color: #4d653d;
-  overflow-wrap: anywhere;
-}
-.channel-hash {
-  color: #a1b58d;
-  margin-right: 10px;
-  font-weight: 400;
-}
-.channel-header > p {
-  color: #839673;
-  font-size: 11px;
-  line-height: 1.8;
-  margin-top: 10px;
-}
-.channel-rename {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 9px;
-}
-.channel-rename label {
-  flex: 1;
-  min-width: 140px;
-}
-.channel-messages {
-  padding: 10px 32px 30px;
-  flex: 1;
-}
-.timeline-date {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  margin: 23px 0;
-  font-size: 10px;
-  color: #8f9f82;
-}
-.timeline-date::before,
-.timeline-date::after {
-  content: '';
-  height: 1px;
-  background: #e0e7d7;
-  flex: 1;
-}
-.timeline-date > span {
-  white-space: nowrap;
-}
-.clip-card {
-  padding: 16px 17px 13px;
-  border: 1px solid #dce5d0;
-  background: #fdfef9;
-  border-radius: 12px;
-  border-top-left-radius: 3px;
-  box-shadow: 0 2px 4px #364a2003;
-  margin-bottom: 17px;
-}
-.clip-card-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-.clip-avatar {
-  display: inline-flex;
-  width: 24px;
-  height: 24px;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  background: #ebf1e2;
-  color: #91a47b;
-  flex-shrink: 0;
-}
-.clip-card-header > strong {
-  font-size: 11px;
-  font-weight: 500;
-  color: #6b815b;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.clip-card-header > time {
-  margin-left: auto;
-  color: #92a282;
-  font-size: 10px;
-  white-space: nowrap;
-}
-.clip-card-header > .icon-button {
-  min-width: 28px;
-  min-height: 28px;
-  padding: 5px;
-  margin-right: -5px;
-  color: #a0af92;
-}
-.player.player-compact {
-  margin: 14px 0 13px;
-  padding: 12px;
-  gap: 12px;
-  border: 0;
-  border-radius: 8px;
-  background: #eff4e6;
-}
-.player-compact .play-button {
-  width: 35px;
-  height: 35px;
-}
-.player-compact .icon-button {
-  min-width: 28px;
-  min-height: 28px;
-}
-.clip-text > p {
-  color: #596b4d;
-  font-size: 13px;
-  line-height: 1.85;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-.clip-editor {
-  display: block;
-  width: 100%;
-  min-height: 110px;
-  resize: vertical;
-  padding: 10px;
-  border: 1px solid #d5e1c8;
-  border-radius: 6px;
-  background: #f9fcf3;
-  font-size: 13px;
-  line-height: 1.85;
-}
-.clip-text-actions {
-  display: flex;
-  align-items: center;
-  gap: 13px;
-  margin-top: 8px;
-}
-.clip-text-actions > span {
-  color: #91a281;
-  font-size: 10px;
-  margin-right: auto;
-}
-.clip-text-actions .text-button {
-  font-size: 10px;
-  color: #839972;
-}
-.transcription-compact .transcription-actions {
-  justify-content: flex-end;
-}
-.transcription-compact .transcription-actions > .text-button {
-  font-size: 10px;
-  color: #8b9e7a;
-  padding-bottom: 0;
-}
-.transcription-compact .queue-status {
-  background: transparent;
-  border: 0;
-  padding: 4px 0 0;
-}
-.transcription-compact .queue-status.queue-error {
-  background: #faf1e5;
-  padding: 10px;
-}
-.transcription-compact .queue-status-line strong {
-  font-size: 10px;
-}
-.transcription-compact .queue-status > p {
-  font-size: 10px;
-  color: #92a382;
-  margin-top: 5px;
-}
-.channel-empty {
-  text-align: center;
-  padding: 75px 15px 60px;
-}
-.channel-empty-icon {
-  display: inline-flex;
-  width: 74px;
-  height: 74px;
-  align-items: center;
-  justify-content: center;
-  background: #e9f0df;
-  color: #8ea779;
-  border: 1px solid #dfe8d3;
-  border-radius: 24px;
-  margin-bottom: 24px;
-}
-.channel-empty h3 {
-  font-family: Georgia, 'Times New Roman', serif;
-  font-size: 27px;
-  font-weight: 400;
-  color: #627a50;
-  letter-spacing: -0.6px;
-}
-.channel-empty p {
-  font-size: 12px;
-  color: #8b9d7c;
-  line-height: 1.9;
-  margin-top: 13px;
-}
-.channel-example {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  margin-top: 28px;
-  color: #93a785;
-  font-size: 10px;
-}
-.channel-detail > .inline-confirm {
-  margin: 18px 25px 0;
-}
 @media (max-width: 1050px) {
   .mode-navigation {
     gap: 16px;
-  }
-  .channel-header {
-    padding: 24px;
-  }
-  .channel-messages {
-    padding-left: 24px;
-    padding-right: 24px;
   }
   .dock-label div > span {
     max-width: 300px;
@@ -1669,10 +1406,6 @@ progress::-moz-progress-bar {
   .mode-switch button {
     flex: 1;
     min-height: 40px;
-  }
-  .mode-navigation > p {
-    text-align: center;
-    font-size: 10px;
   }
   .document-detail .detail-topline > .eyebrow {
     display: none;
@@ -1707,43 +1440,6 @@ progress::-moz-progress-bar {
   }
   .queue-status-line strong {
     font-size: 10px;
-  }
-  .channel-header {
-    padding: 20px;
-  }
-  .channel-header h2 {
-    font-size: 24px;
-  }
-  .channel-header .detail-topline > .eyebrow {
-    display: none;
-  }
-  .channel-messages {
-    padding: 4px 14px 22px;
-  }
-  .clip-card {
-    padding: 13px 13px 11px;
-  }
-  .clip-card-header > strong {
-    max-width: 120px;
-  }
-  .clip-card-header > time {
-    font-size: 9px;
-  }
-  .clip-text > p,
-  .clip-editor {
-    font-size: 13px;
-  }
-  .channel-empty {
-    padding: 55px 8px 55px;
-  }
-  .channel-empty h3 {
-    font-size: 26px;
-  }
-  .channel-empty p {
-    font-size: 11px;
-  }
-  .channel-empty p br {
-    display: none;
   }
   .dock-actions {
     gap: 7px;
@@ -1784,8 +1480,7 @@ progress::-moz-progress-bar {
 }
 
 /* Keep the channel composer and active capture controls reachable. */
-.channel-mode .recording-dock,
-.recording-dock.is-recording {
+.app:not(.channel-mode) .recording-dock.is-recording {
   position: sticky;
   bottom: 0;
   z-index: 5;
@@ -1793,8 +1488,7 @@ progress::-moz-progress-bar {
   padding-bottom: max(12px, env(safe-area-inset-bottom));
   box-shadow: 0 -12px 18px #f5f3edee;
 }
-.native-app.channel-mode .recording-dock,
-.native-app .recording-dock.is-recording {
+.native-app:not(.channel-mode) .recording-dock.is-recording {
   padding-bottom: 12px;
 }
 .capture-active .document-save {

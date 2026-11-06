@@ -64,7 +64,6 @@ export function App() {
             </span>
             <div>
               <h1>Recorder</h1>
-              <span className="brand-caption">A little room for your thoughts.</span>
             </div>
           </div>
           <button
@@ -100,11 +99,6 @@ export function App() {
               <span>Channels</span>
             </button>
           </div>
-          <p>
-            {controller.mode === 'document'
-              ? 'For interviews, meetings, and longer conversations'
-              : 'For quick thoughts and everyday voice notes'}
-          </p>
         </nav>
         {!controller.platform?.native && !controller.loading && (
           <div className="browser-banner">
@@ -168,29 +162,32 @@ export function App() {
             onSelectChannel={(id) => navigate(() => controller.setSelectedChannelId(id))}
             onDirtyChange={onDirtyChange}
           />
-          {selected ? (
-            <RecordingDetail
-              key={selected.id}
-              recording={selected}
-              controller={controller}
-              onBack={() => navigate(() => controller.setSelectedId(null))}
-              onModel={() => setModelOpen(true)}
-              onDirtyChange={onDirtyChange}
-            />
-          ) : selected_channel ? (
-            <ChannelTimeline
-              key={selected_channel.id}
-              channel={selected_channel}
-              controller={controller}
-              onBack={() => navigate(() => controller.setSelectedChannelId(null))}
-              onModel={() => setModelOpen(true)}
-              onDirtyChange={onDirtyChange}
-            />
-          ) : (
-            <WorkspaceWelcome mode={controller.mode} native={native} />
-          )}
+          <div className="workspace-content">
+            {selected ? (
+              <RecordingDetail
+                key={selected.id}
+                recording={selected}
+                controller={controller}
+                onBack={() => navigate(() => controller.setSelectedId(null))}
+                onModel={() => setModelOpen(true)}
+                onDirtyChange={onDirtyChange}
+              />
+            ) : selected_channel ? (
+              <ChannelTimeline
+                key={selected_channel.id}
+                channel={selected_channel}
+                controller={controller}
+                onBack={() => navigate(() => controller.setSelectedChannelId(null))}
+                onModel={() => setModelOpen(true)}
+                onDirtyChange={onDirtyChange}
+              />
+            ) : (
+              <WorkspaceWelcome mode={controller.mode} native={native} />
+            )}
+            {controller.mode === 'clip' && <RecorderDock controller={controller} locked={locked} />}
+          </div>
         </main>
-        <RecorderDock controller={controller} locked={locked} />
+        {controller.mode === 'document' && <RecorderDock controller={controller} locked={locked} />}
         <ModelDialog
           controller={controller}
           open={model_open}

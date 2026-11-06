@@ -31,9 +31,9 @@ Existing Recorder recordings appear as Documents after upgrading, with their ori
 
 ## Channels
 
-Choose **Channels**, create a named channel, and record short notes into it. Each saved note appears separately in chronological order, with its recording timestamp. Import also adds a separate note to the selected channel. The recording destination is captured when recording starts, so changing the visible workspace does not move a recording in progress.
+Choose **Channels**, create a named channel, and record short notes into it. Channels use a conversation list ordered by the latest note, message-style audio bubbles, and a fixed microphone/attachment bar. Each saved note appears separately in chronological order, with its recording timestamp. The header and recording controls stay visible while the history scrolls. Import also adds a separate note to the selected channel. The recording destination is captured when recording starts, so changing the visible workspace does not move a recording in progress.
 
-Open a note’s **Edit text** control to correct its transcript, then save or discard the changes. Channel names can be changed. Only empty channels can be deleted; removing a voice note requires its own confirmation.
+Open a note’s **… → Edit text** control to correct its transcript, then save or discard the changes. Channel names can be changed. Only empty channels can be deleted; removing a voice note requires its own confirmation.
 
 ## On-device transcription
 
@@ -53,6 +53,6 @@ The applet declares `fs`, `audio`, and `speech` permissions. It does not declare
 
 ## Verification
 
-Recorder 0.2.0 passes TypeScript checks, production packaging, formatting, and 35 tests covering migration, channel/capture recovery, large native directories, queue ordering, cancellation, concurrent edits, and failed saves. Firefox desktop/mobile checks cover recording, imports, document editing, multiple channels, capture destinations, persistence, and the sticky recording controls. A production bundle in an opaque iframe also passes the native message bridge/content-policy checks with simulated audio and speech responses.
+Recorder 0.2.2 passes TypeScript checks, production packaging, formatting, and 35 tests covering migration, channel/capture recovery, large native directories, queue ordering, cancellation, concurrent edits, and failed saves. Firefox desktop/mobile checks cover recording, imports, document editing, multiple channels, capture destinations, persistence, and the fixed chat composer. Focused conversation checks cover compact action menus, transcript editing with a keyboard-sized viewport, and preserving the reader’s position while background transcripts change. A production bundle in an opaque iframe also passes the native message bridge/content-policy checks with simulated audio and speech responses.
 
-The updated Apell host passed a three-hour streaming transcription test with real Whisper inference, and its iOS simulator build was installed with Recorder 0.2.0. Physical-device microphone behavior and Android runtime behavior remain unverified. The browser preview does not run Whisper.
+The updated Apell host passed a three-hour streaming transcription test with real Whisper inference, and its iOS simulator build was installed with Recorder. Physical-device microphone behavior and Android runtime behavior remain unverified. The browser preview does not run Whisper.

@@ -31,12 +31,14 @@ export function TranscriptionStatus({
   onModel,
   dirty = false,
   compact = false,
+  expanded = true,
 }: {
   recording: Recording;
   controller: RecorderController;
   onModel: () => void;
   dirty?: boolean;
   compact?: boolean;
+  expanded?: boolean;
 }) {
   const [language, setLanguage] = useState('');
   const [confirm_replace, setConfirmReplace] = useState(false);
@@ -93,7 +95,7 @@ export function TranscriptionStatus({
               }
             />
           )}
-          {queued && (
+          {queued && !compact && (
             <p>
               {!controller.platform?.native
                 ? 'Open the applet in Apell for on-device transcription.'
@@ -117,7 +119,8 @@ export function TranscriptionStatus({
           Set up on-device transcription
         </button>
       ) : (
-        !active && (
+        !active &&
+        (!compact || expanded || failed || cancelled || !recording.transcript) && (
           <div className="transcription-actions">
             {!compact && (
               <label className="language-select">

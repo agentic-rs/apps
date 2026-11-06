@@ -1,6 +1,13 @@
 import type { CSSProperties } from 'react';
 
 const paths = {
+  more: (
+    <>
+      <circle cx="5" cy="12" r="1" />
+      <circle cx="12" cy="12" r="1" />
+      <circle cx="19" cy="12" r="1" />
+    </>
+  ),
   plus: <path d="M12 5v14M5 12h14" />,
   chat: (
     <path d="M20 4H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h4l4 4v-4h8a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1ZM7 9h10M7 13h7" />
