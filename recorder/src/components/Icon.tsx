@@ -1,6 +1,10 @@
 import type { CSSProperties } from 'react';
 
 const paths = {
+  plus: <path d="M12 5v14M5 12h14" />,
+  chat: (
+    <path d="M20 4H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h4l4 4v-4h8a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1ZM7 9h10M7 13h7" />
+  ),
   mic: (
     <>
       <rect x="9" y="2" width="6" height="13" rx="3" />

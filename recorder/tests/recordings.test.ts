@@ -1,6 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 import {
   createId,
+  createChannel,
+  parseChannel,
+  parseCaptureDraft,
   createRecording,
   fileName,
   formatTime,
@@ -39,7 +42,13 @@ describe('recording persistence boundary', () => {
       { size_bytes: -1 },
       { created_at: 'not a date' },
       { transcript: {} },
-      { schema_version: 2 },
+      { schema_version: 3 },
+      { mode: 'clip', channel_id: null },
+      { channel_id: 'unexpected-channel' },
+      { updated_at: 'invalid' },
+      { transcription_revision: -1 },
+      { transcription_state: 'unknown' },
+      { transcription_language: 'a'.repeat(17) },
     ]) {
       expect(() => parseRecording({ ...valid, ...change })).toThrow();
     }
@@ -107,4 +116,63 @@ describe('export and display', () => {
     expect(fileName('../notes: today?', 'txt')).toBe('..-notes- today-.txt');
     expect(fileName('', 'txt')).toBe('Recording.txt');
   });
+});
+
+test('v1 migration preserves every original field and supplies document defaults', () => {
+  const current = createRecording(asset, 'import');
+  const {
+    mode,
+    channel_id,
+    started_at,
+    updated_at,
+    transcription_state,
+    transcription_error,
+    transcription_revision,
+    transcription_language,
+    ...base
+  } = current;
+  const legacy = { ...base, schema_version: 1 };
+  const migrated = parseRecording(legacy);
+  expect(migrated).toMatchObject({
+    ...legacy,
+    schema_version: 2,
+    mode: 'document',
+    channel_id: null,
+    started_at: null,
+    updated_at: legacy.created_at,
+    transcription_state: 'idle',
+    transcription_revision: 0,
+    transcription_language: null,
+  });
+});
+
+test('clip and capture identity requires a channel; new clips queue transcription', () => {
+  const channel = createChannel('Notes');
+  expect(parseChannel(JSON.parse(JSON.stringify(channel)))).toEqual(channel);
+  const started_at = '2026-01-01T12:00:00.000Z';
+  const clip = createRecording(asset, 'microphone', {
+    id: 'clip-one',
+    mode: 'clip',
+    channel_id: channel.id,
+    started_at,
+  });
+  expect(clip).toMatchObject({
+    id: 'clip-one',
+    mode: 'clip',
+    channel_id: channel.id,
+    started_at,
+    transcription_state: 'queued',
+  });
+  expect(() => createRecording(asset, 'microphone', { mode: 'clip' })).toThrow();
+  expect(() =>
+    parseCaptureDraft({
+      schema_version: 1,
+      id: 'clip-one',
+      mode: 'clip',
+      channel_id: null,
+      started_at,
+      path: asset.path,
+      mime_type: asset.mime_type,
+    }),
+  ).toThrow();
 });

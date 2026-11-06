@@ -1,8 +1,13 @@
 # Recorder for Apell
 
-A private recording library with native mobile recording, audio import and playback, editable transcripts, automatic language detection, and audio/text sharing. Speech recognition runs on the device using the Apell host’s multilingual Whisper Tiny model. No audio is uploaded and no speech-service API key is needed.
+Recorder keeps two kinds of audio work in one private library:
 
-The applet requires the Apell host with `audio` and `speech` services. Keep a checkout at the sibling `../../apell` path, or adjust the local SDK dependency and set `APELL_BIN` to a compatible packer.
+- **Documents** turn interviews, meetings, and longer recordings into editable text. Each document keeps its original audio, detected language, and transcript.
+- **Channels** organize quick voice notes into named, chronological timelines. Each note keeps its own timestamp, audio, and editable transcript.
+
+New channel notes and audio imported into a channel transcribe automatically after saving. Document transcription starts when you choose **Transcribe**. Speech recognition runs on the device using the Apell host’s multilingual Whisper Tiny model. No audio is uploaded and no speech-service API key is needed.
+
+The applet requires the Apell host with `audio` and `speech` services, including long-audio transcription support. Keep a checkout at the sibling `../../apell` path, or adjust the local SDK dependency and set `APELL_BIN` to a compatible packer.
 
 ## Develop and package
 
@@ -14,30 +19,40 @@ bun run build
 bun run pack
 ```
 
-The development server binds to loopback. The browser preview supports actual microphone recording, import, playback, persistence in IndexedDB, and sharing/download. On-device transcription is supplied by the native host and is not simulated in the browser preview.
+The development server binds to loopback. The browser preview supports microphone recording, documents, channels, import, playback, persistence in IndexedDB, and sharing/download. On-device transcription is supplied by the native host and is not simulated in the preview. Browser data is separate from native applet data.
 
-`bun run pack` creates `artifacts/recorder.apel` and its SHA-256 checksum. Install the package from Apell’s **+ → Install from file** flow. The stable applet ID is `recorder`; future versions retain its private data. If the applet was already running when updated, restart Apell before opening the new version.
+`bun run pack` creates `artifacts/recorder.apel` and its SHA-256 checksum. Install the package from Apell’s **+ → Install from file** flow. The stable applet ID is `recorder`; updates retain private data. Restart Apell before opening an updated applet if it had already been running.
 
-## Use
+## Documents
 
-1. Tap **Record**, grant microphone access, and keep Apell open while recording. Pause/resume as needed, then choose **Save recording**.
-2. Use the import button to choose an existing audio file. Native transcription supports WAV, M4A/AAC, MP3, FLAC, and Ogg/Vorbis; exact playback availability depends on the device.
-3. Open transcription settings and download the multilingual model once (about 75 MB). The download needs a connection; subsequent transcription works offline.
-4. Open a recording, leave **Spoken language** on automatic detection or select a language, and choose **Transcribe recording**. A running transcription or download can be cancelled.
-5. Edit the title or transcript, save your changes, then share the audio or a plain-text transcript using the share buttons.
+Choose **Documents**, then record or import audio. Save the recording to add it to your library, and choose **Transcribe** when ready. Open a document to play its audio, edit the title and transcript, or share text and audio. You can also start writing before transcription; saved manual text is preserved unless you explicitly replace it. Changes remain a draft until **Save changes**; navigation asks you to save or discard them first.
 
-Whisper Tiny prioritizes small size and local execution. Transcription accepts files up to 30 minutes long; split longer audio before importing it. WebM and Opus are not supported by native transcription. Review names, numbers, and short or noisy clips. Transcription runs while the host remains open; mobile suspension or termination can interrupt it. Incoming OS share-extension imports are not part of this applet; use its native file picker to import audio.
+Existing Recorder recordings appear as Documents after upgrading, with their original audio, titles, dates, and edited text preserved.
+
+## Channels
+
+Choose **Channels**, create a named channel, and record short notes into it. Each saved note appears separately in chronological order, with its recording timestamp. Import also adds a separate note to the selected channel. The recording destination is captured when recording starts, so changing the visible workspace does not move a recording in progress.
+
+Open a note’s **Edit text** control to correct its transcript, then save or discard the changes. Channel names can be changed. Only empty channels can be deleted; removing a voice note requires its own confirmation.
+
+## On-device transcription
+
+Download the multilingual model once from transcription settings (about 75 MB). Saved recordings wait while the model is unavailable. Queued work runs one recording at a time, so you can continue capturing notes while earlier recordings transcribe. Cancel an individual queued/running transcription from its document or note; retry it when ready. Replacing an existing transcript requires confirmation.
+
+Recordings up to 3 hours are supported by the updated host. Audio imports can be up to 2 GiB in Apell or 128 MiB in the browser preview. Native transcription accepts WAV, M4A/AAC, MP3, FLAC, and Ogg/Vorbis. WebM and Opus are not supported. Keep Apell open while recording and transcribing; mobile suspension or termination can interrupt work. Incoming OS share-extension imports are not included; use the applet’s native file picker.
+
+Whisper Tiny prioritizes small size and local execution. Review names, numbers, and short or noisy clips before relying on a transcript. Export recordings you want to back up.
 
 ## Storage and recovery
 
-Audio lives in Apell’s private file area. Each recording has a versioned JSON metadata file in `recorder-metadata/`, stored through atomic host writes. On reopening, finalized audio without metadata is restored as a **Recovered recording**, with the recovery date; its duration becomes available through playback. Transcript exports are written to `recorder-exports/` before opening the native share sheet. Audio stays local until you explicitly share it.
+Audio and metadata live in Apell’s private file area. Browser preview data lives in IndexedDB and can be erased by clearing browser storage. Neither mode uploads audio. Sharing uses an explicit user action.
 
-If a metadata write fails, the app retains the recording in memory and presents **Retry save**, blocking new recordings/imports until it succeeds. Browser preview data is separate from native applet data and can be erased by clearing browser storage. Export recordings you want to back up.
+If saving metadata fails, the app retains the pending recording and offers **Retry save**. Keep the screen open until saving succeeds. Recording drafts retain their original destination for recovery; finalized audio without known metadata is recovered as a Document.
 
-The applet declares `fs`, `audio`, and `speech` permissions. It does not declare network or shared-LLM access. All serialized app-owned field names use snake_case. Build artifacts, local environment files, and dependencies are ignored by Git.
+The applet declares `fs`, `audio`, and `speech` permissions. It does not declare network or shared-LLM access. All serialized app-owned field names use snake_case. Build artifacts, local environment files, downloaded models, and dependencies stay out of Git.
 
 ## Verification
 
-TypeScript checks, the production build, seven persistence/export tests, and Firefox recording/import/playback/persistence workflows pass. The production bundle was also checked in an opaque iframe with Apell's restrictive content policy, including its message-channel handshake and secure-context ID fallback.
+Recorder 0.2.0 passes TypeScript checks, production packaging, formatting, and 35 tests covering migration, channel/capture recovery, large native directories, queue ordering, cancellation, concurrent edits, and failed saves. Firefox desktop/mobile checks cover recording, imports, document editing, multiple channels, capture destinations, persistence, and the sticky recording controls. A production bundle in an opaque iframe also passes the native message bridge/content-policy checks with simulated audio and speech responses.
 
-The iOS simulator build was installed and verified with native playback, the share sheet, on-device language detection/transcription, and transcript persistence across a restart. Browser recording tests use a simulated microphone; physical-device microphone behavior still needs verification. Android native Kotlin sources compile against Tauri, but a full Android APK/runtime check remains pending because the existing generated host uses an incompatible AGP/Kotlin plugin combination.
+The updated Apell host passed a three-hour streaming transcription test with real Whisper inference, and its iOS simulator build was installed with Recorder 0.2.0. Physical-device microphone behavior and Android runtime behavior remain unverified. The browser preview does not run Whisper.

@@ -1,63 +1,10 @@
-import { createId, fileName, parseRecording, transcriptText } from './recordings';
-import type { AudioAsset, AudioStatus, RecorderPlatform, Recording } from './types';
+import { createBrowserStorage } from './browser-storage';
+import { createId, fileName, transcriptText } from './recordings';
+import type { AudioAsset, AudioStatus, RecorderPlatform } from './types';
 
 const max_audio_bytes = 128 * 1_024 * 1_024;
 const unsupported_speech =
   'On-device transcription runs in Apell. Install the recorder applet in the updated mobile host.';
-
-type StoreName = 'recordings' | 'audio';
-
-function openDatabase(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open('apell-recorder-preview', 1);
-    request.onupgradeneeded = () => {
-      request.result.createObjectStore('recordings', { keyPath: 'id' });
-      request.result.createObjectStore('audio');
-    };
-    request.onerror = () =>
-      reject(new Error('Browser storage is unavailable. Check the browser’s storage permissions.'));
-    request.onsuccess = () => resolve(request.result);
-  });
-}
-
-async function databaseRequest<T>(
-  store_name: StoreName,
-  mode: IDBTransactionMode,
-  action: (store: IDBObjectStore) => IDBRequest<T>,
-): Promise<T> {
-  const database = await openDatabase();
-  return new Promise((resolve, reject) => {
-    const transaction = database.transaction(store_name, mode);
-    const request = action(transaction.objectStore(store_name));
-    transaction.oncomplete = () => {
-      database.close();
-      resolve(request.result);
-    };
-    transaction.onerror = () => {
-      database.close();
-      reject(new Error('Could not access browser storage. Check available disk space.'));
-    };
-    transaction.onabort = transaction.onerror;
-  });
-}
-
-async function removeRecording(recording: Recording): Promise<void> {
-  const database = await openDatabase();
-  return new Promise((resolve, reject) => {
-    const transaction = database.transaction(['recordings', 'audio'], 'readwrite');
-    transaction.objectStore('recordings').delete(recording.id);
-    transaction.objectStore('audio').delete(recording.path);
-    transaction.oncomplete = () => {
-      database.close();
-      resolve();
-    };
-    transaction.onerror = () => {
-      database.close();
-      reject(new Error('Could not delete this recording.'));
-    };
-    transaction.onabort = transaction.onerror;
-  });
-}
 
 function chooseAudio(): Promise<File | null> {
   return new Promise((resolve) => {
@@ -121,6 +68,10 @@ async function shareFile(file: File): Promise<void> {
 }
 
 export function createBrowserPlatform(): RecorderPlatform {
+  const storage = createBrowserStorage();
+  let recording_path: string | null = null;
+  let starting = false;
+  let disposed = false;
   let recorder: MediaRecorder | null = null;
   let stream: MediaStream | null = null;
   let chunks: Blob[] = [];
@@ -144,30 +95,10 @@ export function createBrowserPlatform(): RecorderPlatform {
     playback_path = null;
     player = null;
   };
-  const getBlob = async (path: string): Promise<Blob> => {
-    const blob = await databaseRequest<Blob | undefined>('audio', 'readonly', (store) =>
-      store.get(path),
-    );
-    if (!blob) throw new Error('The audio file is missing from browser storage.');
-    return blob;
-  };
+  const getBlob = storage.getBlob;
   return {
     native: false,
-    store: {
-      async list() {
-        const values = await databaseRequest<unknown[]>('recordings', 'readonly', (store) =>
-          store.getAll(),
-        );
-        return values
-          .map(parseRecording)
-          .sort((left, right) => right.created_at.localeCompare(left.created_at));
-      },
-      async save(recording) {
-        parseRecording(recording);
-        await databaseRequest('recordings', 'readwrite', (store) => store.put(recording));
-      },
-      remove: removeRecording,
-    },
+    store: storage.store,
     async capabilities() {
       return {
         recording: Boolean(
@@ -181,11 +112,18 @@ export function createBrowserPlatform(): RecorderPlatform {
       };
     },
     async start() {
-      if (recorder && recorder.state !== 'inactive')
-        throw new Error('A recording is already in progress.');
+      if (disposed) throw new Error('The recorder has closed.');
+      if (recorder || chunks.length || starting)
+        throw new Error('Save the current recording before starting another.');
+      starting = true;
       releasePlayer();
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       try {
+        const acquired = await navigator.mediaDevices.getUserMedia({ audio: true });
+        if (disposed) {
+          acquired.getTracks().forEach((track) => track.stop());
+          throw new Error('The recorder closed before microphone access was granted.');
+        }
+        stream = acquired;
         const mime_type = [
           'audio/mp4',
           'audio/webm;codecs=opus',
@@ -216,9 +154,21 @@ export function createBrowserPlatform(): RecorderPlatform {
         };
         recorder.start(1_000);
         active_since = performance.now();
+        const actual_mime = recorder.mimeType || 'audio/webm';
+        const extension = actual_mime.includes('mp4')
+          ? 'm4a'
+          : actual_mime.includes('ogg')
+            ? 'ogg'
+            : 'webm';
+        recording_path = `audio/${createId()}.${extension}`;
+        return { path: recording_path, mime_type: actual_mime };
       } catch (error) {
         releaseStream();
+        recorder = null;
+        recording_path = null;
         throw error;
+      } finally {
+        starting = false;
       }
     },
     async pause() {
@@ -252,17 +202,19 @@ export function createBrowserPlatform(): RecorderPlatform {
         : blob.type.includes('ogg')
           ? 'ogg'
           : 'webm';
-      const path = `audio/${createId()}.${extension}`;
-      await databaseRequest('audio', 'readwrite', (store) => store.put(blob, path));
-      chunks = [];
-      recorder = null;
-      return {
-        path,
+      if (!recording_path) throw new Error('The recording identity is missing.');
+      const asset: AudioAsset = {
+        path: recording_path,
         file_name: `Recording.${extension}`,
         mime_type: blob.type,
         duration_ms,
         size_bytes: blob.size,
       };
+      await storage.saveAudio(asset, blob);
+      chunks = [];
+      recorder = null;
+      recording_path = null;
+      return asset;
     },
     async importAudio() {
       const file = await chooseAudio();
@@ -271,14 +223,15 @@ export function createBrowserPlatform(): RecorderPlatform {
         throw new Error('Choose an audio file between 1 byte and 128 MB.');
       const duration_ms = await audioDuration(file);
       const path = `audio/${createId()}`;
-      await databaseRequest('audio', 'readwrite', (store) => store.put(file, path));
-      return {
+      const asset: AudioAsset = {
         path,
         file_name: file.name,
         mime_type: file.type || 'application/octet-stream',
         duration_ms,
         size_bytes: file.size,
       };
+      await storage.saveAudio(asset, file);
+      return asset;
     },
     async shareAudio(recording) {
       const blob = await getBlob(recording.path);
@@ -339,7 +292,32 @@ export function createBrowserPlatform(): RecorderPlatform {
     },
     async cancelSpeech() {},
     dispose() {
-      if (recorder && recorder.state !== 'inactive') recorder.stop();
+      disposed = true;
+      if (recorder && recorder.state !== 'inactive') {
+        const current = recorder;
+        const path = recording_path;
+        const duration_ms = elapsed();
+        current.onstop = () => {
+          if (!path) return;
+          const blob = new Blob(chunks, { type: current.mimeType || 'audio/webm' });
+          const extension = path.split('.').at(-1) ?? 'webm';
+          void storage
+            .saveAudio(
+              {
+                path,
+                file_name: `Recording.${extension}`,
+                mime_type: blob.type,
+                duration_ms,
+                size_bytes: blob.size,
+              },
+              blob,
+            )
+            .catch(() => {
+              // The capture draft remains for a later recovery attempt.
+            });
+        };
+        current.stop();
+      }
       releaseStream();
       releasePlayer();
     },
