@@ -1,0 +1,278 @@
+import { describe, expect, test } from 'bun:test';
+import {
+  emptyJournal,
+  formatCoordinates,
+  max_photo_bytes,
+  parseCheckIn,
+  parseJournal,
+  parsePhotoAsset,
+  parsePlace,
+  parseTrip,
+  removeCheckIn,
+  removeTrip,
+  saveCheckIn,
+  upsertTrip,
+} from '../src/lib/model';
+import type { CheckIn, Journal, PhotoAsset, Place, Trip } from '../src/lib/types';
+
+const now = '2026-05-12T14:20:00.000Z';
+const trip: Trip = {
+  id: 'trip-1',
+  title: 'A spring weekend',
+  description: '',
+  start_date: '2026-05-12',
+  end_date: '2026-05-14',
+  created_at: now,
+  updated_at: now,
+};
+const place: Place = {
+  id: 'place-1',
+  name: 'Lakeside park',
+  locality: 'North district',
+  position: { latitude: 12, longitude: 34 },
+  created_at: now,
+  updated_at: now,
+};
+const photo: PhotoAsset = {
+  id: 'photo-1',
+  path: 'images/photo-1.png',
+  mime_type: 'image/png',
+  size_bytes: 100,
+};
+const check_in: CheckIn = {
+  id: 'visit-1',
+  trip_id: trip.id,
+  place_id: place.id,
+  visited_at: now,
+  utc_offset_minutes: 480,
+  actual_location: {
+    latitude: 12.01,
+    longitude: 34.02,
+    accuracy_m: 6,
+    source: 'device',
+    captured_at: now,
+  },
+  notes: 'An afternoon by the water.',
+  photos: [photo],
+  created_at: now,
+  updated_at: now,
+};
+
+function populated(): Journal {
+  return saveCheckIn(upsertTrip(emptyJournal(), trip), check_in, place);
+}
+
+describe('journal data integrity', () => {
+  test('empty journals are independent and populated data round-trips through JSON', () => {
+    const first = emptyJournal();
+    first.trips.push(trip);
+    expect(emptyJournal().trips).toEqual([]);
+    const journal = populated();
+    expect(parseJournal(JSON.parse(JSON.stringify(journal)))).toEqual(journal);
+  });
+
+  test('repeated visits share a place while preserving their own exact positions', () => {
+    const initial = populated();
+    const next = saveCheckIn(
+      initial,
+      {
+        ...check_in,
+        id: 'visit-2',
+        photos: [],
+        actual_location: {
+          latitude: 12.05,
+          longitude: 34.08,
+          accuracy_m: null,
+          source: 'manual',
+          captured_at: null,
+        },
+      },
+      { ...place, name: 'Lakeside garden', position: { latitude: 12.1, longitude: 34.1 } },
+    );
+    expect(next.places).toHaveLength(1);
+    expect(next.check_ins).toHaveLength(2);
+    expect(next.check_ins[0].actual_location).toEqual(check_in.actual_location);
+    expect(next.check_ins[1].actual_location?.latitude).toBe(12.05);
+    expect(next.places[0].position?.latitude).toBe(12.1);
+    expect(initial.places[0].name).toBe('Lakeside park');
+    expect(initial.check_ins).toHaveLength(1);
+  });
+
+  test('unknown visit and place coordinates remain unknown rather than zero or inferred', () => {
+    const next = saveCheckIn(
+      upsertTrip(emptyJournal(), trip),
+      {
+        ...check_in,
+        actual_location: null,
+      },
+      { ...place, position: null },
+    );
+    expect(next.check_ins[0].actual_location).toBeNull();
+    expect(next.places[0].position).toBeNull();
+  });
+
+  test('rejects dangling references and a supplied place that does not match the visit', () => {
+    expect(() => saveCheckIn(emptyJournal(), check_in, place)).toThrow('missing trip');
+    expect(() => parseJournal({ ...populated(), places: [] })).toThrow('missing place');
+    expect(() => saveCheckIn(populated(), check_in, { ...place, id: 'place-2' })).toThrow('linked');
+  });
+
+  test('rejects duplicate entity and image ownership identities', () => {
+    const journal = populated();
+    expect(() => parseJournal({ ...journal, trips: [trip, trip] })).toThrow('duplicate');
+    expect(() => parseJournal({ ...journal, places: [place, place] })).toThrow('duplicate');
+    expect(() => parseJournal({ ...journal, check_ins: [check_in, check_in] })).toThrow(
+      'duplicate',
+    );
+    expect(() => saveCheckIn(journal, { ...check_in, id: 'visit-2' }, place)).toThrow('duplicate');
+    expect(() =>
+      saveCheckIn(
+        journal,
+        {
+          ...check_in,
+          id: 'visit-2',
+          photos: [{ ...photo, id: 'photo-2' }],
+        },
+        place,
+      ),
+    ).toThrow('duplicate');
+  });
+
+  test('validates schema and missing fields before reading or saving', () => {
+    expect(() => parseJournal(null)).toThrow();
+    expect(() => parseJournal({ ...emptyJournal(), schema_version: 2 })).toThrow('version');
+    expect(() => parseJournal({ ...emptyJournal(), trips: {} })).toThrow('list');
+    expect(() => parseJournal({ schema_version: 1 })).toThrow();
+    expect(() => parseCheckIn({ ...check_in, actual_location: undefined })).toThrow();
+    expect(() => parseTrip({ ...trip, title: '   ' })).toThrow();
+    expect(() => parsePlace({ ...place, name: '' })).toThrow();
+  });
+
+  test('accepts geographic boundaries and rejects nonfinite or out-of-range coordinates', () => {
+    expect(parsePlace({ ...place, position: { latitude: -90, longitude: 180 } }).position).toEqual({
+      latitude: -90,
+      longitude: 180,
+    });
+    for (const position of [
+      { latitude: NaN, longitude: 0 },
+      { latitude: 91, longitude: 0 },
+      { latitude: 0, longitude: -181 },
+      { latitude: 0, longitude: Infinity },
+      { latitude: '12', longitude: 34 },
+    ]) {
+      expect(() => parsePlace({ ...place, position })).toThrow('Latitude');
+    }
+    expect(() =>
+      parseCheckIn({
+        ...check_in,
+        actual_location: { ...check_in.actual_location, accuracy_m: -1 },
+      }),
+    ).toThrow('accuracy');
+  });
+
+  test('trims names, preserves notes, and enforces calendar dates and local time offsets', () => {
+    expect(parseTrip({ ...trip, title: '  A spring weekend  ' }).title).toBe(trip.title);
+    expect(parsePlace({ ...place, name: '  Park  ', locality: ' North ' })).toMatchObject({
+      name: 'Park',
+      locality: 'North',
+    });
+    expect(parseCheckIn({ ...check_in, notes: '  preserve spaces\n' }).notes).toBe(
+      '  preserve spaces\n',
+    );
+    expect(parseTrip({ ...trip, start_date: '', end_date: '' }).start_date).toBe('');
+    expect(() => parseTrip({ ...trip, start_date: '2026-02-30' })).toThrow('date');
+    expect(() => parseTrip({ ...trip, end_date: '2026-05-11' })).toThrow('on or after');
+    expect(() => parseCheckIn({ ...check_in, visited_at: '2026-02-30T10:00:00.000Z' })).toThrow(
+      'UTC',
+    );
+    expect(() => parseCheckIn({ ...check_in, utc_offset_minutes: 840.5 })).toThrow('offset');
+  });
+
+  test('canonicalizes UTC timestamps for chronological ordering and rejects local year overflow', () => {
+    const whole_second = parseCheckIn({ ...check_in, visited_at: '2026-05-12T14:20:00Z' });
+    const fractional_second = parseCheckIn({ ...check_in, visited_at: '2026-05-12T14:20:00.123Z' });
+    expect(whole_second.visited_at).toBe('2026-05-12T14:20:00.000Z');
+    expect(whole_second.visited_at.localeCompare(fractional_second.visited_at)).toBeLessThan(0);
+    expect(() =>
+      parseCheckIn({
+        ...check_in,
+        visited_at: '9999-12-31T23:00:00.000Z',
+        utc_offset_minutes: 480,
+      }),
+    ).toThrow('date range');
+  });
+
+  test('upserts edits without duplicating a trip or check-in', () => {
+    let journal = populated();
+    journal = upsertTrip(journal, { ...trip, title: 'Spring trip' });
+    journal = saveCheckIn(journal, { ...check_in, notes: 'Updated.' }, place);
+    expect(journal.trips).toHaveLength(1);
+    expect(journal.trips[0].title).toBe('Spring trip');
+    expect(journal.check_ins).toHaveLength(1);
+    expect(journal.check_ins[0].notes).toBe('Updated.');
+  });
+
+  test('deleting a trip removes only its visits and retains reusable places', () => {
+    let journal = upsertTrip(populated(), { ...trip, id: 'trip-2', title: 'Next journey' });
+    journal = saveCheckIn(
+      journal,
+      {
+        ...check_in,
+        id: 'visit-2',
+        trip_id: 'trip-2',
+        photos: [],
+        actual_location: null,
+      },
+      place,
+    );
+    const next = removeTrip(journal, 'trip-1');
+    expect(next.trips.map((row) => row.id)).toEqual(['trip-2']);
+    expect(next.check_ins.map((row) => row.id)).toEqual(['visit-2']);
+    expect(next.places).toEqual([place]);
+    expect(journal.check_ins).toHaveLength(2);
+    const without_visit = removeCheckIn(next, 'visit-2');
+    expect(without_visit.check_ins).toEqual([]);
+    expect(without_visit.trips).toHaveLength(1);
+    expect(without_visit.places).toEqual([place]);
+  });
+});
+
+describe('photos and display', () => {
+  test('restricts photos to owned relative image paths', () => {
+    for (const path of [
+      '../images/a.png',
+      '/images/a.png',
+      'images/../a.png',
+      'images\\a.png',
+      'journal.json',
+      'images/a.svg',
+      'images/a.png/extra',
+      'images/%2e%2e.png',
+    ]) {
+      expect(() => parsePhotoAsset({ ...photo, path })).toThrow('path');
+    }
+    expect(
+      parsePhotoAsset({ ...photo, path: 'images/test-2.JPEG', mime_type: 'image/jpeg' }).path,
+    ).toBe('images/test-2.JPEG');
+  });
+
+  test('enforces image formats, sizes and per-visit limits', () => {
+    expect(() => parsePhotoAsset({ ...photo, mime_type: 'text/html' })).toThrow('Choose');
+    for (const size_bytes of [0, -1, NaN, 1.5, max_photo_bytes + 1]) {
+      expect(() => parsePhotoAsset({ ...photo, size_bytes })).toThrow('32 MiB');
+    }
+    expect(parsePhotoAsset({ ...photo, size_bytes: max_photo_bytes }).size_bytes).toBe(
+      max_photo_bytes,
+    );
+    const photos = Array.from({ length: 21 }, (_, index) => ({
+      ...photo,
+      id: `photo-${index}`,
+      path: `images/photo-${index}.png`,
+    }));
+    expect(() => parseCheckIn({ ...check_in, photos })).toThrow('20 photos');
+  });
+
+  test('coordinates are concise and preserve signed values', () => {
+    expect(formatCoordinates({ latitude: -12.1234567, longitude: 34 })).toBe('-12.12346, 34.00000');
+  });
+});

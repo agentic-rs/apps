@@ -1,0 +1,75 @@
+import { describe, expect, test } from 'bun:test';
+import {
+  currentOffsetMinutes,
+  formatTripDates,
+  formatVisitDate,
+  formatVisitTime,
+  fromVisitInput,
+  isCalendarDate,
+  isUtcTimestamp,
+  toVisitInput,
+} from '../src/lib/dates';
+
+describe('visit time zones', () => {
+  test('round-trips local visit time with a stored offset across UTC date boundaries', () => {
+    const iso = fromVisitInput('2026-05-12T00:30', 480);
+    expect(iso).toBe('2026-05-11T16:30:00.000Z');
+    expect(toVisitInput(iso, 480)).toBe('2026-05-12T00:30');
+    expect(formatVisitDate(iso, 480)).toBe('12 May 2026');
+    expect(formatVisitTime(iso, 480)).toBe('00:30');
+  });
+
+  test('supports negative offsets and half-hour time zones without using the host zone', () => {
+    expect(fromVisitInput('2026-12-31T23:45', -210)).toBe('2027-01-01T03:15:00.000Z');
+    expect(fromVisitInput('2026-01-01T00:15', 330)).toBe('2025-12-31T18:45:00.000Z');
+    expect(toVisitInput('2027-01-01T03:15:00.000Z', -210)).toBe('2026-12-31T23:45');
+  });
+
+  test('reopening uses the saved offset, even if the device has moved to another zone', () => {
+    const instant = '2026-05-12T22:00:00.000Z';
+    expect(toVisitInput(instant, 480)).toBe('2026-05-13T06:00');
+    expect(toVisitInput(instant, -240)).toBe('2026-05-12T18:00');
+    const device_date = new Date();
+    expect(currentOffsetMinutes(device_date)).toBe(-device_date.getTimezoneOffset());
+  });
+
+  test('rejects partial, impossible or timezone-ambiguous input', () => {
+    for (const value of [
+      '',
+      '2026-05-12',
+      '2026-02-29T10:00',
+      '2026-02-30T10:00',
+      '2026-05-12T24:00',
+      '2026-05-12T12:60',
+      '2026-05-12T10:00Z',
+    ]) {
+      expect(() => fromVisitInput(value, 0)).toThrow();
+    }
+    for (const offset of [NaN, Infinity, 841, -841, 60.5]) {
+      expect(() => fromVisitInput('2026-05-12T10:00', offset)).toThrow('offset');
+      expect(() => toVisitInput('2026-05-12T10:00:00.000Z', offset)).toThrow('offset');
+    }
+    expect(() => toVisitInput('2026-05-12T10:00:00+01:00', 0)).toThrow('invalid');
+  });
+});
+
+describe('calendar validation', () => {
+  test('validates leap years and exact UTC timestamp spelling', () => {
+    expect(isCalendarDate('2024-02-29')).toBe(true);
+    expect(isCalendarDate('2026-02-29')).toBe(false);
+    expect(isCalendarDate('2026-04-31')).toBe(false);
+    expect(isCalendarDate('2026-4-01')).toBe(false);
+    expect(isUtcTimestamp('2026-05-12T10:00:00Z')).toBe(true);
+    expect(isUtcTimestamp('2026-05-12T10:00:00.123Z')).toBe(true);
+    expect(isUtcTimestamp('2026-05-12T24:00:00.000Z')).toBe(false);
+    expect(isUtcTimestamp('2026-05-12T10:00:00')).toBe(false);
+  });
+
+  test('formats optional trip dates without adding device timezone shifts', () => {
+    expect(formatTripDates('', '')).toBe('Dates open');
+    expect(formatTripDates('2026-05-12', '')).toBe('12 May 2026');
+    expect(formatTripDates('', '2026-05-14')).toBe('Until 14 May 2026');
+    expect(formatTripDates('2026-05-12', '2026-05-14')).toBe('12 May 2026 – 14 May 2026');
+    expect(formatTripDates('2026-05-12', '2026-05-12')).toBe('12 May 2026');
+  });
+});
