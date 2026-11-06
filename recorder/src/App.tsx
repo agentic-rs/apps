@@ -57,103 +57,55 @@ export function App() {
       <div
         className={`app ${native ? 'native-app' : ''} ${controller.mode === 'clip' ? 'channel-mode' : ''} ${recording_active ? 'capture-active' : ''} ${selected || selected_channel ? 'has-selection' : ''}`}
       >
-        <header className="app-header">
-          <div className="brand">
-            <span className="brand-mark">
-              <Icon name="wave" size={23} />
-            </span>
-            <div>
-              <h1>Recorder</h1>
+        <h1 className="sr-only">Recorder</h1>
+        <div className="app-notices">
+          {(controller.error || controller.notice) && (
+            <div
+              className={`message-bar ${controller.error ? 'message-error' : 'message-success'}`}
+              role={controller.error ? 'alert' : 'status'}
+            >
+              <span>{controller.error || controller.notice}</span>
+              {controller.error && (
+                <div className="inline-actions">
+                  <button
+                    className="text-button"
+                    onClick={() => void controller.reload()}
+                    disabled={
+                      controller.busy ||
+                      recording_active ||
+                      Boolean(controller.pending_recording) ||
+                      dirty
+                    }
+                  >
+                    Retry connection
+                  </button>
+                  <button
+                    className="icon-button"
+                    aria-label="Dismiss error"
+                    onClick={() => controller.setError('')}
+                  >
+                    <Icon name="close" size={16} />
+                  </button>
+                </div>
+              )}
             </div>
-          </div>
-          <button
-            className={`model-status ${controller.speech.model_ready ? 'model-ready' : ''}`}
-            onClick={() => setModelOpen(true)}
-            aria-label="Transcription settings"
-          >
-            <span className="status-dot" />
-            {controller.job === 'download'
-              ? 'Setting up…'
-              : controller.speech.model_ready
-                ? 'Offline ready'
-                : 'Set up transcription'}
-            <Icon name="settings" size={15} />
-          </button>
-        </header>
-        <nav className="mode-navigation" aria-label="Recording mode">
-          <div className="mode-switch">
-            <button
-              aria-pressed={controller.mode === 'document'}
-              className={controller.mode === 'document' ? 'active' : ''}
-              onClick={() => navigate(() => controller.setMode('document'))}
-            >
-              <Icon name="text" size={17} />
-              <span>Documents</span>
-            </button>
-            <button
-              aria-pressed={controller.mode === 'clip'}
-              className={controller.mode === 'clip' ? 'active' : ''}
-              onClick={() => navigate(() => controller.setMode('clip'))}
-            >
-              <Icon name="chat" size={17} />
-              <span>Channels</span>
-            </button>
-          </div>
-        </nav>
-        {!controller.platform?.native && !controller.loading && (
-          <div className="browser-banner">
-            <Icon name="globe" size={16} />
-            <span>
-              Local browser preview · Audio stays in this browser. Transcription runs in Apell.
-            </span>
-          </div>
-        )}
-        {(controller.error || controller.notice) && (
-          <div
-            className={`message-bar ${controller.error ? 'message-error' : 'message-success'}`}
-            role={controller.error ? 'alert' : 'status'}
-          >
-            <span>{controller.error || controller.notice}</span>
-            {controller.error && (
-              <div className="inline-actions">
-                <button
-                  className="text-button"
-                  onClick={() => void controller.reload()}
-                  disabled={
-                    controller.busy ||
-                    recording_active ||
-                    Boolean(controller.pending_recording) ||
-                    dirty
-                  }
-                >
-                  Retry connection
-                </button>
-                <button
-                  className="icon-button"
-                  aria-label="Dismiss error"
-                  onClick={() => controller.setError('')}
-                >
-                  <Icon name="close" size={16} />
-                </button>
+          )}
+          {controller.pending_recording && (
+            <div className="recovery-bar" role="alert">
+              <div>
+                <strong>Your recording is waiting to be saved.</strong>
+                <p>Keep this screen open and retry after checking available storage.</p>
               </div>
-            )}
-          </div>
-        )}
-        {controller.pending_recording && (
-          <div className="recovery-bar" role="alert">
-            <div>
-              <strong>Your recording is waiting to be saved.</strong>
-              <p>Keep this screen open and retry after checking available storage.</p>
+              <button
+                className="button button-dark button-small"
+                disabled={controller.busy || dirty}
+                onClick={() => void controller.retrySave()}
+              >
+                Retry save
+              </button>
             </div>
-            <button
-              className="button button-dark button-small"
-              disabled={controller.busy || dirty}
-              onClick={() => void controller.retrySave()}
-            >
-              Retry save
-            </button>
-          </div>
-        )}
+          )}
+        </div>
         <main className="workspace">
           <Library
             controller={controller}
@@ -188,6 +140,48 @@ export function App() {
           </div>
         </main>
         {controller.mode === 'document' && <RecorderDock controller={controller} locked={locked} />}
+        <nav className="bottom-navigation" aria-label="App navigation">
+          <button
+            aria-pressed={controller.mode === 'document'}
+            className={controller.mode === 'document' ? 'active' : ''}
+            onClick={() => navigate(() => controller.setMode('document'))}
+          >
+            <span className="nav-icon">
+              <Icon name="text" size={22} />
+            </span>
+            <span>Documents</span>
+          </button>
+          <button
+            aria-pressed={controller.mode === 'clip'}
+            className={controller.mode === 'clip' ? 'active' : ''}
+            onClick={() => navigate(() => controller.setMode('clip'))}
+          >
+            <span className="nav-icon">
+              <Icon name="chat" size={22} />
+            </span>
+            <span>Channels</span>
+          </button>
+          <button
+            className={controller.speech.model_ready ? 'model-ready' : ''}
+            onClick={() => setModelOpen(true)}
+            aria-label="Transcription settings"
+            aria-haspopup="dialog"
+            aria-expanded={model_open}
+            title={
+              controller.job === 'download'
+                ? 'Setting up transcription…'
+                : controller.speech.model_ready
+                  ? 'On-device transcription ready'
+                  : 'Set up on-device transcription'
+            }
+          >
+            <span className="nav-icon">
+              <Icon name="settings" size={22} />
+              <span className="status-dot" />
+            </span>
+            <span>Settings</span>
+          </button>
+        </nav>
         <ModelDialog
           controller={controller}
           open={model_open}

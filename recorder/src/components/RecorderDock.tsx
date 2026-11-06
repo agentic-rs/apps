@@ -1,4 +1,3 @@
-import { useEffect, useRef } from 'react';
 import type { RecorderController } from '../lib/useRecorder';
 import { formatTime } from '../lib/recordings';
 import { Icon } from './Icon';
@@ -10,19 +9,6 @@ export function RecorderDock({
   controller: RecorderController;
   locked: boolean;
 }) {
-  const dock = useRef<HTMLElement>(null);
-  useEffect(() => {
-    const element = dock.current;
-    if (!element) return;
-    const measure = () =>
-      element
-        .closest<HTMLElement>('.app')
-        ?.style.setProperty('--dock-height', `${element.offsetHeight}px`);
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    measure();
-    return () => observer.disconnect();
-  }, []);
   const active = controller.audio.recording_state !== 'idle';
   const paused = controller.audio.recording_state === 'paused';
   const target = controller.active_capture;
@@ -89,7 +75,6 @@ export function RecorderDock({
   );
   return (
     <section
-      ref={dock}
       className={`recording-dock ${channel_mode ? 'channel-composer' : 'document-composer'} ${active ? 'is-recording' : ''}`}
       aria-label="Recording controls"
     >

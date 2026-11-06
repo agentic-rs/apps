@@ -1,0 +1,219 @@
+/* The app owns one viewport; only its library and content panes scroll. */
+.app-scroll {
+  height: 100%;
+  overflow: hidden;
+}
+.app {
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #fcfdfb;
+}
+.app:not(.native-app) {
+  padding-top: env(safe-area-inset-top);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+.app-notices {
+  flex-shrink: 0;
+  max-height: 30%;
+  overflow-y: auto;
+}
+.app-notices:empty {
+  display: none;
+}
+.app-notices .message-bar,
+.app-notices .recovery-bar {
+  margin: 0;
+  border-radius: 0;
+  padding: 8px 16px;
+}
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(280px, 27%) minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: #fbfcf7;
+}
+.workspace-content {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.channel-mode .workspace-content {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #f0f4f1;
+}
+.library {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  background: #fcfdfb;
+  border-right: 1px solid #dfe8e2;
+}
+.library-heading {
+  display: flex;
+  flex-shrink: 0;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  min-height: 68px;
+  padding: 12px 18px;
+}
+.library-heading .import-button {
+  min-width: 44px;
+  min-height: 44px;
+}
+.library .search {
+  flex-shrink: 0;
+  margin: 0 16px 12px;
+}
+.recording-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  padding: 0 8px 12px;
+}
+.recording-dock {
+  display: flex;
+  flex-shrink: 0;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  min-height: 68px;
+  padding: 9px 16px;
+  background: #fcfdfb;
+  border-top: 1px solid #dfe8e2;
+}
+.document-composer:not(.is-recording) .dock-label {
+  display: none;
+}
+.document-composer .dock-actions {
+  width: min(100%, 440px);
+  margin: 0 auto;
+}
+.document-composer .record-button {
+  flex: 1;
+  min-height: 44px;
+  padding: 12px 20px;
+}
+.recording-dock .dock-import {
+  min-width: 44px;
+  min-height: 44px;
+}
+.bottom-navigation {
+  display: flex;
+  flex-shrink: 0;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 12px max(6px, env(safe-area-inset-bottom));
+  border-top: 1px solid #dfe8e2;
+  background: #fcfdfb;
+}
+.native-app .bottom-navigation {
+  padding-bottom: 6px;
+}
+.bottom-navigation > button {
+  display: flex;
+  flex: 1;
+  max-width: 200px;
+  min-width: 0;
+  min-height: 49px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #68796e;
+  font-size: 11px;
+  font-weight: 500;
+}
+.bottom-navigation > button:enabled:hover {
+  background: #f0f5ef;
+}
+.bottom-navigation > button.active {
+  color: #226149;
+  font-weight: 650;
+}
+.nav-icon {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 27px;
+  border-radius: 12px;
+}
+.bottom-navigation .active .nav-icon {
+  background: #e2efe5;
+}
+.nav-icon .status-dot {
+  position: absolute;
+  top: 2px;
+  right: 5px;
+  outline: 2px solid #fcfdfb;
+}
+@media (max-width: 700px) {
+  .workspace {
+    display: flex;
+    flex-direction: column;
+  }
+  .library {
+    flex: 1;
+    border: 0;
+  }
+  .has-selection .library {
+    display: none;
+  }
+  .workspace-content {
+    flex: 1;
+  }
+  .app:not(.has-selection):not(.capture-active) .workspace-content,
+  .app:not(.channel-mode):not(.has-selection) .workspace-content {
+    display: none;
+  }
+  .channel-mode:not(.has-selection).capture-active .workspace-content {
+    flex: 0 0 auto;
+  }
+  .library-heading {
+    min-height: 64px;
+    padding: 10px 16px;
+  }
+  .library .search input {
+    font-size: 16px;
+  }
+  .detail {
+    padding: 16px;
+  }
+  .document-detail .detail-topline {
+    margin-bottom: 14px;
+  }
+  .document-detail .player {
+    padding: 16px;
+    margin: 20px 0 24px;
+  }
+  .document-paper {
+    margin-top: 16px;
+    padding-top: 16px;
+  }
+  .recording-dock {
+    padding: 8px 12px;
+    gap: 10px;
+  }
+  .recording-dock .dock-label {
+    min-width: 0;
+  }
+}

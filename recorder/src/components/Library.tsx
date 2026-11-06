@@ -270,13 +270,6 @@ export function Library({
           </div>
         )}
       </div>
-      <div className="library-footer">
-        <Icon name="lock" size={14} />
-        <span>Stored on this device</span>
-        <span className="total-time">
-          {channel_mode && controller.platform?.native ? 'Auto-transcribed' : 'Private audio'}
-        </span>
-      </div>
     </aside>
   );
 }

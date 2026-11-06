@@ -23,6 +23,8 @@ The development server binds to loopback. The browser preview supports microphon
 
 `bun run pack` creates `artifacts/recorder.apel` and its SHA-256 checksum. Install the package from Apell’s **+ → Install from file** flow. The stable applet ID is `recorder`; updates retain private data. Restart Apell before opening an updated applet if it had already been running.
 
+Use the bottom navigation to switch between **Documents** and **Channels**, or open **Settings** for the on-device model. Content fills the applet viewport; recording controls sit above navigation while lists, documents, and message history scroll independently.
+
 ## Documents
 
 Choose **Documents**, then record or import audio. Save the recording to add it to your library, and choose **Transcribe** when ready. Open a document to play its audio, edit the title and transcript, or share text and audio. You can also start writing before transcription; saved manual text is preserved unless you explicitly replace it. Changes remain a draft until **Save changes**; navigation asks you to save or discard them first.
@@ -53,6 +55,6 @@ The applet declares `fs`, `audio`, and `speech` permissions. It does not declare
 
 ## Verification
 
-Recorder 0.2.2 passes TypeScript checks, production packaging, formatting, and 35 tests covering migration, channel/capture recovery, large native directories, queue ordering, cancellation, concurrent edits, and failed saves. Firefox desktop/mobile checks cover recording, imports, document editing, multiple channels, capture destinations, persistence, and the fixed chat composer. Focused conversation checks cover compact action menus, transcript editing with a keyboard-sized viewport, and preserving the reader’s position while background transcripts change. A production bundle in an opaque iframe also passes the native message bridge/content-policy checks with simulated audio and speech responses.
+Recorder 0.2.3 passes TypeScript checks, production packaging, formatting, and 35 tests covering migration, channel/capture recovery, large native directories, queue ordering, cancellation, concurrent edits, and failed saves. Firefox desktop/mobile checks cover recording, imports, document editing, multiple channels, capture destinations, persistence, the fixed chat composer, bottom navigation, and recording controls across mode changes. Focused conversation checks cover compact action menus, transcript editing with a keyboard-sized viewport, and preserving the reader’s position while background transcripts change. A production bundle in an opaque iframe also passes the native message bridge/content-policy checks with simulated audio and speech responses.
 
 The updated Apell host passed a three-hour streaming transcription test with real Whisper inference, and its iOS simulator build was installed with Recorder. Physical-device microphone behavior and Android runtime behavior remain unverified. The browser preview does not run Whisper.
