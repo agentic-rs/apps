@@ -277,14 +277,14 @@ export function createNativeGuide(llm: NativeLlm): LearningGuide {
   async function generate(
     topic: Topic,
     messages: LlmMessage[],
-    options: GenerationOptions,
+    options: GenerationOptions & { stream: boolean },
   ) {
     const model = requireModel(topic);
     const request: LlmRequest = {
       request_id: createId(),
       target: { connection_id: model.connection_id, model_id: model.model_id },
       messages,
-      stream: true,
+      stream: options.stream,
     };
     if (options.signal.aborted)
       throw new GuideError('cancelled', 'The guide was stopped.');
@@ -295,6 +295,7 @@ export function createNativeGuide(llm: NativeLlm): LearningGuide {
         signal: options.signal,
         on_event(event) {
           if (
+            !options.stream ||
             options.signal.aborted ||
             event.request_id !== request.request_id ||
             event.kind !== 'text_delta'
@@ -367,7 +368,7 @@ export function createNativeGuide(llm: NativeLlm): LearningGuide {
             }),
           },
         ],
-        options,
+        { ...options, stream: false },
       );
       return parsePlan(result.content);
     },
@@ -391,7 +392,7 @@ export function createNativeGuide(llm: NativeLlm): LearningGuide {
           ]),
           user_message,
         ],
-        options,
+        { ...options, stream: true },
       );
       return {
         id: createId(),
@@ -429,7 +430,7 @@ export function createNativeGuide(llm: NativeLlm): LearningGuide {
             }),
           },
         ],
-        options,
+        { ...options, stream: false },
       );
       return parseMemory(result.content, saved.turns.at(-1)!.id);
     },

@@ -19,6 +19,8 @@ Topics, completed exchanges, model attribution, and learning memories save in th
 
 Generation sends the relevant topic, learner goal, selected point's conversation, and topic memories through the chosen model connection. Each successful exchange is followed by a separate model request to update memory using that point's exchanges and previous memory. Local storage does not mean the chosen AI provider runs locally.
 
+Learning paths and memory updates request complete JSON responses without streaming because they can only be used after validation. Conversations stream their text as it arrives. Every request still requires a completed, valid response before its result can be saved.
+
 The conversation saves before its memory update starts. If memory generation fails or is stopped, the conversation remains saved; **Update memory** retries only the memory request. Each memory tracks the exchange it includes, so incomplete updates stay visible after reopening the applet.
 
 **Stop** cancels the current generation. Incomplete answers remain visibly labeled and are not saved as completed exchanges. If a save fails, the complete result remains in the open applet and **Retry save** retries storage without regenerating that result, then finishes any outstanding automatic memory update. **Discard unsaved changes** restores the last saved state. In-app navigation protects unsaved writing with confirmation. Keep the applet open until saving finishes: closing Apell can lose an unsent question, unsaved memory edits, an in-flight response, or a result whose save failed.
@@ -46,5 +48,7 @@ For an applets-only worktree, use a temporary build layout with a sibling Apell 
 ## Verification
 
 Unit tests cover browser/native persistence, exact replay metadata, model routing, topic isolation, malformed model output, request bounds, cancellation, failed-save recovery, and native directory limits. The production UI is also checked in Firefox inside an opaque iframe using Apell's message bridge and content restrictions, with simulated AI/storage responses. The fixture reserves Apell’s host bar outside the applet and checks mobile, wide-window, and keyboard-sized layouts. These bridge checks do not exercise a live model provider or physical mobile device.
+
+Version 0.2.1 passed 37 unit tests, TypeScript checking, and a signed iOS simulator check with OpenCode Go: complete-response key points, a streamed conversation, and an automatic memory update all saved successfully. The temporary test topic was removed and existing topic files were unchanged. The earlier intermittent provider rejection did not reproduce during verification; this update avoids unnecessary streaming for structured results without relaxing host response validation. Physical devices and other live providers were not checked for this update.
 
 To repeat the browser checks, build the applet and run `bun scripts/verify-browser.ts` with `PLAYWRIGHT_MODULE` pointing to an installed `playwright-core` entrypoint. Its Firefox browser must be installed; optionally set `FIREFOX_BIN` to the Firefox executable. Screenshots and the check report are written to ignored `artifacts/browser-check/`.

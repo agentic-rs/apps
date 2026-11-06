@@ -188,6 +188,46 @@ describe('learning guide', () => {
     expect(topic.key_points).toEqual([]);
   });
 
+  test('buffers structured results and streams conversations regardless of text callbacks', async () => {
+    for (const with_callback of [false, true]) {
+      const updates: string[] = [];
+      const generation_options = {
+        ...options(),
+        ...(with_callback
+          ? { on_text: (text: string) => updates.push(text) }
+          : {}),
+      };
+      const responses = [
+        plan_text,
+        'A useful explanation.',
+        JSON.stringify({ summary: 'The idea was explained.', learned: false }),
+      ];
+      const { guide, requests } = setup((request, opts) => {
+        const content = responses.shift()!;
+        opts?.on_event?.({
+          request_id: request.request_id!,
+          kind: 'text_delta',
+          text: content,
+        });
+        return completed(request, content);
+      });
+      const topic = topicFixture();
+      topic.key_points = await guide.plan(topic, generation_options);
+      const point = topic.key_points[0]!;
+      point.turns.push(
+        await guide.explore(topic, point, 'Explain it.', generation_options),
+      );
+      const memory = await guide.summarize(topic, point, generation_options);
+      expect(memory.summary).toBe('The idea was explained.');
+      expect(requests.map((request) => request.stream)).toEqual([
+        false,
+        true,
+        false,
+      ]);
+      expect(updates).toEqual(with_callback ? ['A useful explanation.'] : []);
+    }
+  });
+
   test('rejects malformed, incomplete, oversized, and duplicate learning paths', async () => {
     for (const content of [
       'Here is your path: ' + plan_text,
@@ -424,17 +464,51 @@ describe('learning guide', () => {
       'tool_calls',
     ];
     for (const status of statuses) {
-      const { guide } = setup((request) => ({
-        ...completed(request, 'Partial answer.'),
-        status,
-        message: null,
-      }));
-      await expect(guide.plan(topicFixture(), options())).rejects.toMatchObject(
-        {
+      for (const operation of ['plan', 'explore', 'summarize'] as const) {
+        const content =
+          operation === 'plan'
+            ? plan_text
+            : operation === 'summarize'
+              ? JSON.stringify({
+                  summary: 'Unfinished assessment.',
+                  learned: true,
+                })
+              : 'Partial answer.';
+        const { guide } = setup((request) => ({
+          ...completed(request, content),
+          status,
+          error:
+            status === 'failed'
+              ? {
+                  code: 'incomplete_response',
+                  message: 'The response did not finish.',
+                  retryable: true,
+                }
+              : null,
+        }));
+        const topic = topicFixture();
+        const point = pointFixture();
+        point.turns.push(turnFixture());
+        point.memory = {
+          summary: 'An earlier insight.',
+          learned: false,
+          updated_at: new Date().toISOString(),
+          source_turn_id: point.turns[0]!.id,
+        };
+        if (operation !== 'plan') topic.key_points.push(point);
+        const before = JSON.stringify(topic);
+        const result =
+          operation === 'plan'
+            ? guide.plan(topic, options())
+            : operation === 'summarize'
+              ? guide.summarize(topic, point, options())
+              : guide.explore(topic, point, 'Explain it.', options());
+        await expect(result).rejects.toMatchObject({
           code: status,
-          partial_content: 'Partial answer.',
-        },
-      );
+          partial_content: content,
+        });
+        expect(JSON.stringify(topic)).toBe(before);
+      }
     }
   });
 
@@ -523,6 +597,33 @@ describe('learning guide', () => {
     await expect(
       second.guide.plan(topicFixture(), { signal: active.signal }),
     ).rejects.toMatchObject({ code: 'cancelled' });
+  });
+
+  test('keeps saved learning memory when a buffered response completes after cancellation', async () => {
+    const topic = topicFixture();
+    const point = pointFixture();
+    point.turns.push(turnFixture());
+    point.memory = {
+      summary: 'An earlier insight.',
+      learned: false,
+      updated_at: new Date().toISOString(),
+      source_turn_id: point.turns[0]!.id,
+    };
+    topic.key_points.push(point);
+    const before = JSON.stringify(topic);
+    const controller = new AbortController();
+    const { guide } = setup((request) => {
+      expect(request.stream).toBe(false);
+      controller.abort();
+      return completed(
+        request,
+        JSON.stringify({ summary: 'A later assessment.', learned: true }),
+      );
+    });
+    await expect(
+      guide.summarize(topic, point, { signal: controller.signal }),
+    ).rejects.toMatchObject({ code: 'cancelled' });
+    expect(JSON.stringify(topic)).toBe(before);
   });
 
   test('preserves partial answer text on bridge failures', async () => {
