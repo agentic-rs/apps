@@ -148,24 +148,9 @@ export function App() {
     );
 
   return (
-    <div className="app-shell">
-      <header className="app-header">
-        <div className="app-title">
-          <span className="brand-symbol">
-            <Icon name="compass" size={22} />
-          </span>
-          <span>Fieldnotes</span>
-        </div>
-        <button className="header-trips" onClick={() => setTripDialog('manage')}>
-          <Icon name="book" size={17} />
-          Trips
-        </button>
-      </header>
-      <div className="view-header">
-        <div>
-          <h1>{view === 'timeline' ? 'Timeline' : 'Map'}</h1>
-          <p>{view === 'timeline' ? 'The moments along the way' : 'Your travels, on the map'}</p>
-        </div>
+    <div className={`app-shell${platform.native ? ' native' : ''}`}>
+      <header className="view-header">
+        <h1>{view === 'timeline' ? 'Timeline' : 'Map'}</h1>
         <label className="trip-filter">
           <span className="sr-only">Trip filter</span>
           <select
@@ -181,7 +166,11 @@ export function App() {
           </select>
           <Icon name="chevron" size={14} />
         </label>
-      </div>
+        <button className="header-trips" onClick={() => setTripDialog('manage')}>
+          <Icon name="book" size={17} />
+          Trips
+        </button>
+      </header>
       {notice && (
         <div className="notice" role="status">
           {notice}

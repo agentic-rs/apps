@@ -36,25 +36,31 @@ export function TimelineView({
   });
   return (
     <section className="timeline-view" aria-label="Travel timeline">
-      <div className="timeline-tools">
-        <label className="search-box">
-          <Icon name="search" size={18} />
-          <input
-            aria-label="Search check-ins"
-            placeholder="Find a place or a memory"
-            value={search}
-            onChange={(event) => onSearch(event.target.value)}
-          />
-          {search && (
-            <button className="icon-button" aria-label="Clear search" onClick={() => onSearch('')}>
-              <Icon name="close" size={16} />
-            </button>
-          )}
-        </label>
-        <span className="timeline-count">
-          {filtered.length} check-in{filtered.length === 1 ? '' : 's'}
-        </span>
-      </div>
+      {(visits.length > 0 || search) && (
+        <div className="timeline-tools">
+          <label className="search-box">
+            <Icon name="search" size={18} />
+            <input
+              aria-label="Search check-ins"
+              placeholder="Find a memory"
+              value={search}
+              onChange={(event) => onSearch(event.target.value)}
+            />
+            {search && (
+              <button
+                className="icon-button"
+                aria-label="Clear search"
+                onClick={() => onSearch('')}
+              >
+                <Icon name="close" size={16} />
+              </button>
+            )}
+          </label>
+          <span className="timeline-count">
+            {filtered.length} check-in{filtered.length === 1 ? '' : 's'}
+          </span>
+        </div>
+      )}
       {filtered.length === 0 ? (
         <div className="empty-state">
           <span className="empty-icon">

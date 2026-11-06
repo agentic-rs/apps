@@ -1,4 +1,5 @@
 import { strict as assert } from 'node:assert';
+import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { firefox, type Browser, type Locator, type Page } from 'playwright-core';
@@ -353,14 +354,20 @@ try {
   assert.deepEqual(journal(), saved, 'Reopening should preserve the saved journal and images.');
   await frame.getByLabel('Trip filter').selectOption(saved.trips[0].id);
   const assertNativeLayout = async () => {
-    const geometry = await native_frame.evaluate(() => ({
-      width: document.documentElement.scrollWidth,
-      height: document.documentElement.scrollHeight,
-      body_height: document.body.scrollHeight,
-      viewport_width: innerWidth,
-      viewport_height: innerHeight,
-      bottom: document.querySelector('.bottom-bar')!.getBoundingClientRect().bottom,
-    }));
+    const geometry = await native_frame.evaluate(() => {
+      const footer = document.querySelector('.bottom-bar')!.getBoundingClientRect();
+      return {
+        width: document.documentElement.scrollWidth,
+        height: document.documentElement.scrollHeight,
+        body_height: document.body.scrollHeight,
+        viewport_width: innerWidth,
+        viewport_height: innerHeight,
+        header_height: document.querySelector('.view-header')!.getBoundingClientRect().height,
+        footer_height: footer.height,
+        main_height: document.querySelector('.app-content')!.getBoundingClientRect().height,
+        bottom: footer.bottom,
+      };
+    });
     assert(
       geometry.width <= geometry.viewport_width,
       'Native applet must not overflow horizontally.',
@@ -374,14 +381,26 @@ try {
       Math.abs(geometry.bottom - geometry.viewport_height) <= 2,
       'Native bottom tabs must remain visible.',
     );
+    assert(geometry.header_height <= 60, 'Native header must stay compact.');
+    assert(geometry.footer_height <= 60, 'Native footer must stay compact.');
+    assert(
+      geometry.main_height >= geometry.viewport_height - 120,
+      'Native navigation must leave the rest of the viewport available to the main view.',
+    );
   };
   await assertNativeLayout();
+  const qa_directory = resolve(dist_root, '../artifacts/qa');
+  await mkdir(qa_directory, { recursive: true });
+  await frame
+    .locator('.app-shell')
+    .screenshot({ path: resolve(qa_directory, 'native-timeline.png') });
   await frame
     .getByRole('navigation', { name: 'Main views' })
     .getByRole('button', { name: 'Map', exact: true })
     .click();
   await frame.locator('.journal-map-pin').waitFor();
   await frame.locator('.leaflet-tile-loaded').first().waitFor();
+  await assertNativeLayout();
   assert.equal(await frame.locator('.journal-map-pin').getAttribute('data-latitude'), '12.34567');
   assert.equal(await frame.locator('.journal-map-pin').getAttribute('data-longitude'), '34.56789');
   await frame.getByRole('button', { name: '1 without visit coordinates' }).click();

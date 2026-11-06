@@ -2,6 +2,8 @@
 
 A mobile travel journal with two main views: **Timeline** and **Map**. The fixed bottom bar switches views and keeps the check-in (打卡) action within reach. Timeline groups check-ins by their recorded local date, newest first; Map shows them geographically. A shared trip filter applies to both views. Manage trips from the header and open any check-in for its photos, notes, location details, editing, or deletion.
 
+A single compact toolbar keeps the main view in focus. Inside Apell, the host owns device safe-area insets; standalone browser use adds its own. Search and the check-in count share one row and appear once the selected timeline has entries.
+
 Each check-in keeps two separate locations:
 
 - **Actual visit:** the coordinates where the event happened, optionally captured from foreground GPS or entered manually. Device fixes retain their capture time and accuracy. Unknown coordinates stay empty.

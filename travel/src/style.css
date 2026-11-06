@@ -95,6 +95,8 @@ p {
   border: 0;
 }
 .app-shell {
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
   height: 100dvh;
   max-width: 760px;
   margin: 0 auto;
@@ -104,20 +106,10 @@ p {
   box-shadow: 0 0 60px #20382b0b;
   overflow: hidden;
 }
-.app-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-shrink: 0;
-  padding: calc(17px + env(safe-area-inset-top, 0px)) 23px 13px;
-}
-.app-title {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  font-family: Georgia, serif;
-  font-size: 22px;
-  letter-spacing: -0.7px;
+.app-shell.native {
+  /* Apell already places the applet inside the device's safe area. */
+  --safe-area-top: 0px;
+  --safe-area-bottom: 0px;
 }
 .brand-symbol {
   display: grid;
@@ -130,39 +122,36 @@ p {
 }
 .header-trips {
   display: flex;
-  gap: 7px;
+  gap: 5px;
+  flex-shrink: 0;
   align-items: center;
   background: #e8ecdf;
   border: 1px solid #dce3d1;
   border-radius: 20px;
-  padding: 9px 12px;
+  padding: 8px 10px;
   font-size: 12px;
-  min-height: 40px;
+  min-height: 44px;
 }
 .view-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 10px 23px 21px;
+  gap: 8px;
+  padding: calc(6px + var(--safe-area-top)) 12px 6px;
   flex-shrink: 0;
   border-bottom: 1px solid var(--line);
 }
 .view-header h1 {
   font:
-    36px/1.1 Georgia,
+    26px/1.1 Georgia,
     serif;
-  letter-spacing: -1.1px;
-  margin-bottom: 7px;
-}
-.view-header p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 12px;
+  letter-spacing: -0.8px;
+  margin: 0 auto 0 0;
 }
 .trip-filter {
   position: relative;
-  max-width: 42%;
+  min-width: 0;
+  max-width: 40%;
   margin: 0;
 }
 .trip-filter select {
@@ -171,15 +160,15 @@ p {
   background: transparent;
   border: 1px solid #dbe2d2;
   border-radius: 20px;
-  padding: 10px 31px 10px 13px;
+  padding: 10px 28px 10px 10px;
   font-size: 12px;
   text-overflow: ellipsis;
-  min-height: 40px;
+  min-height: 44px;
   color: #5b725e;
 }
 .trip-filter svg {
   position: absolute;
-  top: 14px;
+  top: 15px;
   right: 11px;
   pointer-events: none;
   color: #7d8d73;
@@ -201,18 +190,22 @@ p {
   scrollbar-width: thin;
 }
 .timeline-view {
-  padding: 18px 22px 35px;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  padding: 12px 12px 24px;
   max-width: 660px;
   margin: 0 auto;
 }
 .timeline-tools {
   display: flex;
-  flex-direction: column;
-  gap: 17px;
-  margin-bottom: 7px;
+  align-items: center;
+  gap: 10px;
 }
 .search-box {
   display: flex;
+  flex: 1;
+  min-width: 0;
   flex-direction: row;
   align-items: center;
   gap: 9px;
@@ -227,6 +220,7 @@ p {
   border: 0;
   background: transparent;
   width: 100%;
+  min-width: 0;
   padding: 11px 0;
   font-size: 13px;
 }
@@ -242,6 +236,7 @@ p {
   min-height: 32px;
 }
 .timeline-count {
+  flex-shrink: 0;
   font-size: 11px;
   color: #7d8d74;
   padding: 0 2px;
@@ -254,7 +249,7 @@ p {
   font-weight: 500;
   letter-spacing: 0.2px;
   color: #75866d;
-  margin: 23px 0 13px;
+  margin: 16px 0 10px;
 }
 .timeline-day > span {
   width: 6px;
@@ -409,23 +404,25 @@ p {
 .empty-state {
   display: flex;
   flex-direction: column;
+  flex: 1;
   align-items: center;
+  justify-content: center;
   text-align: center;
-  padding: 58px 15px 25px;
+  padding: 24px 12px;
 }
 .empty-icon {
   display: grid;
   place-items: center;
-  width: 75px;
-  height: 75px;
+  width: 56px;
+  height: 56px;
   border-radius: 50%;
   background: #e6eddd;
   color: #87a170;
-  margin-bottom: 24px;
+  margin-bottom: 16px;
 }
 .empty-state h2 {
   font:
-    27px/1.2 Georgia,
+    25px/1.2 Georgia,
     serif;
   font-weight: 400;
   letter-spacing: -0.8px;
@@ -436,11 +433,11 @@ p {
   max-width: 250px;
   color: #829176;
   font-size: 13px;
-  margin-bottom: 23px;
+  margin-bottom: 18px;
 }
 .bottom-bar {
   position: relative;
-  padding: 7px 0 calc(7px + env(safe-area-inset-bottom, 0px));
+  padding: 3px 0 calc(3px + var(--safe-area-bottom));
   background: #fafbf5;
   border-top: 1px solid #dce4d3;
   flex-shrink: 0;
@@ -455,11 +452,11 @@ p {
 .bottom-bar nav button {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
   align-items: center;
   justify-content: center;
   padding: 4px;
-  min-height: 51px;
+  min-height: 48px;
   background: transparent;
   border: 0;
   color: #a0ad95;
@@ -472,11 +469,11 @@ p {
 .add-check-in {
   position: absolute;
   left: 50%;
-  top: -17px;
+  top: -10px;
   transform: translateX(-50%);
-  width: 61px;
-  height: 61px;
-  border: 6px solid var(--paper);
+  width: 56px;
+  height: 56px;
+  border: 4px solid var(--paper);
   border-radius: 50%;
   background: var(--green);
   color: white;
@@ -954,33 +951,18 @@ summary {
   justify-content: space-between;
 }
 @media (min-width: 760px) {
-  .app-header {
-    padding-inline: 30px;
-  }
   .view-header {
-    padding-inline: 30px;
+    padding-inline: 20px;
   }
   .bottom-bar nav {
     padding-inline: 140px;
   }
 }
 @media (max-width: 600px) {
-  .app-header {
-    padding-inline: 20px;
-  }
-  .view-header {
-    padding-inline: 20px;
-  }
-  .view-header h1 {
-    font-size: 32px;
-  }
-  .timeline-view {
-    padding-inline: 17px;
-  }
   .dialog,
   .dialog.wide {
     width: 100%;
-    max-height: calc(100dvh - max(15px, env(safe-area-inset-top, 0px)));
+    max-height: calc(100dvh - max(15px, var(--safe-area-top)));
     margin: auto 0 0;
     border: 0;
     border-radius: 19px 19px 0 0;
@@ -1003,7 +985,7 @@ summary {
     gap: 0;
   }
   .dialog-footer {
-    padding: 14px 20px calc(14px + env(safe-area-inset-bottom, 0px));
+    padding: 14px 20px calc(14px + var(--safe-area-bottom));
   }
   .form-error,
   .discard-prompt {
@@ -1040,28 +1022,6 @@ summary {
   }
 }
 @media (max-height: 600px) {
-  .app-header {
-    padding-top: calc(8px + env(safe-area-inset-top, 0px));
-    padding-bottom: 4px;
-  }
-  .view-header {
-    padding-top: 4px;
-    padding-bottom: 10px;
-  }
-  .view-header h1 {
-    font-size: 25px;
-    margin: 0;
-  }
-  .view-header p {
-    display: none;
-  }
-  .bottom-bar {
-    padding-top: 2px;
-    padding-bottom: calc(2px + env(safe-area-inset-bottom, 0px));
-  }
-  .bottom-bar nav button {
-    min-height: 45px;
-  }
   .empty-state {
     padding-top: 20px;
   }
