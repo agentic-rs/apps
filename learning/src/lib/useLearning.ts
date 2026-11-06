@@ -308,6 +308,16 @@ export function useLearning() {
       setPartialText('');
     },
     cancel: () => active_job.current?.abort(),
+    leaveView: canNavigate,
+    editMemory: async (id: string) => {
+      const target = topic?.key_points.find((item) => item.id === id);
+      if (!target?.memory || active_job.current || pending_ref.current)
+        return false;
+      if (id !== point?.id && !(await canNavigate())) return false;
+      setPointId(id);
+      setMemoryDraft(target.memory);
+      return true;
+    },
     selectTopic: async (id: string | null) => {
       if (id === topic_id) return true;
       if (!(await canNavigate())) return false;
@@ -418,14 +428,15 @@ export function useLearning() {
         setMemoryDraft(null);
       }
     },
-    revisit: () =>
+    revisit: (id = point?.id) =>
       run('Updating progress', async () => {
-        if (!topic || !point || !point.memory) return;
+        const target = topic?.key_points.find((item) => item.id === id);
+        if (!topic || !target?.memory) return;
         await persist(
           withPoint(topic, {
-            ...point,
+            ...target,
             memory: {
-              ...point.memory,
+              ...target.memory,
               learned: false,
               updated_at: new Date().toISOString(),
             },
@@ -468,8 +479,8 @@ export function useLearning() {
       setPartialText('');
       const saved = topics.find((item) => item.id === topic_id);
       if (!saved) {
-        setTopicId(topics[0]?.id ?? null);
-        setPointId(initialPoint(topics[0]));
+        setTopicId(null);
+        setPointId(null);
       } else if (!saved.key_points.some((item) => item.id === point_id)) {
         setPointId(initialPoint(saved));
       }

@@ -2,6 +2,8 @@
 
 Learning is an AI learning guide built around curiosity and a lasting record of understanding.
 
+The app opens to **Topics**. Use **+** to create one, open its key points, and tap a point to enter its conversation. Chat has its own screen with a fixed composer; **Memory** opens the topic’s saved learning notes. Back returns through the screen hierarchy and asks before discarding drafts. Topic model details and deletion live under **Topic options**. Apell supplies the outer applet controls and keyboard sizing.
+
 1. **Create a topic.** Name something you want to learn and optionally describe your starting point or goal.
 2. **Map the key points.** Choose an AI model through Apell. The guide suggests four to eight concrete ideas to explore.
 3. **Explore together.** Start anywhere, ask questions, work through examples, and explain ideas in your own words. Each point keeps its own conversation.
@@ -43,6 +45,6 @@ For an applets-only worktree, use a temporary build layout with a sibling Apell 
 
 ## Verification
 
-Unit tests cover browser/native persistence, exact replay metadata, model routing, topic isolation, malformed model output, request bounds, cancellation, failed-save recovery, and native directory limits. The production UI is also checked in Firefox inside an opaque iframe using Apell's message bridge and content restrictions, with simulated AI/storage responses. These bridge checks do not exercise a live model provider or physical mobile device.
+Unit tests cover browser/native persistence, exact replay metadata, model routing, topic isolation, malformed model output, request bounds, cancellation, failed-save recovery, and native directory limits. The production UI is also checked in Firefox inside an opaque iframe using Apell's message bridge and content restrictions, with simulated AI/storage responses. The fixture reserves Apell’s host bar outside the applet and checks mobile, wide-window, and keyboard-sized layouts. These bridge checks do not exercise a live model provider or physical mobile device.
 
 To repeat the browser checks, build the applet and run `bun scripts/verify-browser.ts` with `PLAYWRIGHT_MODULE` pointing to an installed `playwright-core` entrypoint. Its Firefox browser must be installed; optionally set `FIREFOX_BIN` to the Firefox executable. Screenshots and the check report are written to ignored `artifacts/browser-check/`.

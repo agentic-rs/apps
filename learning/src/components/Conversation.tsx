@@ -34,10 +34,16 @@ export function Conversation({
     following.current = true;
   }, [point.id]);
   useEffect(() => {
-    if (history.current && following.current)
+    if (history.current && following.current) {
       history.current.scrollTop = history.current.scrollHeight;
+    }
   }, [point.id, point.turns.length, stream_text, partial_text]);
+
   const exploring = busy === 'Exploring this point';
+  const remembering = busy === 'Remembering what you learned';
+  const needs_memory = needsMemoryUpdate(point);
+  const can_send = !locked && available && Boolean(question.trim());
+
   return (
     <>
       <div
@@ -45,30 +51,18 @@ export function Conversation({
         ref={history}
         onScroll={() => {
           const node = history.current;
-          if (node)
+          if (node) {
             following.current =
               node.scrollHeight - node.scrollTop - node.clientHeight < 80;
+          }
         }}
       >
-        <div className="point-intro">
-          <span className="guide-symbol">
-            <Icon name="spark" />
-          </span>
-          <div>
-            <p className="eyebrow">Let’s explore</p>
-            <h3>{point.title}</h3>
+        {!point.turns.length && (
+          <section className="conversation-intro" aria-label="About this point">
             <p>{point.description}</p>
-          </div>
-        </div>
-        {!point.turns.length && !exploring && (
-          <div className="conversation-start">
-            <p>There’s no wrong place to start.</p>
-            <span>
-              Ask a question, bring an example, or let your guide introduce the
-              idea.
-            </span>
-            {!question.trim() && (
+            {!exploring && !question.trim() && (
               <button
+                type="button"
                 className="starter"
                 disabled={locked || !available}
                 onClick={() =>
@@ -77,11 +71,10 @@ export function Conversation({
                   )
                 }
               >
-                <Icon name="spark" size={16} /> Start with the basics{' '}
-                <Icon name="arrow" size={15} />
+                <Icon name="spark" size={18} /> Start with the basics
               </button>
             )}
-          </div>
+          </section>
         )}
         {point.turns.map((turn) => (
           <div className="exchange" key={turn.id}>
@@ -90,9 +83,7 @@ export function Conversation({
               <p>{turn.user_text}</p>
             </article>
             <article className="message assistant">
-              <span className="message-author">
-                <Icon name="spark" size={14} /> Your guide
-              </span>
+              <span className="message-author">Guide</span>
               <div className="message-content">{turn.assistant_text}</div>
             </article>
           </div>
@@ -103,14 +94,10 @@ export function Conversation({
               <span className="message-author">You</span>
               <p>{question}</p>
             </article>
-            <article className="message assistant">
-              <span className="message-author">
-                <Icon name="spark" size={14} /> Your guide
-              </span>
+            <article className="message assistant" aria-busy="true">
+              <span className="message-author">Guide</span>
               <div className="message-content">
-                {stream_text || (
-                  <span className="thinking">Thinking through it…</span>
-                )}
+                {stream_text || <span className="thinking">Thinking…</span>}
               </div>
             </article>
           </div>
@@ -124,33 +111,28 @@ export function Conversation({
           </article>
         )}
         {point.turns.length > 0 && !exploring && (
-          <div className="reflect-prompt">
-            <Icon name="leaf" size={18} />
+          <div className="memory-status">
+            <Icon name="leaf" size={16} />
             <span>
-              {busy === 'Remembering what you learned'
-                ? 'Updating your learning memory…'
-                : needsMemoryUpdate(point)
-                  ? 'Your latest exchange needs a memory update.'
-                  : 'Learning memory updated automatically.'}
+              {remembering
+                ? 'Updating memory…'
+                : needs_memory
+                  ? 'Memory update needed'
+                  : 'Memory saved'}
             </span>
-            {needsMemoryUpdate(point) && (
+            {needs_memory && !remembering && (
               <button
+                type="button"
                 disabled={locked || !available}
                 onClick={() => void summarize()}
               >
-                Update memory <Icon name="arrow" size={14} />
+                Update memory
               </button>
             )}
           </div>
         )}
       </div>
-      <form
-        className="composer"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void ask();
-        }}
-      >
+      <form className="composer" onSubmit={(event) => event.preventDefault()}>
         <label className="sr-only" htmlFor="question">
           Your question
         </label>
@@ -160,7 +142,7 @@ export function Conversation({
           value={question}
           maxLength={120000}
           onChange={(event) => setQuestion(event.target.value)}
-          placeholder="Ask, wonder, or try explaining it in your own words…"
+          placeholder="Ask or explain what you understand…"
           disabled={locked || !available}
           onKeyDown={(event) => {
             if (
@@ -169,27 +151,20 @@ export function Conversation({
               !event.nativeEvent.isComposing
             ) {
               event.preventDefault();
-              if (question.trim() && !locked && available) void ask();
+              if (can_send) void ask();
             }
           }}
         />
-        <div className="composer-bottom">
-          <span>Curiosity is the curriculum.</span>
-          <button
-            type="button"
-            className="send"
-            aria-label="Send question"
-            disabled={locked || !available || !question.trim()}
-            onClick={() => void ask()}
-          >
-            <Icon name="send" size={19} />
-          </button>
-        </div>
+        <button
+          type="button"
+          className="send"
+          aria-label="Send question"
+          disabled={!can_send}
+          onClick={() => void ask()}
+        >
+          <Icon name="send" size={22} />
+        </button>
       </form>
-      <p className="guide-note">
-        Your guide can make mistakes. Ask questions and check your
-        understanding.
-      </p>
     </>
   );
 }

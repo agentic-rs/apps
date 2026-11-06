@@ -1,5 +1,5 @@
 import { needsMemoryUpdate } from '../lib/model';
-import type { KeyPoint, LearningMemory, Topic } from '../lib/types';
+import type { LearningMemory, Topic } from '../lib/types';
 import { Icon } from './Icon';
 
 export function MemoryEditor({
@@ -16,20 +16,14 @@ export function MemoryEditor({
   locked: boolean;
 }) {
   return (
-    <section className="memory-review">
-      <div className="memory-emblem">
-        <Icon name="leaf" size={27} />
-      </div>
-      <p className="eyebrow">Make it yours</p>
-      <h3>Keep your memory accurate.</h3>
-      <p>
-        Your guide updates memory automatically as you talk. You can correct its
-        notes or change whether you understand this point.
+    <section className="memory-editor">
+      <p className="editor-help">
+        Memory updates automatically. Correct anything the guide misunderstood.
       </p>
       <label htmlFor="memory-summary">Your learning memory</label>
       <textarea
         id="memory-summary"
-        rows={10}
+        rows={8}
         maxLength={8000}
         value={memory.summary}
         disabled={locked}
@@ -45,19 +39,25 @@ export function MemoryEditor({
           onChange={(event) =>
             setMemory({ ...memory, learned: event.target.checked })
           }
-        />{' '}
+        />
         I understand this key point
       </label>
-      <div className="review-actions">
-        <button className="quiet" disabled={locked} onClick={cancel}>
+      <div className="editor-actions">
+        <button
+          type="button"
+          className="quiet"
+          disabled={locked}
+          onClick={cancel}
+        >
           Discard edits
         </button>
         <button
+          type="button"
           className="primary"
           disabled={locked || !memory.summary.trim()}
           onClick={() => void save()}
         >
-          <Icon name="check" size={17} /> Save changes
+          Save changes
         </button>
       </div>
     </section>
@@ -67,106 +67,91 @@ export function MemoryEditor({
 export function MemoryList({
   topic,
   select,
+  edit,
+  revisit,
   locked,
 }: {
   topic: Topic;
   select: (id: string) => void;
+  edit: (id: string) => void;
+  revisit: (id: string) => void;
   locked: boolean;
 }) {
   const remembered = topic.key_points.filter((point) => point.memory);
-  return (
-    <section className="memory-list">
-      <div className="memory-heading">
-        <Icon name="leaf" size={26} />
-        <h3>Knowledge you can return to.</h3>
+  if (!remembered.length) {
+    return (
+      <section className="empty-memory">
+        <Icon name="book" size={28} />
+        <h2>No memories yet</h2>
         <p>
-          Your guide remembers what you understand and what still needs
-          exploring. Memory updates automatically after each exchange.
+          Explore a key point. Your guide will automatically save what you learn
+          and what needs more practice.
         </p>
-      </div>
-      {!remembered.length ? (
-        <div className="empty-memory">
-          <Icon name="book" size={35} />
-          <h4>A little learning goes a long way.</h4>
-          <p>
-            Start a conversation about any key point. Your guide will record
-            what you learn here.
-          </p>
-        </div>
-      ) : (
-        remembered.map((point) => (
-          <article className="memory-card" key={point.id}>
-            <div>
-              <span>
-                <Icon
-                  name={point.memory!.learned ? 'check' : 'leaf'}
-                  size={14}
-                />
-                {point.memory!.learned ? 'Learned' : 'Still exploring'}
+      </section>
+    );
+  }
+  return (
+    <section className="memory-list" aria-label="Learning memories">
+      {remembered.map((point) => {
+        const memory = point.memory!;
+        return (
+          <article
+            className="memory-card"
+            key={point.id}
+            aria-labelledby={`memory-title-${point.id}`}
+          >
+            <div className="memory-card-meta">
+              <span
+                className={`memory-badge ${memory.learned ? 'learned' : ''}`}
+              >
+                <Icon name={memory.learned ? 'check' : 'leaf'} size={16} />
+                {memory.learned ? 'Learned' : 'Still exploring'}
               </span>
-              <time dateTime={point.memory!.updated_at}>
-                {new Date(point.memory!.updated_at).toLocaleDateString(
-                  undefined,
-                  { month: 'short', day: 'numeric' },
-                )}
+              <time dateTime={memory.updated_at}>
+                {new Date(memory.updated_at).toLocaleDateString(undefined, {
+                  month: 'short',
+                  day: 'numeric',
+                })}
               </time>
             </div>
-            <h4>{point.title}</h4>
-            <p>{point.memory!.summary}</p>
+            <h2 id={`memory-title-${point.id}`}>{point.title}</h2>
+            <p className="memory-summary">{memory.summary}</p>
             {needsMemoryUpdate(point) && (
               <p className="memory-stale">
                 Latest exchange hasn’t been added yet.
               </p>
             )}
-            <button
-              className="text-button"
-              disabled={locked}
-              onClick={() => select(point.id)}
-            >
-              Return to this point <Icon name="arrow" size={14} />
-            </button>
+            <div className="memory-actions">
+              <button
+                type="button"
+                className="quiet"
+                disabled={locked}
+                onClick={() => select(point.id)}
+              >
+                Open conversation
+              </button>
+              <button
+                type="button"
+                className="quiet"
+                disabled={locked}
+                onClick={() => edit(point.id)}
+              >
+                Edit memory
+              </button>
+              {memory.learned && (
+                <button
+                  type="button"
+                  className="text-button"
+                  disabled={locked}
+                  onClick={() => revisit(point.id)}
+                >
+                  Mark as still exploring
+                </button>
+              )}
+            </div>
           </article>
-        ))
-      )}
+        );
+      })}
     </section>
-  );
-}
-
-export function SavedMemory({
-  point,
-  edit,
-  revisit,
-  locked,
-}: {
-  point: KeyPoint;
-  edit: () => void;
-  revisit: () => Promise<void>;
-  locked: boolean;
-}) {
-  if (!point.memory) return null;
-  return (
-    <details className="saved-memory">
-      <summary>
-        <span>
-          <Icon name="leaf" size={15} />
-          Learning memory saved
-        </span>
-        <span>{point.memory.learned ? 'Learned' : 'Still exploring'}</span>
-      </summary>
-      <p>{point.memory.summary}</p>
-      {needsMemoryUpdate(point) && (
-        <p className="memory-stale">Latest exchange hasn’t been added yet.</p>
-      )}
-      <div>
-        <button disabled={locked} onClick={edit}>
-          Edit memory
-        </button>
-        {point.memory.learned && (
-          <button disabled={locked} onClick={() => void revisit()}>
-            Mark as still exploring
-          </button>
-        )}
-      </div>
-    </details>
   );
 }

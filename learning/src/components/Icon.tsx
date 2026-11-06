@@ -3,7 +3,16 @@ export function Icon({
   size = 20,
 }: {
   name:
-    'leaf' | 'plus' | 'arrow' | 'check' | 'book' | 'spark' | 'close' | 'send';
+    | 'leaf'
+    | 'plus'
+    | 'arrow'
+    | 'back'
+    | 'more'
+    | 'check'
+    | 'book'
+    | 'spark'
+    | 'close'
+    | 'send';
   size?: number;
 }) {
   const paths = {
@@ -15,6 +24,14 @@ export function Icon({
     ),
     plus: <path d="M12 5v14M5 12h14" />,
     arrow: <path d="m9 5 7 7-7 7" />,
+    back: <path d="m15 5-7 7 7 7" />,
+    more: (
+      <>
+        <circle cx="5" cy="12" r="1" />
+        <circle cx="12" cy="12" r="1" />
+        <circle cx="19" cy="12" r="1" />
+      </>
+    ),
     check: <path d="m5 12 4 4L19 6" />,
     book: (
       <>

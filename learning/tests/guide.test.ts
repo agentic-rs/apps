@@ -34,6 +34,9 @@ const configuration: LlmConfiguration = {
     tools: 'unknown',
     required_tool_choice: 'unknown',
     exposed_reasoning: 'unknown',
+    image_input: 'unknown',
+    pdf_input: 'unknown',
+    audio_input: 'unknown',
   },
 };
 const plan_text = JSON.stringify({

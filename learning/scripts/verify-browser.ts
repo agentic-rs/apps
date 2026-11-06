@@ -22,9 +22,9 @@ await mkdir(output_root, { recursive: true });
 const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? '/', 'http://localhost');
   if (url.pathname === '/host') {
-    response.setHeader('Content-Type', 'text/html');
+    response.setHeader('Content-Type', 'text/html; charset=utf-8');
     response.end(
-      '<!doctype html><html><head><style>html,body{margin:0;width:100%;height:100%;overflow:hidden}iframe{display:block;width:100%;height:100%;border:0}</style></head><body><iframe id="applet" sandbox="allow-scripts"></iframe></body></html>',
+      '<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>html,body{margin:0;width:100%;height:100%;overflow:hidden}body{display:flex;flex-direction:column}.host-bar{box-sizing:border-box;display:flex;align-items:center;justify-content:space-between;flex:0 0 56px;padding:0 16px;background:#f6f6f5;border-bottom:1px solid #ddd;font:15px system-ui;color:#333}.host-bar strong{font-weight:600}iframe{display:block;width:100%;min-height:0;flex:1;border:0}</style></head><body><div class="host-bar"><span>‹ Apell</span><strong>Learning</strong><span>•••</span></div><iframe id="applet" sandbox="allow-scripts"></iframe></body></html>',
     );
     return;
   }
@@ -77,7 +77,7 @@ try {
       : {}),
   });
   const context = await browser.newContext({
-    viewport: { width: 1440, height: 1000 },
+    viewport: { width: 390, height: 844 },
   });
   await context.addInitScript(() => {
     if (window.parent !== window)
@@ -208,6 +208,9 @@ try {
                 tools: 'unknown',
                 required_tool_choice: 'unknown',
                 exposed_reasoning: 'unknown',
+                image_input: 'unknown',
+                pdf_input: 'unknown',
+                audio_input: 'unknown',
               },
             });
           else if (method === 'llm.cancel') {
@@ -344,9 +347,50 @@ try {
       base + '/index.html';
   }, base);
   const frame = page.frameLocator('#applet');
-  await frame
-    .getByRole('heading', { name: 'What would you like to learn?' })
-    .waitFor();
+  const header = frame.locator('.navigation-bar');
+  const back = (name: string) =>
+    header.getByRole('button', { name, exact: true }).click();
+  const openPoint = (title: string) =>
+    frame.locator('.point-row').filter({ hasText: title }).click();
+  const memoryCard = (title: string) =>
+    frame.getByRole('article', { name: title, exact: true });
+  const openMemory = () =>
+    header.getByRole('button', { name: 'Memory', exact: true }).click();
+  const readTopics = () =>
+    page.evaluate(() =>
+      [...(window as any).__learning_test.files.values()].map(
+        (bytes: number[]) =>
+          JSON.parse(new TextDecoder().decode(new Uint8Array(bytes))),
+      ),
+    );
+  const ask = async (question: string) => {
+    await frame.getByLabel('Your question', { exact: true }).fill(question);
+    await frame
+      .getByRole('button', { name: 'Send question', exact: true })
+      .click();
+    await frame.getByRole('status').waitFor({ state: 'hidden' });
+  };
+  const generationCount = () =>
+    page.evaluate(() => (window as any).__learning_test.generations.length);
+  const explorationCount = () =>
+    page.evaluate(() => (window as any).__learning_test.exploration_count);
+  const latestExploration = () =>
+    page.evaluate(() =>
+      (window as any).__learning_test.generations
+        .filter((request: any) =>
+          request.messages[0].content.includes('You are a patient'),
+        )
+        .at(-1),
+    );
+  const keepWorking = () =>
+    frame
+      .getByRole('dialog')
+      .getByRole('button', { name: 'Keep working', exact: true })
+      .click();
+  const first_point = 'How neurons connect';
+  const second_point = 'Learning from mistakes';
+  const topic_title = 'How neural networks learn';
+  await header.getByRole('heading', { name: 'Topics', exact: true }).waitFor();
   const native_frame = page
     .frames()
     .find((candidate: { url(): string }) =>
@@ -357,83 +401,73 @@ try {
     await native_frame.evaluate(() => typeof crypto.randomUUID),
     'undefined',
   );
-  await page.screenshot({ path: resolve(output_root, 'welcome-desktop.png') });
+  assert.equal(await native_frame.evaluate(() => innerHeight), 788);
+  await page.screenshot({
+    path: resolve(output_root, 'topics-empty-mobile.png'),
+  });
   check(
-    'production app boots in an opaque iframe with the native bridge and restrictive CSP',
+    'mobile app boots below a 56px Apell bar in an opaque iframe with native bridge and restrictive CSP',
   );
+  await header.getByRole('button', { name: 'New topic', exact: true }).click();
+  await frame.getByLabel('Your topic', { exact: true }).fill(topic_title);
   await frame
-    .getByLabel('Your topic', { exact: true })
-    .fill('How neural networks learn');
-  await frame
-    .getByLabel('What would you like to understand?', { exact: false })
+    .getByLabel('Your goal', { exact: false })
     .fill('Understand the foundations and explain them in my own words.');
+  await page.screenshot({ path: resolve(output_root, 'new-topic-mobile.png') });
   await frame
     .getByRole('button', { name: 'Create topic', exact: true })
     .click();
-  await frame
-    .getByRole('button', { name: 'Choose model', exact: true })
-    .click();
-  await frame
-    .getByRole('button', { name: 'test-model', exact: true })
+  await header
+    .getByRole('heading', { name: topic_title, exact: true })
     .waitFor();
+  await frame.getByRole('button', { name: /AI model/ }).click();
+  await frame.getByRole('button', { name: /AI model test-model/ }).waitFor();
   await frame
     .getByRole('button', { name: 'Generate key points', exact: true })
     .click();
-  await frame.getByRole('button', { name: /01 How neurons connect/ }).waitFor();
-  const readTopics = () =>
-    page.evaluate(() =>
-      [...(window as any).__learning_test.files.values()].map(
-        (bytes: number[]) =>
-          JSON.parse(new TextDecoder().decode(new Uint8Array(bytes))),
-      ),
-    );
+  await frame.locator('.point-row').filter({ hasText: first_point }).waitFor();
   let saved = (await readTopics())[0];
   assert.equal(saved.key_points.length, 4);
   assert.equal(saved.model.model_id, 'test-model');
   assert.match(saved.id, /^[0-9a-f-]+$/);
   assert.equal(
-    await frame
-      .getByRole('button', { name: 'test-model', exact: true })
-      .isDisabled(),
-    true,
+    await frame.getByRole('button', { name: /AI model/ }).count(),
+    0,
   );
+  await header
+    .getByRole('button', { name: 'Topic options', exact: true })
+    .click();
+  await frame
+    .getByRole('dialog')
+    .getByText('Model: test-model', { exact: true })
+    .waitFor();
+  await frame
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Done', exact: true })
+    .click();
   check(
-    'create topic, choose model, generate and persist four key points with model locked',
+    'dedicated topic form and overview choose a model, persist four key points, and keep the model locked',
   );
-  const ask = async (question: string) => {
-    await frame.getByLabel('Your question', { exact: true }).fill(question);
-    await frame
-      .getByRole('button', { name: 'Send question', exact: true })
-      .click();
-    await frame.getByRole('status').waitFor({ state: 'hidden' });
-  };
+  await openPoint(first_point);
+  await header
+    .getByRole('heading', { name: first_point, exact: true })
+    .waitFor();
+  assert.equal(await frame.locator('.topic-overview').count(), 0);
   await ask('What is a weight?');
-  await frame.getByText('Guide answer 1:', { exact: false }).waitFor();
   saved = (await readTopics())[0];
   assert.equal(saved.key_points[0].memory.learned, false);
   assert.equal(
     saved.key_points[0].memory.source_turn_id,
     saved.key_points[0].turns[0].id,
   );
-  assert.equal(
-    await frame.getByRole('progressbar').getAttribute('aria-valuenow'),
-    '0',
-  );
+  const first_message = saved.key_points[0].turns[0].assistant_message;
   check(
     'the first exchange automatically saves memory without treating an explanation as learned',
   );
-  const first_message = saved.key_points[0].turns[0].assistant_message;
   await ask(
     'I understand: doubling the weight doubles its input contribution.',
   );
-  await frame.getByText('Guide answer 2:', { exact: false }).waitFor();
-  const second_request = await page.evaluate(() =>
-    (window as any).__learning_test.generations
-      .filter((request: any) =>
-        request.messages[0].content.includes('You are a patient'),
-      )
-      .at(-1),
-  );
+  const second_request = await latestExploration();
   assert.deepEqual(second_request.messages[2], first_message);
   saved = (await readTopics())[0];
   assert.equal(saved.key_points[0].turns.length, 2);
@@ -446,29 +480,28 @@ try {
     saved.key_points[0].memory.source_turn_id,
     saved.key_points[0].turns[1].id,
   );
+  check(
+    'two exploration turns persist and replay complete provider metadata unchanged',
+  );
+  await back('Key points');
   assert.equal(
     await frame.getByRole('progressbar').getAttribute('aria-valuenow'),
     '1',
   );
-  check(
-    'two exploration turns persist and replay complete provider metadata unchanged',
-  );
+  await page.screenshot({ path: resolve(output_root, 'topic-mobile.png') });
   check('demonstrated understanding updates learned progress automatically');
-  await frame.locator('.saved-memory > summary').click();
-  await frame.getByRole('button', { name: 'Edit memory', exact: true }).click();
-  await frame.getByLabel('Your learning memory', { exact: true }).waitFor();
+  await openPoint(first_point);
+  await openMemory();
+  await memoryCard(first_point)
+    .getByRole('button', { name: 'Edit memory', exact: true })
+    .click();
   const edited_memory =
     'I understand that a weight scales its input contribution; doubling the weight doubles that contribution.';
   await frame
     .getByLabel('Your learning memory', { exact: true })
     .fill(edited_memory);
-  await frame
-    .getByRole('button', { name: /02 Learning from mistakes/ })
-    .click();
-  await frame
-    .getByRole('dialog')
-    .getByRole('button', { name: 'Keep working', exact: true })
-    .click();
+  await back('Memory');
+  await keepWorking();
   assert.equal(
     await frame
       .getByLabel('Your learning memory', { exact: true })
@@ -482,47 +515,33 @@ try {
   await frame
     .getByRole('button', { name: 'Save changes', exact: true })
     .click();
-  await frame.getByText('Learning memory saved', { exact: true }).waitFor();
+  await memoryCard(first_point).waitFor();
   saved = (await readTopics())[0];
   assert.equal(saved.key_points[0].memory.summary, edited_memory);
   assert.ok(saved.key_points[0].memory.updated_at);
-  assert.equal(
-    await frame.getByRole('progressbar').getAttribute('aria-valuenow'),
-    '1',
-  );
   check(
-    'optional memory edits remain protected by an in-app confirmation dialog until saved',
+    'optional memory edits have a dedicated screen and protected Back navigation until saved',
   );
-  await frame
-    .getByLabel('Your question', { exact: true })
-    .fill('An unsent question to keep.');
-  await frame
-    .getByRole('button', { name: /02 Learning from mistakes/ })
-    .click();
-  await frame
-    .getByRole('dialog')
-    .getByRole('button', { name: 'Keep working', exact: true })
-    .click();
+  await back('Chat');
+  const question_draft = 'An unsent question to keep.';
+  await frame.getByLabel('Your question', { exact: true }).fill(question_draft);
+  await back('Key points');
+  await keepWorking();
+  await header
+    .getByRole('heading', { name: first_point, exact: true })
+    .waitFor();
   assert.equal(
     await frame.getByLabel('Your question', { exact: true }).inputValue(),
-    'An unsent question to keep.',
+    question_draft,
   );
   await frame.getByLabel('Your question', { exact: true }).fill('');
   check(
-    'topic navigation preserves unsent questions when the learner keeps working',
+    'chat Back to key points preserves an unsent question when the learner keeps working',
   );
-  await page.screenshot({ path: resolve(output_root, 'learning-desktop.png') });
-  await frame
-    .getByRole('button', { name: /02 Learning from mistakes/ })
-    .click();
+  await back('Key points');
+  await openPoint(second_point);
   await ask('How does an error guide a weight update?');
-  const memory_request = await page.evaluate(() =>
-    (window as any).__learning_test.generations
-      .filter((request: any) =>
-        request.messages[0].content.includes('You are a patient'),
-      )
-      .at(-1),
-  );
+  const memory_request = await latestExploration();
   assert.equal(memory_request.messages.length, 2);
   const memory_context = JSON.parse(memory_request.messages.at(-1).content);
   assert.equal(memory_context.learning_memories.length, 1);
@@ -534,30 +553,35 @@ try {
   check(
     'the next point receives saved memory without unrelated conversation history',
   );
-  await frame.getByRole('tab', { name: /Memory/ }).click();
-  await frame
-    .getByText(saved.key_points[0].memory.summary, { exact: true })
+  await openMemory();
+  await memoryCard(first_point)
+    .getByText(edited_memory, { exact: true })
     .waitFor();
-  await page.screenshot({ path: resolve(output_root, 'memory-desktop.png') });
+  await page.screenshot({ path: resolve(output_root, 'memory-mobile.png') });
+  await back('Chat');
+  await back('Key points');
+  await back('Topics');
+  await frame.locator('.topic-row').filter({ hasText: topic_title }).waitFor();
+  await page.screenshot({ path: resolve(output_root, 'topics-mobile.png') });
   await page.evaluate(() => {
     const iframe = document.getElementById('applet') as HTMLIFrameElement;
     iframe.src = iframe.src;
   });
-  await frame
-    .getByRole('heading', { name: 'How neural networks learn', exact: true })
-    .waitFor();
-  await frame.getByRole('tab', { name: /Memory/ }).click();
-  await frame
-    .getByText(saved.key_points[0].memory.summary, { exact: true })
+  await header.getByRole('heading', { name: 'Topics', exact: true }).waitFor();
+  await frame.locator('.topic-row').filter({ hasText: topic_title }).click();
+  await frame.getByRole('button', { name: /Learning memory/ }).click();
+  await memoryCard(first_point)
+    .getByText(edited_memory, { exact: true })
     .waitFor();
   assert.equal(
     await page.evaluate(() => (window as any).__learning_test.ready_count),
     2,
   );
   check(
-    'native storage restores topics, conversations, and memories after iframe reload',
+    'native storage restores topic list, conversations, and memories after iframe reload',
   );
-  await frame.getByRole('tab', { name: 'Explore', exact: true }).click();
+  await back('Key points');
+  await openPoint(second_point);
   const before_cancel = (await readTopics())[0].key_points[1].turns.length;
   await page.evaluate(() => {
     (window as any).__learning_test.next_response = 'cancelled';
@@ -616,9 +640,7 @@ try {
     stale_point.memory.source_turn_id,
     stale_point.turns.at(-1).id,
   );
-  const before_memory_retry = await page.evaluate(
-    () => (window as any).__learning_test.exploration_count,
-  );
+  const before_memory_retry = await explorationCount();
   await frame
     .getByRole('button', { name: 'Update memory', exact: true })
     .click();
@@ -628,12 +650,7 @@ try {
     refreshed_point.memory.source_turn_id,
     refreshed_point.turns.at(-1).id,
   );
-  assert.equal(
-    await page.evaluate(
-      () => (window as any).__learning_test.exploration_count,
-    ),
-    before_memory_retry,
-  );
+  assert.equal(await explorationCount(), before_memory_retry);
   check(
     'automatic memory failure retains the exchange and retries memory without repeating the answer',
   );
@@ -644,34 +661,24 @@ try {
   await frame
     .getByRole('button', { name: 'Retry save', exact: true })
     .waitFor();
-  const exploration_count = await page.evaluate(
-    () => (window as any).__learning_test.exploration_count,
-  );
+  const exploration_count = await explorationCount();
   assert.equal(
     (await readTopics())[0].key_points[1].turns.length,
     before_cancel + 2,
   );
   assert.equal(
-    await frame
-      .getByRole('button', { name: 'New topic', exact: true })
+    await header
+      .getByRole('button', { name: 'Key points', exact: true })
       .isDisabled(),
     true,
   );
   await frame.getByRole('button', { name: 'Retry save', exact: true }).click();
-  await frame
-    .getByRole('button', { name: 'Retry save', exact: true })
-    .waitFor({ state: 'hidden' });
   await frame.getByRole('status').waitFor({ state: 'hidden' });
   assert.equal(
     (await readTopics())[0].key_points[1].turns.length,
     before_cancel + 3,
   );
-  assert.equal(
-    await page.evaluate(
-      () => (window as any).__learning_test.exploration_count,
-    ),
-    exploration_count,
-  );
+  assert.equal(await explorationCount(), exploration_count);
   check(
     'failed exchange persistence retries the saved answer then updates memory without repeating exploration',
   );
@@ -682,9 +689,7 @@ try {
   await frame
     .getByRole('button', { name: 'Retry save', exact: true })
     .waitFor();
-  const before_memory_save_retry = await page.evaluate(
-    () => (window as any).__learning_test.generations.length,
-  );
+  const before_memory_save_retry = await generationCount();
   const before_memory_save_point = (await readTopics())[0].key_points[1];
   assert.notEqual(
     before_memory_save_point.memory.source_turn_id,
@@ -692,12 +697,7 @@ try {
   );
   await frame.getByRole('button', { name: 'Retry save', exact: true }).click();
   await frame.getByRole('status').waitFor({ state: 'hidden' });
-  assert.equal(
-    await page.evaluate(
-      () => (window as any).__learning_test.generations.length,
-    ),
-    before_memory_save_retry,
-  );
+  assert.equal(await generationCount(), before_memory_save_retry);
   const after_memory_save_point = (await readTopics())[0].key_points[1];
   assert.equal(
     after_memory_save_point.memory.source_turn_id,
@@ -706,7 +706,26 @@ try {
   check(
     'failed memory persistence retries disk only and preserves its generated assessment',
   );
-  await frame.getByRole('button', { name: /How neurons connect/ }).click();
+  await back('Key points');
+  await openPoint(first_point);
+  await openMemory();
+  await memoryCard(second_point)
+    .getByRole('button', { name: 'Edit memory', exact: true })
+    .click();
+  await frame
+    .getByLabel('Your learning memory', { exact: true })
+    .fill('An edited note for the second point.');
+  await frame
+    .getByRole('button', { name: 'Save changes', exact: true })
+    .click();
+  await memoryCard(second_point).waitFor();
+  await back('Chat');
+  await header
+    .getByRole('heading', { name: first_point, exact: true })
+    .waitFor();
+  check(
+    'Memory returns to its originating chat after editing a different point',
+  );
   await page.evaluate(() => {
     (window as any).__learning_test.fail_next_memory = true;
   });
@@ -716,23 +735,30 @@ try {
     .waitFor();
   const old_memory_source = (await readTopics())[0].key_points[0].memory
     .source_turn_id;
-  const correction_generation_count = await page.evaluate(
-    () => (window as any).__learning_test.generations.length,
-  );
+  const correction_generation_count = await generationCount();
   const unrelated_question = 'Keep this unrelated unsent question.';
   await frame
     .getByLabel('Your question', { exact: true })
     .fill(unrelated_question);
-  const openMemory = async () => {
-    if ((await frame.locator('.saved-memory').getAttribute('open')) === null) {
-      await frame.locator('.saved-memory > summary').click();
-    }
-  };
+  await openMemory();
+  await memoryCard(second_point)
+    .getByRole('button', { name: 'Edit memory', exact: true })
+    .click();
+  await keepWorking();
+  await memoryCard(first_point).waitFor();
+  await back('Chat');
+  assert.equal(
+    await frame.getByLabel('Your question', { exact: true }).inputValue(),
+    unrelated_question,
+  );
+  check(
+    'editing another point memory cannot silently discard an unsent chat question',
+  );
   await openMemory();
   await page.evaluate(() => {
     (window as any).__learning_test.fail_next_write = true;
   });
-  await frame
+  await memoryCard(first_point)
     .getByRole('button', { name: 'Mark as still exploring', exact: true })
     .click();
   await frame.getByRole('button', { name: 'Retry save', exact: true }).click();
@@ -740,21 +766,19 @@ try {
   const corrected_memory = (await readTopics())[0].key_points[0].memory;
   assert.equal(corrected_memory.learned, false);
   assert.equal(corrected_memory.source_turn_id, old_memory_source);
+  assert.equal(await generationCount(), correction_generation_count);
+  await back('Chat');
   assert.equal(
     await frame.getByLabel('Your question', { exact: true }).inputValue(),
     unrelated_question,
-  );
-  assert.equal(
-    await page.evaluate(
-      () => (window as any).__learning_test.generations.length,
-    ),
-    correction_generation_count,
   );
   check(
     'retrying a failed progress correction preserves stale memory and does not invoke AI',
   );
   await openMemory();
-  await frame.getByRole('button', { name: 'Edit memory', exact: true }).click();
+  await memoryCard(first_point)
+    .getByRole('button', { name: 'Edit memory', exact: true })
+    .click();
   await frame
     .getByLabel('Your learning memory', { exact: true })
     .fill('A corrected note that still needs the latest exchange added.');
@@ -769,6 +793,7 @@ try {
     (await readTopics())[0].key_points[0].memory.source_turn_id,
     old_memory_source,
   );
+  await back('Chat');
   await frame
     .getByRole('button', { name: 'Update memory', exact: true })
     .waitFor();
@@ -783,7 +808,7 @@ try {
   await page.evaluate(() => {
     (window as any).__learning_test.fail_next_write = true;
   });
-  await frame
+  await memoryCard(first_point)
     .getByRole('button', { name: 'Mark as still exploring', exact: true })
     .click();
   await frame
@@ -797,15 +822,11 @@ try {
     .getByRole('button', { name: 'Retry save', exact: true })
     .waitFor({ state: 'hidden' });
   assert.equal((await readTopics())[0].key_points[0].memory.learned, true);
+  assert.equal(await generationCount(), correction_generation_count);
+  await back('Chat');
   assert.equal(
     await frame.getByLabel('Your question', { exact: true }).inputValue(),
     unrelated_question,
-  );
-  assert.equal(
-    await page.evaluate(
-      () => (window as any).__learning_test.generations.length,
-    ),
-    correction_generation_count,
   );
   check(
     'discarding a failed progress save preserves unrelated question drafts',
@@ -815,61 +836,92 @@ try {
     .getByRole('button', { name: 'Update memory', exact: true })
     .click();
   await frame.getByRole('status').waitFor({ state: 'hidden' });
-  if ((await frame.locator('.saved-memory').getAttribute('open')) !== null) {
-    await frame.locator('.saved-memory > summary').click();
-  }
-  await page.setViewportSize({ width: 390, height: 844 });
-  await frame.getByRole('button', { name: 'Topics', exact: true }).waitFor();
-  await page.screenshot({ path: resolve(output_root, 'learning-mobile.png') });
-  const mobile_composer = await frame.locator('.composer').boundingBox();
-  assert.ok(
-    mobile_composer &&
-      mobile_composer.y >= 0 &&
-      mobile_composer.y + mobile_composer.height <= 845,
-    `Mobile composer outside viewport: ${JSON.stringify(mobile_composer)}`,
-  );
-  const mobile_frame = page
-    .frames()
-    .find((candidate: { url(): string }) =>
-      candidate.url().endsWith('/index.html'),
+  const checkComposer = async (height: number) => {
+    const back_box = await header.locator('.nav-back').boundingBox();
+    const title_box = await header.locator('.navigation-title').boundingBox();
+    assert.ok(
+      back_box && title_box && back_box.x + back_box.width + 4 <= title_box.x,
+      `Navigation back control crowds the title: ${JSON.stringify({ back_box, title_box })}`,
     );
-  const metrics = await mobile_frame.evaluate(() => ({
-    width: document.documentElement.scrollWidth,
-    viewport: window.innerWidth,
-  }));
-  assert.ok(
-    metrics.width <= metrics.viewport + 1,
-    `Horizontal overflow: ${JSON.stringify(metrics)}`,
-  );
-  await frame.getByRole('button', { name: 'Topics', exact: true }).click();
-  await frame
-    .getByRole('button', { name: 'New topic', exact: true })
-    .waitFor({ state: 'visible' });
-  await frame
-    .getByRole('button', { name: 'Close topics', exact: true })
-    .last()
-    .click();
+    const composer = await frame.locator('.composer').boundingBox();
+    assert.ok(
+      composer &&
+        composer.y >= 56 &&
+        composer.y + composer.height <= height + 1,
+      `Composer outside Apell applet viewport: ${JSON.stringify(composer)}`,
+    );
+    const metrics = await native_frame.evaluate(() => ({
+      width: document.documentElement.scrollWidth,
+      viewport: innerWidth,
+      height: innerHeight,
+      app_height: document
+        .querySelector('.learning-app')!
+        .getBoundingClientRect().height,
+    }));
+    assert.ok(
+      metrics.width <= metrics.viewport + 1,
+      `Horizontal overflow: ${JSON.stringify(metrics)}`,
+    );
+    assert.equal(metrics.height, height - 56);
+    assert.ok(
+      Math.abs(metrics.app_height - metrics.height) <= 1,
+      `App does not fill its host iframe: ${JSON.stringify(metrics)}`,
+    );
+  };
+  await checkComposer(844);
+  await page.screenshot({ path: resolve(output_root, 'chat-mobile.png') });
   check(
-    'mobile layout has no horizontal overflow and its topic drawer operates',
+    'mobile conversation fills the Apell applet viewport with no horizontal overflow and a visible composer',
+  );
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await checkComposer(1000);
+  assert.equal(await frame.locator('.conversation-screen').count(), 1);
+  assert.equal(
+    await frame.locator('.topic-overview, .topics-screen').count(),
+    0,
+  );
+  await page.screenshot({ path: resolve(output_root, 'chat-wide.png') });
+  check(
+    'wide windows retain one app screen instead of exposing a multi-pane website layout',
   );
   await page.setViewportSize({ width: 390, height: 500 });
   await frame.getByLabel('Your question', { exact: true }).focus();
-  const keyboard_composer = await frame.locator('.composer').boundingBox();
-  assert.ok(
-    keyboard_composer &&
-      keyboard_composer.y >= 0 &&
-      keyboard_composer.y + keyboard_composer.height <= 501,
-    `Composer outside keyboard-sized viewport: ${JSON.stringify(keyboard_composer)}`,
-  );
+  await checkComposer(500);
   await page.screenshot({
-    path: resolve(output_root, 'learning-mobile-keyboard.png'),
+    path: resolve(output_root, 'chat-mobile-keyboard.png'),
   });
   check(
-    'mobile composer stays visible at full-height and keyboard-sized viewports',
+    'mobile composer stays visible with a 56px host bar and a keyboard-sized viewport',
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
+  await back('Key points');
+  await back('Topics');
+  await header.getByRole('button', { name: 'New topic', exact: true }).click();
+  await frame.getByLabel('Your topic', { exact: true }).fill('Unsaved topic');
+  await page.evaluate(() => {
+    (window as any).__learning_test.fail_next_write = true;
+  });
+  await frame
+    .getByRole('button', { name: 'Create topic', exact: true })
+    .click();
+  await frame
+    .getByRole('button', { name: 'Discard unsaved changes', exact: true })
+    .click();
+  await frame
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Discard changes', exact: true })
+    .click();
+  await header.getByRole('heading', { name: 'Topics', exact: true }).waitFor();
+  assert.equal(await frame.locator('.topic-row').count(), 1);
+  assert.equal((await readTopics()).length, 1);
+  assert.equal(await frame.locator('.topic-overview').count(), 0);
+  check(
+    'discarding a failed new-topic save returns to Topics without opening an unrelated existing topic',
   );
   const preview = await context.newPage();
   preview.on('pageerror', (error: Error) => errors.push(error.message));
   await preview.goto(base + '/index.html');
+  await preview.getByRole('button', { name: 'New topic', exact: true }).click();
   await preview
     .getByLabel('Your topic', { exact: true })
     .fill('Browser-only topic');
@@ -887,19 +939,21 @@ try {
   );
   await preview.reload();
   await preview
+    .locator('.topic-row')
+    .filter({ hasText: 'Browser-only topic' })
+    .click();
+  await preview
     .getByRole('heading', { name: 'Browser-only topic', exact: true })
     .waitFor();
   check(
     'standalone preview persists topics and clearly disables unavailable host AI',
   );
+  await preview.getByRole('button', { name: 'Topics', exact: true }).click();
   await preview.getByRole('button', { name: 'New topic', exact: true }).click();
   await preview
     .getByLabel('Your topic', { exact: true })
     .fill('A draft topic to keep');
-  await preview
-    .locator('.topic-item')
-    .filter({ hasText: 'Browser-only topic' })
-    .click();
+  await preview.getByRole('button', { name: 'Topics', exact: true }).click();
   await preview
     .getByRole('dialog')
     .getByRole('button', { name: 'Keep working', exact: true })
