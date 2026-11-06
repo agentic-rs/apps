@@ -1,6 +1,20 @@
 import type { CSSProperties } from 'react';
 
 const paths = {
+  map: (
+    <>
+      <path d="m3 5 6-2 6 2 6-2v16l-6 2-6-2-6 2Zm6-2v16m6-14v16" />
+    </>
+  ),
+  timeline: (
+    <>
+      <path d="M7 4v16M12 5h8M12 12h6M12 19h8" />
+      <circle cx="7" cy="5" r="2" fill="currentColor" stroke="none" />
+      <circle cx="7" cy="12" r="2" fill="currentColor" stroke="none" />
+      <circle cx="7" cy="19" r="2" fill="currentColor" stroke="none" />
+    </>
+  ),
+  chevron: <path d="m6 9 6 6 6-6" />,
   compass: (
     <>
       <circle cx="12" cy="12" r="9" />

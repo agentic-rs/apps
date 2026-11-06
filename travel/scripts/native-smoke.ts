@@ -49,6 +49,7 @@ interface BridgeRequest {
 const files = new Map<string, number[]>();
 const directories = new Set<string>();
 const calls: string[] = [];
+const http_urls: string[] = [];
 let photo_bytes: number[] = [];
 let cancel_photo = true;
 let cancel_location = true;
@@ -89,7 +90,7 @@ function hostCall(request: BridgeRequest): unknown {
       return { bytes: bytes.slice(offset, offset + length), eof: offset + length >= bytes.length };
     }
     case 'fs.write': {
-      if (fail_next_write) {
+      if (fail_next_write && path === 'journal/journal.json') {
         fail_next_write = false;
         throw new Error('Simulated storage failure. Retry saving this draft.');
       }
@@ -121,6 +122,24 @@ function hostCall(request: BridgeRequest): unknown {
         longitude: 34.56789,
         accuracy_m: 7,
         timestamp_ms: Date.parse('2026-05-12T10:30:00.000Z'),
+      };
+    }
+    case 'http.request': {
+      const url = new URL(String(params.url));
+      assert.equal(
+        url.origin,
+        'https://tile.openstreetmap.org',
+        'Only the mocked tile service may be requested.',
+      );
+      assert(/^\/\d+\/\d+\/\d+\.png$/.test(url.pathname));
+      http_urls.push(url.href);
+      return {
+        status: 200,
+        headers: [
+          { name: 'Content-Type', value: 'image/png' },
+          { name: 'Cache-Control', value: 'public, max-age=604800' },
+        ],
+        body: [...photo_bytes],
       };
     }
     default:
@@ -170,6 +189,12 @@ try {
       Object.defineProperty(crypto, 'randomUUID', { configurable: true, value: undefined });
   });
   await page.exposeFunction('__travel_host_call', hostCall);
+  await page.route('**/*', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.hostname === '127.0.0.1') return route.continue();
+    errors.push(`Unexpected browser network request: ${url.origin}`);
+    await route.abort();
+  });
   await page.goto(`http://127.0.0.1:${server.port}/host`);
   photo_bytes = await page.evaluate(() => {
     const canvas = document.createElement('canvas');
@@ -215,7 +240,7 @@ try {
   }, `http://127.0.0.1:${server.port}`);
 
   const frame = page.frameLocator('#applet');
-  await frame.getByRole('heading', { name: 'Your next story starts here.' }).waitFor();
+  await frame.getByRole('heading', { name: 'Timeline', exact: true }).waitFor();
   const native_frame = page.frames().find((candidate) => candidate.url().endsWith('/index.html'))!;
   assert.equal(
     await native_frame.evaluate(() => self.origin),
@@ -227,13 +252,18 @@ try {
     'undefined',
     'Exercise the custom-scheme UUID fallback.',
   );
-  await frame.getByRole('button', { name: 'New trip', exact: true }).click();
+  assert.equal(
+    await frame.getByRole('navigation', { name: 'Main views' }).getByRole('button').count(),
+    2,
+  );
+  assert.equal(http_urls.length, 0, 'Timeline must not request map tiles.');
+  await frame.getByRole('button', { name: 'Start a trip', exact: true }).click();
   await frame.getByLabel('Trip name').fill('Native bridge journey');
   await frame.getByRole('button', { name: 'Create trip', exact: true }).click();
-  await frame.getByRole('heading', { name: 'Native bridge journey', exact: true }).waitFor();
+  await frame.getByRole('dialog').waitFor({ state: 'hidden' });
   assert.equal(journal().trips.length, 1);
 
-  await frame.getByRole('button', { name: 'Check in 打卡' }).click();
+  await frame.getByRole('button', { name: 'New check-in', exact: true }).click();
   const dialog = frame.getByRole('dialog');
   await dialog.getByLabel('Place name', { exact: true }).fill('Lakeside park');
   await dialog.getByLabel('City or area').fill('North district');
@@ -286,7 +316,7 @@ try {
   );
   await dialog.getByRole('button', { name: 'Save check-in', exact: true }).click();
   await dialog.waitFor({ state: 'hidden' });
-  const saved = journal();
+  let saved = journal();
   assert.equal(saved.check_ins.length, 1);
   assert.equal(saved.check_ins[0].photos.length, 2);
   assert.equal(saved.check_ins[0].visited_at, '2026-05-12T10:30:00.000Z');
@@ -303,15 +333,99 @@ try {
     .scrollIntoViewIfNeeded();
   await imageReady(frame.getByRole('img', { name: 'Lakeside park, photo 1', exact: true }));
 
+  await frame.getByRole('button', { name: 'New check-in', exact: true }).click();
+  await dialog.getByLabel('Choose a saved place').selectOption(saved.places[0].id);
+  await dialog.getByLabel('Visit date & time').fill('2026-05-13T18:30');
+  await dialog.getByLabel('Notes').fill('A return visit without recorded coordinates.');
+  await dialog.getByRole('button', { name: 'Save check-in', exact: true }).click();
+  await dialog.waitFor({ state: 'hidden' });
+  saved = journal();
+  assert.equal(saved.check_ins.length, 2);
+  assert.equal(saved.check_ins[1].actual_location, null);
+
   await native_frame.goto(`http://127.0.0.1:${server.port}/index.html`);
-  await frame.getByRole('heading', { name: 'Your journeys', exact: true }).waitFor();
-  await frame.locator('.trip-card').filter({ hasText: 'Native bridge journey' }).click();
-  await frame.getByRole('heading', { name: 'Lakeside park', exact: true }).waitFor();
+  await frame.getByRole('heading', { name: 'Timeline', exact: true }).waitFor();
+  await frame.locator('.timeline-list .visit-card').nth(1).waitFor();
   await frame
     .getByRole('button', { name: 'Open photo: Lakeside park, photo 1', exact: true })
     .scrollIntoViewIfNeeded();
   await imageReady(frame.getByRole('img', { name: 'Lakeside park, photo 1', exact: true }));
   assert.deepEqual(journal(), saved, 'Reopening should preserve the saved journal and images.');
+  await frame.getByLabel('Trip filter').selectOption(saved.trips[0].id);
+  const assertNativeLayout = async () => {
+    const geometry = await native_frame.evaluate(() => ({
+      width: document.documentElement.scrollWidth,
+      height: document.documentElement.scrollHeight,
+      body_height: document.body.scrollHeight,
+      viewport_width: innerWidth,
+      viewport_height: innerHeight,
+      bottom: document.querySelector('.bottom-bar')!.getBoundingClientRect().bottom,
+    }));
+    assert(
+      geometry.width <= geometry.viewport_width,
+      'Native applet must not overflow horizontally.',
+    );
+    assert(
+      geometry.height <= geometry.viewport_height + 1 &&
+        geometry.body_height <= geometry.viewport_height + 1,
+      'Native body must remain fixed while content scrolls.',
+    );
+    assert(
+      Math.abs(geometry.bottom - geometry.viewport_height) <= 2,
+      'Native bottom tabs must remain visible.',
+    );
+  };
+  await assertNativeLayout();
+  await frame
+    .getByRole('navigation', { name: 'Main views' })
+    .getByRole('button', { name: 'Map', exact: true })
+    .click();
+  await frame.locator('.journal-map-pin').waitFor();
+  await frame.locator('.leaflet-tile-loaded').first().waitFor();
+  assert.equal(await frame.locator('.journal-map-pin').getAttribute('data-latitude'), '12.34567');
+  assert.equal(await frame.locator('.journal-map-pin').getAttribute('data-longitude'), '34.56789');
+  await frame.getByRole('button', { name: '1 without visit coordinates' }).click();
+  await frame
+    .getByRole('region', { name: 'Check-ins without coordinates' })
+    .getByRole('button', { name: 'View check-in' })
+    .click();
+  await dialog.getByRole('heading', { name: 'Lakeside park', exact: true }).waitFor();
+  assert((await dialog.innerText()).includes('Location not recorded'));
+  await dialog.getByRole('button', { name: 'Close dialog' }).click();
+  await frame.getByRole('button', { name: 'Close map selection' }).click();
+  await frame.getByRole('button', { name: 'Named places', exact: true }).click();
+  await frame.locator('.journal-map-pin[data-visit-count="2"]').waitFor();
+  assert.equal(await frame.locator('.journal-map-pin').getAttribute('data-latitude'), '12');
+  assert.equal(await frame.locator('.journal-map-pin').getAttribute('data-longitude'), '34');
+  assert.equal(
+    await frame.locator('.map-missing-button').count(),
+    0,
+    'A reference position locates both named-place visits without changing their actual coordinates.',
+  );
+  await frame.locator('.journal-map-pin').click();
+  await frame
+    .getByRole('region', { name: 'Check-ins at selected map pin' })
+    .getByRole('button', { name: 'View check-in' })
+    .first()
+    .click();
+  await dialog.getByRole('heading', { name: 'Lakeside park', exact: true }).waitFor();
+  await dialog.getByRole('button', { name: 'Close dialog' }).click();
+  await page.evaluate(() => {
+    document.querySelector<HTMLIFrameElement>('#applet')!.style.height = '500px';
+  });
+  await assertNativeLayout();
+  await frame
+    .getByRole('navigation', { name: 'Main views' })
+    .getByRole('button', { name: 'Timeline', exact: true })
+    .click();
+  assert.equal(await frame.getByLabel('Trip filter').inputValue(), saved.trips[0].id);
+  await assertNativeLayout();
+  assert(http_urls.length > 0, 'Native map must use the mocked HTTP bridge.');
+  assert(
+    [...files.keys()].some((path) => path.startsWith('map-tiles/') && path.endsWith('.png')),
+    'Native map should persist disposable tile-cache images.',
+  );
+  assert.deepEqual(journal(), saved, 'Map viewing must not change stored visit locations.');
   assert.deepEqual(errors, [], 'The native applet should not produce uncaught browser errors.');
   for (const method of [
     'photos.pick',
@@ -320,6 +434,7 @@ try {
     'fs.write',
     'fs.read',
     'fs.stat',
+    'http.request',
   ]) {
     assert(calls.includes(method), `The applet should exercise ${method}.`);
   }
@@ -337,6 +452,9 @@ try {
           'two distinct positions',
           'save failure and retry',
           'reopen persistence',
+          'Timeline and Map with fixed compact navigation',
+          'mocked native tile requests and cache',
+          'distinct map position modes and missing coordinates',
         ],
       },
       null,

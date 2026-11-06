@@ -11,7 +11,7 @@ const manifest = {
   applet_id: 'travel',
   name: 'Fieldnotes',
   version: metadata.version,
-  permissions: ['fs', 'camera', 'photos', 'location'],
+  permissions: ['fs', 'camera', 'photos', 'location', 'http'],
 };
 await mkdir('artifacts', { recursive: true });
 await writeFile('dist/manifest.json', `${JSON.stringify(manifest, null, 2)}\n`);

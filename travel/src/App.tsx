@@ -1,24 +1,23 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createPlatform } from './lib/platform';
-import {
-  emptyJournal,
-  formatCoordinates,
-  removeCheckIn,
-  removeTrip,
-  saveCheckIn,
-  upsertTrip,
-} from './lib/model';
-import { formatTripDates, formatVisitDate, formatVisitTime } from './lib/dates';
-import type { CheckIn, Journal, PhotoAsset, Place, TravelPlatform, Trip } from './lib/types';
+import { emptyJournal, removeCheckIn, removeTrip, saveCheckIn, upsertTrip } from './lib/model';
+import type { CheckIn, Journal, PhotoAsset, TravelPlatform, Trip } from './lib/types';
 import { Icon } from './components/Icon';
 import { Dialog } from './components/Dialog';
 import { TripForm } from './components/TripForm';
 import { CheckInForm } from './components/CheckInForm';
 import { Photo } from './components/Photo';
+import { TimelineView } from './components/TimelineView';
+import { MapView } from './components/MapView';
+import { TripsDialog } from './components/TripsDialog';
+import { VisitCard } from './components/VisitCard';
 
-type Editor = { kind: 'trip'; trip?: Trip } | { kind: 'visit'; trip: Trip; visit?: CheckIn } | null;
+type Editor =
+  | { kind: 'trip'; trip?: Trip; then_check_in?: boolean }
+  | { kind: 'visit'; trip: Trip; visit?: CheckIn }
+  | null;
 type Removal = { kind: 'trip'; trip: Trip } | { kind: 'visit'; visit: CheckIn } | null;
-type View = 'journal' | 'places' | 'photos';
+type View = 'timeline' | 'map';
 type OpenPhoto = { asset: PhotoAsset; caption: string } | null;
 
 export function App() {
@@ -28,11 +27,13 @@ export function App() {
   const [load_error, setLoadError] = useState('');
   const [reload, setReload] = useState(0);
   const [notice, setNotice] = useState('');
-  const [selected_trip_id, setSelectedTripId] = useState<string | null>(null);
-  const [selected_place_id, setSelectedPlaceId] = useState<string | null>(null);
-  const [view, setView] = useState<View>('journal');
+  const [selected_trip_id, setSelectedTripId] = useState('');
+  const [view, setView] = useState<View>('timeline');
+  const [map_opened, setMapOpened] = useState(false);
   const [search, setSearch] = useState('');
   const [editor, setEditor] = useState<Editor>(null);
+  const [trip_dialog, setTripDialog] = useState<'manage' | 'check_in' | null>(null);
+  const [detail_id, setDetailId] = useState<string | null>(null);
   const [removal, setRemoval] = useState<Removal>(null);
   const [deleting, setDeleting] = useState(false);
   const [delete_error, setDeleteError] = useState('');
@@ -43,10 +44,10 @@ export function App() {
     setLoading(true);
     setLoadError('');
     createPlatform()
-      .then(async (next_platform) => {
-        const data = await next_platform.load();
+      .then(async (next) => {
+        const data = await next.load();
         if (live) {
-          setPlatform(next_platform);
+          setPlatform(next);
           setJournal(data);
         }
       })
@@ -65,28 +66,27 @@ export function App() {
   }, [reload]);
 
   const selected_trip = journal.trips.find((trip) => trip.id === selected_trip_id);
-  const selected_place = journal.places.find((place) => place.id === selected_place_id);
-  const places = new Map(journal.places.map((place) => [place.id, place]));
-  const trips = new Map(journal.trips.map((trip) => [trip.id, trip]));
-  const all_photos = journal.check_ins.flatMap((visit) =>
-    visit.photos.map((asset) => ({ asset, visit })),
+  const visits = useMemo(
+    () =>
+      journal.check_ins
+        .filter((visit) => !selected_trip_id || visit.trip_id === selected_trip_id)
+        .sort((a, b) => b.visited_at.localeCompare(a.visited_at) || a.id.localeCompare(b.id)),
+    [journal.check_ins, selected_trip_id],
   );
-  const visits = journal.check_ins
-    .filter((visit) => {
-      if (selected_trip && visit.trip_id !== selected_trip.id) return false;
-      if (selected_place && visit.place_id !== selected_place.id) return false;
-      const place = places.get(visit.place_id)!;
-      return `${place.name} ${place.locality} ${visit.notes}`
-        .toLocaleLowerCase()
-        .includes(search.toLocaleLowerCase());
-    })
-    .sort((a, b) => a.visited_at.localeCompare(b.visited_at) || a.id.localeCompare(b.id));
+  const detail_visit = journal.check_ins.find((visit) => visit.id === detail_id);
+  const detail_place = journal.places.find((place) => place.id === detail_visit?.place_id);
+  const detail_trip = journal.trips.find((trip) => trip.id === detail_visit?.trip_id);
 
-  function navigate(next: View, trip_id: string | null = null, place_id: string | null = null) {
+  function switchView(next: View) {
+    if (next === 'map') setMapOpened(true);
     setView(next);
-    setSelectedTripId(trip_id);
-    setSelectedPlaceId(place_id);
-    setSearch('');
+  }
+  function startCheckIn() {
+    setDetailId(null);
+    const trip = selected_trip ?? (journal.trips.length === 1 ? journal.trips[0] : undefined);
+    if (trip) setEditor({ kind: 'visit', trip });
+    else if (!journal.trips.length) setEditor({ kind: 'trip', then_check_in: true });
+    else setTripDialog('check_in');
   }
   async function persist(next: Journal) {
     await platform!.save(next);
@@ -100,7 +100,7 @@ export function App() {
       setNotice('Some unused photo files could not be removed from storage.');
   }
   async function deleteEntry() {
-    if (!removal) return;
+    if (!removal || deleting) return;
     setDeleting(true);
     setDeleteError('');
     try {
@@ -110,12 +110,13 @@ export function App() {
           : journal.check_ins
               .filter((visit) => visit.trip_id === removal.trip.id)
               .flatMap((visit) => visit.photos);
-      const next =
+      await persist(
         removal.kind === 'trip'
           ? removeTrip(journal, removal.trip.id)
-          : removeCheckIn(journal, removal.visit.id);
-      await persist(next);
-      if (removal.kind === 'trip') navigate('journal');
+          : removeCheckIn(journal, removal.visit.id),
+      );
+      if (removal.kind === 'trip' && removal.trip.id === selected_trip_id) setSelectedTripId('');
+      setDetailId(null);
       setRemoval(null);
       await cleanPhotos(assets);
     } catch (error) {
@@ -129,7 +130,7 @@ export function App() {
     return (
       <div className="startup">
         <span className="brand-symbol">
-          <Icon name="compass" size={32} />
+          <Icon name="compass" size={30} />
         </span>
         <h1>Fieldnotes</h1>
         {load_error ? (
@@ -148,392 +149,163 @@ export function App() {
 
   return (
     <div className="app-shell">
-      <aside className="sidebar">
-        <a
-          className="brand"
-          href="#"
-          onClick={(e) => {
-            e.preventDefault();
-            navigate('journal');
-          }}
-        >
+      <header className="app-header">
+        <div className="app-title">
           <span className="brand-symbol">
-            <Icon name="compass" size={28} />
+            <Icon name="compass" size={22} />
           </span>
-          <span>
-            Fieldnotes<small>A personal travel journal</small>
-          </span>
-        </a>
-        <nav className="main-nav" aria-label="Journal">
-          <button
-            className={view === 'journal' ? 'active' : ''}
-            onClick={() => navigate('journal')}
+          <span>Fieldnotes</span>
+        </div>
+        <button className="header-trips" onClick={() => setTripDialog('manage')}>
+          <Icon name="book" size={17} />
+          Trips
+        </button>
+      </header>
+      <div className="view-header">
+        <div>
+          <h1>{view === 'timeline' ? 'Timeline' : 'Map'}</h1>
+          <p>{view === 'timeline' ? 'The moments along the way' : 'Your travels, on the map'}</p>
+        </div>
+        <label className="trip-filter">
+          <span className="sr-only">Trip filter</span>
+          <select
+            value={selected_trip_id}
+            onChange={(event) => setSelectedTripId(event.target.value)}
           >
-            <Icon name="book" />
-            My journeys<span>{journal.trips.length}</span>
+            <option value="">All trips</option>
+            {journal.trips.map((trip) => (
+              <option key={trip.id} value={trip.id}>
+                {trip.title}
+              </option>
+            ))}
+          </select>
+          <Icon name="chevron" size={14} />
+        </label>
+      </div>
+      {notice && (
+        <div className="notice" role="status">
+          {notice}
+          <button className="icon-button" aria-label="Dismiss notice" onClick={() => setNotice('')}>
+            <Icon name="close" size={16} />
           </button>
-          <button className={view === 'places' ? 'active' : ''} onClick={() => navigate('places')}>
-            <Icon name="pin" />
-            Places<span>{journal.places.length}</span>
+        </div>
+      )}
+      <main className="app-content">
+        <div className="timeline-panel" hidden={view !== 'timeline'}>
+          <TimelineView
+            visits={visits}
+            places={journal.places}
+            trips={journal.trips}
+            platform={platform}
+            search={search}
+            has_trips={journal.trips.length > 0}
+            onSearch={setSearch}
+            onCreate={() => (journal.trips.length ? startCheckIn() : setEditor({ kind: 'trip' }))}
+            onOpenVisit={setDetailId}
+            onPhoto={(asset, caption) => setOpenPhoto({ asset, caption })}
+          />
+        </div>
+        {map_opened && (
+          <div className="map-panel" hidden={view !== 'map'}>
+            <MapView
+              visits={visits}
+              places={journal.places}
+              platform={platform}
+              active={view === 'map'}
+              onOpenVisit={setDetailId}
+            />
+          </div>
+        )}
+      </main>
+      <footer className="bottom-bar">
+        <nav aria-label="Main views">
+          <button
+            aria-current={view === 'timeline' ? 'page' : undefined}
+            onClick={() => switchView('timeline')}
+          >
+            <Icon name="timeline" size={23} />
+            <span>Timeline</span>
           </button>
-          <button className={view === 'photos' ? 'active' : ''} onClick={() => navigate('photos')}>
-            <Icon name="photo" />
-            Photos<span>{all_photos.length}</span>
+          <button
+            aria-current={view === 'map' ? 'page' : undefined}
+            onClick={() => switchView('map')}
+          >
+            <Icon name="map" size={23} />
+            <span>Map</span>
           </button>
         </nav>
-        <div className="sidebar-trips">
-          <div className="sidebar-label">
-            YOUR TRIPS
+        <button className="add-check-in" aria-label="New check-in" onClick={startCheckIn}>
+          <Icon name="plus" size={27} />
+        </button>
+      </footer>
+      {trip_dialog && (
+        <TripsDialog
+          trips={journal.trips}
+          visits={journal.check_ins}
+          choosing={trip_dialog === 'check_in'}
+          onClose={() => setTripDialog(null)}
+          onSelect={(trip) => {
+            const choosing = trip_dialog === 'check_in';
+            setTripDialog(null);
+            if (choosing) setEditor({ kind: 'visit', trip });
+            else setSelectedTripId(trip.id);
+          }}
+          onCreate={() => {
+            const choosing = trip_dialog === 'check_in';
+            setTripDialog(null);
+            setEditor({ kind: 'trip', then_check_in: choosing });
+          }}
+          onEdit={(trip) => {
+            setTripDialog(null);
+            setEditor({ kind: 'trip', trip });
+          }}
+          onDelete={(trip) => {
+            setTripDialog(null);
+            setDeleteError('');
+            setRemoval({ kind: 'trip', trip });
+          }}
+        />
+      )}
+      {detail_visit && detail_place && detail_trip && !editor && !removal && !open_photo && (
+        <Dialog title="Check-in" onDismiss={() => setDetailId(null)} wide>
+          <VisitCard
+            visit={detail_visit}
+            place={detail_place}
+            trip={detail_trip}
+            platform={platform}
+            detail
+            onOpen={() => {}}
+            onPhoto={(asset) => setOpenPhoto({ asset, caption: detail_place.name })}
+          />
+          <footer className="dialog-footer detail-actions">
             <button
-              className="icon-button"
-              aria-label="Create trip"
-              onClick={() => setEditor({ kind: 'trip' })}
+              className="secondary"
+              onClick={() => {
+                setDeleteError('');
+                setRemoval({ kind: 'visit', visit: detail_visit });
+              }}
             >
-              <Icon name="plus" size={17} />
+              <Icon name="trash" size={17} />
+              Delete check-in
             </button>
-          </div>
-          {journal.trips.length === 0 ? (
-            <p className="sidebar-hint">Every journey starts with a first page.</p>
-          ) : (
-            journal.trips.map((trip, index) => (
-              <button
-                key={trip.id}
-                className={`trip-link ${selected_trip_id === trip.id ? 'selected' : ''}`}
-                onClick={() => navigate('journal', trip.id)}
-              >
-                <span className={`trip-dot tone-${index % 4}`} />
-                <span>{trip.title}</span>
-              </button>
-            ))
-          )}
-        </div>
-        <div className="sidebar-foot">
-          <span className="small-compass">✳</span>
-          <p>
-            Collect moments.
-            <br />
-            Remember the places.
-          </p>
-          <small>Stored on this device</small>
-        </div>
-      </aside>
-      <main>
-        <div className="topline">
-          <span>THE TRAVEL JOURNAL</span>
-          <span className="local-label">
-            <span />
-            YOUR STORIES, KEPT CLOSE
-          </span>
-        </div>
-        {notice && (
-          <div className="notice" role="status">
-            {notice}
             <button
-              className="icon-button"
-              aria-label="Dismiss notice"
-              onClick={() => setNotice('')}
+              className="primary"
+              onClick={() => setEditor({ kind: 'visit', trip: detail_trip, visit: detail_visit })}
             >
-              <Icon name="close" size={16} />
+              <Icon name="edit" size={17} />
+              Edit check-in
             </button>
-          </div>
-        )}
-        {view === 'journal' && !selected_trip && !selected_place && (
-          <>
-            <header className="page-heading">
-              <div>
-                <p className="eyebrow">A LITTLE FURTHER, A LITTLE CLOSER</p>
-                <h1>
-                  Places pass.
-                  <br />
-                  <em>Memories stay.</em>
-                </h1>
-                <p className="lede">
-                  The places you found. The moments you kept.
-                  <br />A journal for everywhere life takes you.
-                </p>
-              </div>
-              <button className="primary" onClick={() => setEditor({ kind: 'trip' })}>
-                <Icon name="plus" size={18} />
-                New trip
-              </button>
-            </header>
-            <div className="overview-strip">
-              <Stat value={journal.trips.length} label="journeys" />
-              <Stat value={journal.check_ins.length} label="check-ins" />
-              <Stat
-                value={new Set(journal.check_ins.map((visit) => visit.place_id)).size}
-                label="places visited"
-              />
-              <Stat value={all_photos.length} label="photos kept" />
-            </div>
-            <section className="journeys">
-              <div className="section-title">
-                <h2>Your journeys</h2>
-                <span>{journal.trips.length.toString().padStart(2, '0')} CHAPTERS</span>
-              </div>
-              {journal.trips.length === 0 ? (
-                <div className="empty-journal">
-                  <div className="postmark">
-                    <Icon name="compass" size={46} />
-                    <span>
-                      GO SOMEWHERE
-                      <br />
-                      REMEMBER SOMETHING
-                    </span>
-                  </div>
-                  <h2>Your next story starts here.</h2>
-                  <p>Create a trip, check in at a place, and keep a photo of the moment.</p>
-                  <button className="text-button" onClick={() => setEditor({ kind: 'trip' })}>
-                    Start your first journey
-                    <Icon name="arrow" size={18} />
-                  </button>
-                </div>
-              ) : (
-                <div className="trip-grid">
-                  {journal.trips.map((trip, index) => {
-                    const entries = journal.check_ins.filter((visit) => visit.trip_id === trip.id);
-                    const cover = entries.flatMap((visit) => visit.photos)[0];
-                    return (
-                      <button
-                        className={`trip-card tone-${index % 4}`}
-                        key={trip.id}
-                        onClick={() => navigate('journal', trip.id)}
-                      >
-                        <div className="trip-cover">
-                          {cover ? (
-                            <Photo photo={cover} platform={platform} alt={trip.title} />
-                          ) : (
-                            <div className="cover-art">
-                              <Icon name="compass" size={70} />
-                              <span>JOURNEY {String(index + 1).padStart(2, '0')}</span>
-                            </div>
-                          )}
-                          <span className="cover-tag">{entries.length} CHECK-INS</span>
-                        </div>
-                        <div className="trip-card-body">
-                          <span className="trip-date">
-                            {formatTripDates(trip.start_date, trip.end_date)}
-                          </span>
-                          <h3>{trip.title}</h3>
-                          <p>{trip.description || 'A story waiting to unfold.'}</p>
-                          <div>
-                            <span>
-                              {new Set(entries.map((visit) => visit.place_id)).size} places explored
-                            </span>
-                            <Icon name="arrow" size={19} />
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </section>
-          </>
-        )}
-        {((view === 'journal' && selected_trip) || (view === 'places' && selected_place)) && (
-          <>
-            <button
-              className="back-link"
-              onClick={() => navigate(selected_place ? 'places' : 'journal')}
-            >
-              ← {selected_place ? 'All places' : 'All journeys'}
-            </button>
-            <header className="page-heading detail-heading">
-              <div>
-                <p className="eyebrow">
-                  {selected_place
-                    ? 'ONE PLACE, MANY MOMENTS'
-                    : formatTripDates(selected_trip!.start_date, selected_trip!.end_date)}
-                </p>
-                <h1>{selected_trip?.title ?? selected_place?.name}</h1>
-                <p className="lede">
-                  {selected_trip?.description ||
-                    selected_place?.locality ||
-                    'Make room for a few good memories.'}
-                </p>
-              </div>
-              <div className="button-row">
-                {selected_trip && (
-                  <>
-                    <button
-                      className="icon-button"
-                      aria-label="Edit trip"
-                      onClick={() => setEditor({ kind: 'trip', trip: selected_trip })}
-                    >
-                      <Icon name="edit" />
-                    </button>
-                    <button
-                      className="icon-button"
-                      aria-label="Delete trip"
-                      onClick={() => {
-                        setDeleteError('');
-                        setRemoval({ kind: 'trip', trip: selected_trip });
-                      }}
-                    >
-                      <Icon name="trash" />
-                    </button>
-                    <button
-                      className="primary"
-                      onClick={() => setEditor({ kind: 'visit', trip: selected_trip })}
-                    >
-                      <Icon name="plus" size={18} />
-                      Check in <span className="chinese">打卡</span>
-                    </button>
-                  </>
-                )}
-              </div>
-            </header>
-            <div className="timeline-toolbar">
-              <h2>The moments along the way</h2>
-              <label className="search-box">
-                <Icon name="search" size={17} />
-                <input
-                  aria-label="Search check-ins"
-                  placeholder="Find a moment…"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </label>
-            </div>
-            {visits.length === 0 ? (
-              <Empty
-                icon="pin"
-                title={search ? 'No matching moments.' : 'You’re here. Remember it.'}
-                text={
-                  search
-                    ? 'Try another place name or a word from your notes.'
-                    : 'Your check-ins will appear here, from the first stop to the last.'
-                }
-              />
-            ) : (
-              <div className="timeline">
-                {visits.map((visit, index) => (
-                  <VisitCard
-                    key={visit.id}
-                    visit={visit}
-                    place={places.get(visit.place_id)!}
-                    trip={trips.get(visit.trip_id)!}
-                    platform={platform}
-                    index={index}
-                    show_trip={Boolean(selected_place)}
-                    onEdit={() =>
-                      setEditor({ kind: 'visit', trip: trips.get(visit.trip_id)!, visit })
-                    }
-                    onDelete={() => {
-                      setDeleteError('');
-                      setRemoval({ kind: 'visit', visit });
-                    }}
-                    onPhoto={(asset) =>
-                      setOpenPhoto({ asset, caption: places.get(visit.place_id)!.name })
-                    }
-                  />
-                ))}
-              </div>
-            )}
-          </>
-        )}
-        {view === 'places' && !selected_place && (
-          <>
-            <header className="page-heading">
-              <div>
-                <p className="eyebrow">FAMILIAR NAMES, PERSONAL STORIES</p>
-                <h1>
-                  A world of <em>places.</em>
-                </h1>
-                <p className="lede">One named place can hold many different visits.</p>
-              </div>
-            </header>
-            {journal.places.length === 0 ? (
-              <Empty
-                icon="pin"
-                title="Put a place in your story."
-                text="Named places are saved when you add a check-in to a trip."
-              />
-            ) : (
-              <div className="place-grid">
-                {journal.places.map((place) => (
-                  <button
-                    className="place-card"
-                    key={place.id}
-                    onClick={() => navigate('places', null, place.id)}
-                  >
-                    <span className="place-mark">
-                      <Icon name="pin" size={25} />
-                    </span>
-                    <h2>{place.name}</h2>
-                    <p>{place.locality || 'A place to remember'}</p>
-                    <span className="coordinate-text">
-                      {place.position
-                        ? formatCoordinates(place.position)
-                        : 'No reference coordinates'}
-                    </span>
-                    <footer>
-                      <span>
-                        {journal.check_ins.filter((visit) => visit.place_id === place.id).length}{' '}
-                        visits
-                      </span>
-                      <Icon name="arrow" size={18} />
-                    </footer>
-                  </button>
-                ))}
-              </div>
-            )}
-          </>
-        )}
-        {view === 'photos' && (
-          <>
-            <header className="page-heading">
-              <div>
-                <p className="eyebrow">LITTLE WINDOWS INTO THEN</p>
-                <h1>
-                  Through <em>your eyes.</em>
-                </h1>
-                <p className="lede">The moments you brought home.</p>
-              </div>
-              <span className="count-label">{all_photos.length} PHOTOS</span>
-            </header>
-            {all_photos.length === 0 ? (
-              <Empty
-                icon="camera"
-                title="Some moments deserve a photo."
-                text="Take a photo or attach one from your library when you check in."
-              />
-            ) : (
-              <div className="photo-gallery">
-                {all_photos.map(({ asset, visit }) => (
-                  <figure key={asset.id}>
-                    <Photo
-                      photo={asset}
-                      platform={platform}
-                      alt={places.get(visit.place_id)!.name}
-                      onOpen={() =>
-                        setOpenPhoto({ asset, caption: places.get(visit.place_id)!.name })
-                      }
-                    />
-                    <figcaption>
-                      <strong>{places.get(visit.place_id)!.name}</strong>
-                      <span>{formatVisitDate(visit.visited_at, visit.utc_offset_minutes)}</span>
-                    </figcaption>
-                  </figure>
-                ))}
-              </div>
-            )}
-          </>
-        )}
-        <footer className="page-footer">
-          <span>FIELDNOTES</span>
-          <span>Every place has a story. This one is yours.</span>
-        </footer>
-      </main>
+          </footer>
+        </Dialog>
+      )}
       {editor?.kind === 'trip' && (
         <TripForm
           trip={editor.trip}
           onCancel={() => setEditor(null)}
           onSave={async (trip) => {
             await persist(upsertTrip(journal, trip));
-            setEditor(null);
-            navigate('journal', trip.id);
+            setSelectedTripId(trip.id);
+            setEditor(editor.then_check_in ? { kind: 'visit', trip } : null);
           }}
         />
       )}
@@ -556,7 +328,7 @@ export function App() {
       )}
       {removal && (
         <Dialog
-          title={removal.kind === 'trip' ? 'Delete this journey?' : 'Delete this check-in?'}
+          title={removal.kind === 'trip' ? 'Delete this trip?' : 'Delete this check-in?'}
           onDismiss={() => {
             if (!deleting) setRemoval(null);
           }}
@@ -592,130 +364,5 @@ export function App() {
         </Dialog>
       )}
     </div>
-  );
-}
-
-function Stat({ value, label }: { value: number; label: string }) {
-  return (
-    <div className="stat">
-      <strong>{String(value).padStart(2, '0')}</strong>
-      <span>{label}</span>
-    </div>
-  );
-}
-
-function Empty({ icon, title, text }: { icon: 'pin' | 'camera'; title: string; text: string }) {
-  return (
-    <div className="empty-state">
-      <span className="empty-icon">
-        <Icon name={icon} size={32} />
-      </span>
-      <h2>{title}</h2>
-      <p>{text}</p>
-    </div>
-  );
-}
-
-function VisitCard({
-  visit,
-  place,
-  trip,
-  platform,
-  index,
-  show_trip,
-  onEdit,
-  onDelete,
-  onPhoto,
-}: {
-  visit: CheckIn;
-  place: Place;
-  trip: Trip;
-  platform: TravelPlatform;
-  index: number;
-  show_trip: boolean;
-  onEdit(): void;
-  onDelete(): void;
-  onPhoto(photo: PhotoAsset): void;
-}) {
-  return (
-    <article className="visit-card">
-      <div className="timeline-stop">
-        <span>{String(index + 1).padStart(2, '0')}</span>
-      </div>
-      <div className="visit-content">
-        <header>
-          <div>
-            <p className="visit-date">
-              {formatVisitDate(visit.visited_at, visit.utc_offset_minutes)} <span>·</span>{' '}
-              {formatVisitTime(visit.visited_at, visit.utc_offset_minutes)}
-              {show_trip && (
-                <>
-                  {' '}
-                  <span>·</span> {trip.title}
-                </>
-              )}
-            </p>
-            <h3>{place.name}</h3>
-            {place.locality && <p className="muted locality">{place.locality}</p>}
-          </div>
-          <div className="button-row">
-            <button
-              className="icon-button"
-              aria-label={`Edit check-in at ${place.name}`}
-              onClick={onEdit}
-            >
-              <Icon name="edit" size={17} />
-            </button>
-            <button
-              className="icon-button"
-              aria-label={`Delete check-in at ${place.name}`}
-              onClick={onDelete}
-            >
-              <Icon name="trash" size={17} />
-            </button>
-          </div>
-        </header>
-        {visit.notes && <p className="visit-notes">{visit.notes}</p>}
-        {visit.photos.length > 0 && (
-          <div className="visit-photos">
-            {visit.photos.map((photo, i) => (
-              <Photo
-                key={photo.id}
-                photo={photo}
-                platform={platform}
-                alt={`${place.name}, photo ${i + 1}`}
-                onOpen={() => onPhoto(photo)}
-              />
-            ))}
-          </div>
-        )}
-        <div className="location-pair">
-          <div>
-            <Icon name="locate" size={17} />
-            <span>
-              <small>ACTUAL VISIT</small>
-              {visit.actual_location
-                ? formatCoordinates(visit.actual_location)
-                : 'Location not recorded'}
-              {visit.actual_location && (
-                <em>
-                  {visit.actual_location.source === 'device'
-                    ? `Device GPS${visit.actual_location.accuracy_m !== null ? ` · ±${Math.round(visit.actual_location.accuracy_m)} m` : ''}`
-                    : 'Entered manually'}
-                </em>
-              )}
-            </span>
-          </div>
-          <div>
-            <Icon name="pin" size={17} />
-            <span>
-              <small>NAMED PLACE</small>
-              {place.name}
-              {place.position && <em>{formatCoordinates(place.position)}</em>}
-            </span>
-          </div>
-        </div>
-      </div>
-    </article>
   );
 }
