@@ -46,12 +46,41 @@ Package icons are optional assets and add no manifest fields. Compatible hosts d
 Learning, and Fieldnotes through Apell's GitHub OIDC authentication. It runs only
 when manually dispatched from `main`; pushing a commit does not publish a release.
 
-Before the first run, a package owner or maintainer registers `recorder`,
-`learning`, and `travel` in the Store and configures each package's GitHub Actions
-connection with this public repository, workflow `.github/workflows/publish-apps.yml`,
-allowed ref `refs/heads/main`, and event `workflow_dispatch`. Leave the environment
-unset. Set the repository variable `APELL_STORE_URL` to the Store's canonical
-HTTPS origin. No publishing secret or operator token is needed.
+Before the first run, use a current Apell CLI with Store account commands to
+register the packages and configure their GitHub Actions connections. Replace the
+example address with the Store's canonical HTTPS origin:
+
+```sh
+apell login --store https://store.example.invalid --no-browser
+```
+
+Open the printed address, sign in with GitHub, compare the verification code,
+and approve CLI access. Login remembers the Store address. After it completes,
+register any IDs not already registered to your account:
+
+```sh
+apell package register recorder
+apell package register learning
+apell package register travel
+```
+
+As a package owner or maintainer, configure each connection:
+
+```sh
+for applet_id in recorder learning travel; do
+  apell package oidc set "$applet_id" \
+    --repo agentic-rs/apps \
+    --workflow .github/workflows/publish-apps.yml \
+    --ref refs/heads/main \
+    --event workflow_dispatch
+done
+```
+
+The explicit event permits manual runs only. Omitting `--environment` leaves the
+environment unset; `oidc set` replaces the complete connection policy. Verify a
+connection with `apell package oidc show recorder` (repeat for the other IDs).
+Set the repository variable `APELL_STORE_URL` to the same canonical HTTPS origin.
+No publishing secret or operator token is needed.
 
 The workflow pins Bun 1.3.13, Rust 1.99.0, and Apell revision
 `7517beab013e8db7364392e091ab17beb0cabccd`. Its build job installs frozen lockfiles,
