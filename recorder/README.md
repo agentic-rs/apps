@@ -53,7 +53,7 @@ Audio and metadata live in Apell’s private file area. Browser preview data liv
 
 If saving metadata fails, the app retains the pending recording and offers **Retry save**. Keep the screen open until saving succeeds. Recording drafts retain their original destination for recovery; finalized audio without known metadata is recovered as a Document.
 
-The applet declares `fs`, `audio`, and `speech` permissions. It does not declare network or shared-LLM access. All serialized app-owned field names use snake_case. Build artifacts, local environment files, downloaded models, and dependencies stay out of Git.
+The applet declares `fs`, `audio`, and `speech` permissions. It does not request `http` or `llm` permissions; downloading the transcription model uses the host's `speech` service. All serialized app-owned field names use snake_case. Build artifacts, local environment files, downloaded models, and dependencies stay out of Git.
 
 ## Verification
 

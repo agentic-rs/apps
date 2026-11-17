@@ -1,0 +1,142 @@
+name: Publish official apps
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-official-apps
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    outputs:
+      release_artifact_id: ${{ steps.release.outputs.artifact-id }}
+    env:
+      APELL_ROOT: ${{ github.workspace }}/apell
+      APELL_BIN: ${{ github.workspace }}/apell/target/release/apell
+      APELL_STORE_URL: ${{ vars.APELL_STORE_URL }}
+      RUSTUP_TOOLCHAIN: 1.99.0
+      CARGO_BUILD_JOBS: 2
+      CARGO_PROFILE_RELEASE_STRIP: symbols
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out apps
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          path: apps
+          persist-credentials: false
+      - name: Check out pinned Apell SDK and CLI
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: agentic-rs/apell
+          ref: 7517beab013e8db7364392e091ab17beb0cabccd
+          path: apell
+          persist-credentials: false
+      - name: Check store configuration
+        run: test -n "$APELL_STORE_URL"
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.13
+      - name: Set up Rust
+        run: rustup toolchain install 1.99.0 --profile minimal
+      - name: Install CLI build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends pkg-config libssl-dev clang cmake
+      - name: Install locked app dependencies
+        working-directory: apps
+        run: |
+          bun install --frozen-lockfile
+          for app in recorder learning travel; do
+            (
+              cd "$app"
+              bun ../shared/scripts/link-sdk.ts
+              bun install --frozen-lockfile
+            )
+          done
+      - name: Test all apps
+        working-directory: apps
+        run: bun run test
+      - name: Build publishing CLI
+        working-directory: apell
+        run: cargo build --locked --release -p apell-cli
+      - name: Type-check, build, and pack all apps
+        working-directory: apps
+        run: bun run pack
+      - name: Collect verified release files
+        working-directory: apps
+        run: |
+          release_dir="$RUNNER_TEMP/apell-release"
+          mkdir -p "$release_dir/bin"
+          cp "$APELL_BIN" "$release_dir/bin/apell"
+          printf '## Release candidates\n\n| App | Version | SHA-256 |\n| --- | --- | --- |\n' >> "$GITHUB_STEP_SUMMARY"
+          for app in recorder learning travel; do
+            (
+              cd "$app/artifacts"
+              sha256sum --check "$app.sha256"
+            )
+            mkdir -p "$release_dir/$app"
+            cp "$app/artifacts/$app.apel" "$app/artifacts/$app.sha256" "$app/artifacts/icon.png" "$release_dir/$app/"
+            cp "$app/dist/manifest.json" "$app/publish.json" "$release_dir/$app/"
+            version="$(jq -r '.version' "$app/dist/manifest.json")"
+            read -r digest _ < "$app/artifacts/$app.sha256"
+            printf '| %s | %s | `%s` |\n' "$app" "$version" "$digest" >> "$GITHUB_STEP_SUMMARY"
+          done
+      - name: Retain the exact release bundle
+        id: release
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: official-apps-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/apell-release/
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        app: [recorder, learning, travel]
+    env:
+      APP: ${{ matrix.app }}
+      APELL_STORE_URL: ${{ vars.APELL_STORE_URL }}
+    steps:
+      - name: Download this run's verified release bundle
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.build.outputs.release_artifact_id }}
+          path: release
+          digest-mismatch: error
+      - name: Publish with GitHub Actions identity
+        shell: bash
+        run: |
+          test -n "$APELL_STORE_URL"
+          chmod +x release/bin/apell
+          (
+            cd "release/$APP"
+            sha256sum --check "$APP.sha256"
+          )
+          release/bin/apell publish "release/$APP/$APP.apel" \
+            --store "$APELL_STORE_URL" \
+            --metadata "release/$APP/publish.json" \
+            --icon "release/$APP/icon.png" \
+            --auth github-oidc
+          version="$(jq -r '.version' "release/$APP/manifest.json")"
+          read -r digest _ < "release/$APP/$APP.sha256"
+          printf 'Published **%s %s**.\n\nSHA-256: `%s`\n' "$APP" "$version" "$digest" >> "$GITHUB_STEP_SUMMARY"

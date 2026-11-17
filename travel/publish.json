@@ -1,0 +1,4 @@
+{
+  "description": "Keep a travel journal with photo check-ins, notes, and trips. Browse your visits in Timeline and Map views, with separate recorded visit coordinates and named-place locations. Journal data stays local; the map downloads OpenStreetMap tiles for the area you view.",
+  "release_notes": "Official Apell appearance with shared light and dark themes, updated Fieldnotes artwork, and a package icon for the launcher. Includes mobile Timeline and Map views, full-screen check-in editors, and anchored trip menus."
+}
