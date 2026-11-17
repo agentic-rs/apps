@@ -94,8 +94,10 @@ attempt's files. Each job's summary records the app version and package SHA-256.
 
 Versions are immutable after publication, including listing metadata and icons.
 Update an app's `package.json` version and `publish.json` release notes before
-publishing changed content. The current `0.3.1` packages are release candidates;
-the Linux CI output becomes the definitive published bytes, since local icon
+publishing changed content. All three `0.3.1` releases were
+[published through OIDC](https://github.com/agentic-rs/apps/actions/runs/44153003294).
+Their Store packages, metadata, and icons were verified against the retained CI
+artifacts. Linux CI output is the definitive published bytes, since local icon
 rendering can vary across platforms. Retry a failed publishing job from the same
 run to reuse its retained package. A fresh build of an existing version is accepted
 only when all uploaded bytes and metadata match the existing release.
