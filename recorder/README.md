@@ -21,9 +21,9 @@ bun run pack
 
 The development server binds to loopback. The browser preview supports microphone recording, documents, channels, import, playback, persistence in IndexedDB, and sharing/download. On-device transcription is supplied by the native host and is not simulated in the preview. Browser data is separate from native applet data.
 
-Recorder uses Apell's official icon and the collection's shared light/dark theme. See the [collection README](../README.md) for refreshing the canonical artwork and host color tokens.
+Recorder owns its canonical icon in `shared/assets/recorder.svg` and uses the collection's shared light/dark theme. See the [collection README](../README.md) for artwork ownership and platform-theme updates.
 
-`bun run pack` creates `artifacts/recorder.apel` and its SHA-256 checksum. Install the package from Apell’s **+ → Install from file** flow. The stable applet ID is `recorder`; updates retain private data. Restart Apell before opening an updated applet if it had already been running.
+`bun run pack` creates `artifacts/recorder.apel`, its SHA-256 checksum, and `artifacts/icon.png` for Store reuse. The same 256 × 256 PNG is included as `icon.png` in the package. Install the package from Apell’s **+ → Install from file** flow. The stable applet ID is `recorder`; updates retain private data. Restart Apell before opening an updated applet if it had already been running.
 
 Use the bottom navigation to switch between **Documents** and **Channels**, or open **Settings** for the on-device model. Content fills the applet viewport; recording controls sit above navigation while lists, documents, and message history scroll independently.
 

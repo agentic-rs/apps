@@ -2,7 +2,8 @@
 
 - The assistant manages Git commits in this repository.
 - Maintain all official Apell apps together on `main`; each app keeps its own package and stable applet ID.
-- Use the canonical icons in `shared/assets` and the shared Apell theme. Refresh host artwork and color tokens with `bun run sync:brand` instead of creating separate app branding.
+- This repository owns each app's name, stable ID, canonical icon in `shared/assets`, and app-specific styles. Host launchers, Store listings, and websites consume these assets rather than defining replacements.
+- Apell owns platform theme tokens and host controls. Refresh only those tokens with `bun run sync:theme`; app icons must never be overwritten from the host repository.
 - For future Apell host changes, use a dedicated Git worktree of the sibling Apell repository. Keep applet and host commits in their respective repositories.
 - Never commit personal information, including usernames, email addresses, hostnames, personal absolute paths, or identifying IP addresses. Git commit author names and emails are the exception. Never commit secrets, recordings, downloaded models, or local environment files.
 - Prefer 2-space indentation and prioritize code quality over minimizing changes.

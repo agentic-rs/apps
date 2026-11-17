@@ -1,10 +1,10 @@
 {
   "name": "apell-recorder",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "type": "module",
   "scripts": {
-    "setup": "bun ../shared/scripts/link-sdk.ts && bun install",
+    "setup": "bun ../shared/scripts/setup.ts",
     "dev": "vite --host 127.0.0.1",
     "check": "tsc --noEmit",
     "build": "bun run check && vite build",

@@ -41,9 +41,9 @@ bun run pack
 
 The development server binds to loopback. A standalone browser preview supports topic creation and persistence in IndexedDB. AI is available in Apell and is not simulated in the preview. Preview data is separate from native applet data.
 
-`bun run pack` creates `artifacts/learning.apel` and `artifacts/learning.sha256`. Use Apell's **+ → Install from file** flow to install it. The stable applet ID is `learning`; updates retain its private data. Set `APELL_BIN` to a compatible packer if it is not available at the default sibling build path.
+`bun run pack` creates `artifacts/learning.apel`, `artifacts/learning.sha256`, and `artifacts/icon.png` for Store reuse. The same 256 × 256 PNG is included as `icon.png` in the package. Use Apell's **+ → Install from file** flow to install it. The stable applet ID is `learning`; updates retain its private data. Set `APELL_BIN` to a compatible packer if it is not available at the default sibling build path.
 
-Learning uses Apell's official icon and the collection's shared light/dark theme. See the [collection README](../README.md) for refreshing the canonical artwork and host color tokens. Build output, packages, dependencies, environment files, and screenshots are excluded from Git.
+Learning owns its canonical icon in `shared/assets/learning.svg` and uses the collection's shared light/dark theme. See the [collection README](../README.md) for artwork ownership and platform-theme updates. Build output, packages, dependencies, environment files, and screenshots are excluded from Git.
 
 ## Verification
 

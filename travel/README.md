@@ -32,7 +32,7 @@ bun run dev
 
 Setup links the local `@apell/sdk` through an ignored `.apell-sdk` symlink, then installs dependencies. It finds the sibling `apell` checkout from the primary Git directory, including when this app is developed in a linked worktree. Set `APELL_ROOT` to select another host checkout, or `APELL_SDK_DIR` to override only the SDK. No machine-specific paths are stored in source or the lockfile.
 
-Fieldnotes uses Apell's official icon and the collection's shared light/dark theme. See the [collection README](../README.md) for refreshing the canonical artwork and host color tokens. Map tiles and photos retain their original colors in either theme.
+Fieldnotes owns its canonical icon in `shared/assets/fieldnotes.svg` and uses the collection's shared light/dark theme. See the [collection README](../README.md) for artwork ownership and platform-theme updates. Map tiles and photos retain their original colors in either theme.
 
 The development server binds to loopback only. Browser preview uses IndexedDB for metadata and original photo files; it supports the system file picker and foreground browser geolocation. The camera button uses the device’s image capture picker where supported, otherwise the ordinary file picker. Browser data is separate from the native applet.
 
@@ -42,7 +42,7 @@ The development server binds to loopback only. Browser preview uses IndexedDB fo
 bun run pack
 ```
 
-This builds `artifacts/travel.apel` and `artifacts/travel.sha256` with the sibling host’s `target/debug/apell` packer. Set `APELL_BIN` to use another compatible packer. Install the package in Apell using **+ → Install from file**. The stable applet ID is `travel`; its display name is **Fieldnotes**.
+This builds `artifacts/travel.apel`, `artifacts/travel.sha256`, and `artifacts/icon.png` for Store reuse with the sibling host’s `target/debug/apell` packer. The same 256 × 256 PNG is included as `icon.png` in the package. Set `APELL_BIN` to use another compatible packer. Install the package in Apell using **+ → Install from file**. The stable applet ID is `travel`; its display name is **Fieldnotes**.
 
 The applet requests `fs`, `camera`, `photos`, `location`, and `http`. Network access supplies map tiles only. Camera, photo library, and location use the host’s existing iOS/Android APIs and permission prompts. Cancelling a sensor prompt leaves the draft intact. Desktop native sensor support depends on the host; manual coordinates and the browser preview remain available. No Apell host modifications are required.
 

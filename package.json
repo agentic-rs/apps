@@ -3,11 +3,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "setup": "bun run --cwd recorder setup && bun run --cwd learning setup && bun run --cwd travel setup",
+    "setup": "bun shared/scripts/setup.ts",
     "check": "bun run --cwd recorder check && bun run --cwd learning check && bun run --cwd travel check",
     "test": "bun run --cwd recorder test && bun run --cwd learning test && bun run --cwd travel test",
     "build": "bun run --cwd recorder build && bun run --cwd learning build && bun run --cwd travel build",
     "pack": "bun run --cwd recorder pack && bun run --cwd learning pack && bun run --cwd travel pack",
-    "sync:brand": "bun scripts/sync-brand.ts"
+    "sync:theme": "bun scripts/sync-theme.ts"
+  },
+  "devDependencies": {
+    "sharp": "0.35.3"
   }
 }
