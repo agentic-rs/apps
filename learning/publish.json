@@ -1,4 +1,5 @@
 {
+  "project_url": "https://github.com/agentic-rs/apps/tree/main/learning",
   "description": "Explore a topic through an AI guide, focused key points, and conversations that remember your progress. Learning saves topic notes and learning memories locally and uses the model connection you choose in Apell for AI requests.",
   "release_notes": "Official Apell appearance with shared light and dark themes, updated Learning artwork, and a package icon for the launcher. Includes mobile topic navigation, guided conversations, automatic learning memory, and buffered structured responses."
 }

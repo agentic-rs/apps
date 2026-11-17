@@ -1,4 +1,5 @@
 {
+  "project_url": "https://github.com/agentic-rs/apps/tree/main/recorder",
   "description": "Record conversations as editable documents and keep quick voice notes in channels. Import audio, listen back, transcribe on device with Apell, and share recordings or text. Audio and transcripts stay in the app's private storage.",
   "release_notes": "Official Apell appearance with shared light and dark themes, updated Recorder artwork, and a package icon for the launcher. Includes document and channel recording workflows, on-device transcription, playback, editing, and sharing."
 }
