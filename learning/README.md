@@ -29,10 +29,10 @@ Requests enforce the host's 256-message / 512 KiB limits, including provider met
 
 ## Development and packaging
 
-Keep the Apell checkout at the sibling `../../apell` path for the local SDK dependency, as with Recorder. The normal layout is `apps/learning` alongside `apell`.
+Setup discovers the sibling `apell` checkout through Git, including from linked worktrees. Set `APELL_ROOT` to select another host checkout, or `APELL_SDK_DIR` to override only the SDK. The local SDK link is ignored by Git.
 
 ```sh
-bun install
+bun run setup
 bun run dev
 bun run test
 bun run build
@@ -43,7 +43,7 @@ The development server binds to loopback. A standalone browser preview supports 
 
 `bun run pack` creates `artifacts/learning.apel` and `artifacts/learning.sha256`. Use Apell's **+ → Install from file** flow to install it. The stable applet ID is `learning`; updates retain its private data. Set `APELL_BIN` to a compatible packer if it is not available at the default sibling build path.
 
-For an applets-only worktree, use a temporary build layout with a sibling Apell checkout or symlink. Keep machine-specific paths in local commands, never in the package manifest or lockfile. Build output, packages, dependencies, environment files, and screenshots are excluded from Git.
+Learning uses Apell's official icon and the collection's shared light/dark theme. See the [collection README](../README.md) for refreshing the canonical artwork and host color tokens. Build output, packages, dependencies, environment files, and screenshots are excluded from Git.
 
 ## Verification
 

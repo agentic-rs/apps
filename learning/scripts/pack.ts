@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { hostRoot } from '../../shared/scripts/paths';
 
 const metadata = JSON.parse(await readFile('package.json', 'utf8')) as {
   version: string;
@@ -16,8 +17,7 @@ const manifest = {
 };
 await mkdir('artifacts', { recursive: true });
 await writeFile('dist/manifest.json', `${JSON.stringify(manifest, null, 2)}\n`);
-const packer =
-  process.env.APELL_BIN ?? resolve('../../apell/target/debug/apell');
+const packer = process.env.APELL_BIN ?? resolve(hostRoot(), 'target/debug/apell');
 execFileSync(packer, ['pack', 'dist', '--output', 'artifacts/learning.apel'], {
   stdio: 'inherit',
 });

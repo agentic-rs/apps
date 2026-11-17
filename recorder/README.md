@@ -7,12 +7,12 @@ Recorder keeps two kinds of audio work in one private library:
 
 New channel notes and audio imported into a channel transcribe automatically after saving. Document transcription starts when you choose **Transcribe**. Speech recognition runs on the device using the Apell host’s multilingual Whisper Tiny model. No audio is uploaded and no speech-service API key is needed.
 
-The applet requires the Apell host with `audio` and `speech` services, including long-audio transcription support. Keep a checkout at the sibling `../../apell` path, or adjust the local SDK dependency and set `APELL_BIN` to a compatible packer.
+The applet requires the Apell host with `audio` and `speech` services, including long-audio transcription support. Setup discovers the sibling `apell` checkout through Git, including from linked worktrees. Set `APELL_ROOT` to select another host checkout, or use `APELL_SDK_DIR` and `APELL_BIN` to override the SDK and packer separately.
 
 ## Develop and package
 
 ```sh
-bun install
+bun run setup
 bun run dev
 bun run test
 bun run build
@@ -20,6 +20,8 @@ bun run pack
 ```
 
 The development server binds to loopback. The browser preview supports microphone recording, documents, channels, import, playback, persistence in IndexedDB, and sharing/download. On-device transcription is supplied by the native host and is not simulated in the preview. Browser data is separate from native applet data.
+
+Recorder uses Apell's official icon and the collection's shared light/dark theme. See the [collection README](../README.md) for refreshing the canonical artwork and host color tokens.
 
 `bun run pack` creates `artifacts/recorder.apel` and its SHA-256 checksum. Install the package from Apell’s **+ → Install from file** flow. The stable applet ID is `recorder`; updates retain private data. Restart Apell before opening an updated applet if it had already been running.
 

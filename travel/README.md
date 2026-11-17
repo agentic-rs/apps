@@ -30,7 +30,9 @@ bun run setup
 bun run dev
 ```
 
-Setup links the local `@apell/sdk` through an ignored `.apell-sdk` symlink, then installs dependencies. It finds the sibling `apell` checkout from the primary Git directory, including when this app is developed in a linked worktree. To select another checkout, set `APELL_SDK_DIR` to its `packages/applet-sdk` directory before running setup. No machine-specific paths are stored in source or the lockfile.
+Setup links the local `@apell/sdk` through an ignored `.apell-sdk` symlink, then installs dependencies. It finds the sibling `apell` checkout from the primary Git directory, including when this app is developed in a linked worktree. Set `APELL_ROOT` to select another host checkout, or `APELL_SDK_DIR` to override only the SDK. No machine-specific paths are stored in source or the lockfile.
+
+Fieldnotes uses Apell's official icon and the collection's shared light/dark theme. See the [collection README](../README.md) for refreshing the canonical artwork and host color tokens. Map tiles and photos retain their original colors in either theme.
 
 The development server binds to loopback only. Browser preview uses IndexedDB for metadata and original photo files; it supports the system file picker and foreground browser geolocation. The camera button uses the device’s image capture picker where supported, otherwise the ordinary file picker. Browser data is separate from the native applet.
 

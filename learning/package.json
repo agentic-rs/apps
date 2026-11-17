@@ -1,9 +1,10 @@
 {
   "name": "apell-learning",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "scripts": {
+    "setup": "bun ../shared/scripts/link-sdk.ts && bun install",
     "dev": "vite --host 127.0.0.1",
     "check": "tsc --noEmit",
     "build": "bun run check && vite build",
@@ -12,7 +13,7 @@
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
-    "@apell/sdk": "file:../../apell/packages/applet-sdk",
+    "@apell/sdk": "file:./.apell-sdk",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

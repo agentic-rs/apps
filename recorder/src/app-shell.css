@@ -9,7 +9,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: #fcfdfb;
+  background: var(--apell-surface);
 }
 .app:not(.native-app) {
   padding-top: env(safe-area-inset-top);
@@ -36,7 +36,7 @@
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  background: #fbfcf7;
+  background: var(--apell-canvas);
 }
 .workspace-content {
   min-width: 0;
@@ -49,7 +49,7 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: #f0f4f1;
+  background: var(--apell-subtle);
 }
 .library {
   display: flex;
@@ -57,8 +57,8 @@
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
-  background: #fcfdfb;
-  border-right: 1px solid #dfe8e2;
+  background: var(--apell-surface);
+  border-right: 1px solid var(--apell-line);
 }
 .library-heading {
   display: flex;
@@ -92,8 +92,8 @@
   gap: 12px;
   min-height: 68px;
   padding: 9px 16px;
-  background: #fcfdfb;
-  border-top: 1px solid #dfe8e2;
+  background: var(--apell-surface);
+  border-top: 1px solid var(--apell-line);
 }
 .document-composer:not(.is-recording) .dock-label {
   display: none;
@@ -117,8 +117,8 @@
   justify-content: center;
   gap: 4px;
   padding: 6px 12px max(6px, env(safe-area-inset-bottom));
-  border-top: 1px solid #dfe8e2;
-  background: #fcfdfb;
+  border-top: 1px solid var(--apell-line);
+  background: var(--apell-surface);
 }
 .native-app .bottom-navigation {
   padding-bottom: 6px;
@@ -137,15 +137,15 @@
   border: 0;
   border-radius: 10px;
   background: transparent;
-  color: #68796e;
+  color: var(--apell-muted);
   font-size: 11px;
   font-weight: 500;
 }
 .bottom-navigation > button:enabled:hover {
-  background: #f0f5ef;
+  background: var(--apell-subtle);
 }
 .bottom-navigation > button.active {
-  color: #226149;
+  color: var(--apell-primary);
   font-weight: 650;
 }
 .nav-icon {
@@ -158,13 +158,13 @@
   border-radius: 12px;
 }
 .bottom-navigation .active .nav-icon {
-  background: #e2efe5;
+  background: var(--apell-selection);
 }
 .nav-icon .status-dot {
   position: absolute;
   top: 2px;
   right: 5px;
-  outline: 2px solid #fcfdfb;
+  outline: 2px solid var(--apell-surface);
 }
 @media (max-width: 700px) {
   .workspace {

@@ -12,6 +12,7 @@ import { MapView } from './components/MapView';
 import { TripsDialog } from './components/TripsDialog';
 import { TripFilter } from './components/TripFilter';
 import { VisitCard } from './components/VisitCard';
+import fieldnotes_icon from '../../shared/assets/fieldnotes.svg';
 
 type Editor =
   | { kind: 'trip'; trip?: Trip; then_check_in?: boolean }
@@ -134,9 +135,7 @@ export function App() {
   if (loading || load_error || !platform)
     return (
       <div className="startup">
-        <span className="brand-symbol">
-          <Icon name="compass" size={30} />
-        </span>
+        <img className="brand-symbol" src={fieldnotes_icon} alt="" />
         <h1>Fieldnotes</h1>
         {load_error ? (
           <>
@@ -155,7 +154,10 @@ export function App() {
   return (
     <div className={`app-shell${platform.native ? ' native' : ''}`}>
       <header className="view-header">
-        <h1>{view === 'timeline' ? 'Timeline' : 'Map'}</h1>
+        <div className="view-title">
+          <img className="brand-symbol" src={fieldnotes_icon} alt="" />
+          <h1>{view === 'timeline' ? 'Timeline' : 'Map'}</h1>
+        </div>
         <TripFilter
           trips={journal.trips}
           selected_trip_id={selected_trip_id}

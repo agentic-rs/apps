@@ -1,8 +1,8 @@
 /* Channels use a fixed conversation shell with their own scrolling history. */
 .app.channel-mode {
-  --chat-accent: #286b57;
-  --chat-muted: #60766c;
-  --chat-line: #dfe8e2;
+  --chat-accent: var(--apell-primary);
+  --chat-muted: var(--apell-muted);
+  --chat-line: var(--apell-line);
 }
 .channel-mode .library-heading h2 {
   font-size: 18px;
@@ -18,14 +18,14 @@
   color: var(--chat-accent);
   border: 0;
   border-radius: 50%;
-  background: #eaf2ec;
+  background: var(--apell-primary-soft);
 }
 .channel-mode .search {
   margin: 0 16px 12px;
   padding: 12px;
   border: 0;
   border-radius: 10px;
-  background: #f0f3ef;
+  background: var(--apell-subtle);
 }
 .channel-mode .search input {
   font-size: 14px;
@@ -38,19 +38,19 @@
 }
 .channel-item.selected {
   border-color: transparent;
-  background: #eaf3ec;
+  background: var(--apell-selection);
   box-shadow: none;
 }
 .channel-item:enabled:hover {
-  background: #f0f5ef;
+  background: var(--apell-subtle);
 }
 .channel-art,
 .channel-item.selected .channel-art {
   width: 46px;
   height: 46px;
   border-radius: 16px;
-  background: #e0eee4;
-  color: #39775f;
+  background: var(--apell-primary-soft);
+  color: var(--apell-primary);
 }
 .channel-item .recording-summary {
   flex: 1;
@@ -123,7 +123,7 @@
   min-height: 76px;
   padding: 12px 22px;
   border-bottom: 1px solid var(--chat-line);
-  background: #fcfdfb;
+  background: var(--apell-surface);
 }
 .channel-avatar {
   display: flex;
@@ -134,7 +134,7 @@
   height: 42px;
   border-radius: 15px;
   color: var(--chat-accent);
-  background: #e0eee4;
+  background: var(--apell-primary-soft);
 }
 .channel-heading {
   flex: 1;
@@ -171,7 +171,7 @@
   gap: 9px;
   padding: 12px 18px;
   border-bottom: 1px solid var(--chat-line);
-  background: #fcfdfb;
+  background: var(--apell-surface);
 }
 .channel-rename label {
   flex: 1;
@@ -204,19 +204,19 @@
 .timeline-date > span {
   padding: 6px 11px;
   border-radius: 20px;
-  background: #e5ece6;
+  background: var(--apell-subtle);
 }
 .clip-card {
   width: min(88%, 520px);
   margin: 0 0 12px auto;
   padding: 12px 14px 4px;
-  border: 1px solid #cfe5d6;
+  border: 1px solid var(--apell-line);
   border-radius: 18px 18px 4px 18px;
-  background: #e0f1e6;
-  box-shadow: 0 1px 2px #203c2c05;
+  background: var(--apell-primary-soft);
+  box-shadow: 0 1px 2px var(--apell-shadow);
 }
 .clip-source {
-  color: #496d59;
+  color: var(--apell-muted);
   font-size: 12px;
   font-weight: 500;
   overflow: hidden;
@@ -237,12 +237,12 @@
   background: var(--chat-accent);
 }
 .player-compact .play-button:enabled:hover {
-  background: #1f5646;
+  background: var(--apell-primary-hover);
 }
 .player-compact .icon-button {
   min-width: 44px;
   min-height: 44px;
-  color: #4a735c;
+  color: var(--apell-primary);
 }
 .player-compact .player-track input {
   height: 24px;
@@ -250,11 +250,11 @@
   accent-color: var(--chat-accent);
 }
 .player-compact .player-time {
-  color: #4b705d;
+  color: var(--apell-muted);
   font-size: 11px;
 }
 .clip-text > p {
-  color: #294838;
+  color: var(--apell-text);
   font-size: 15px;
   line-height: 1.6;
   white-space: pre-wrap;
@@ -266,9 +266,9 @@
   min-height: 112px;
   resize: vertical;
   padding: 10px;
-  border: 1px solid #a9cbb6;
+  border: 1px solid var(--apell-control-line);
   border-radius: 8px;
-  background: #f8fcf9;
+  background: var(--apell-surface);
   font-size: 16px;
   line-height: 1.5;
 }
@@ -280,7 +280,7 @@
   flex-wrap: wrap;
 }
 .clip-text-actions > span {
-  color: #567560;
+  color: var(--apell-muted);
   font-size: 11px;
   margin-right: auto;
 }
@@ -288,7 +288,7 @@
 .clip-meta .icon-button {
   min-height: 44px;
   min-width: 44px;
-  color: #4b705d;
+  color: var(--apell-muted);
   font-size: 12px;
   justify-content: center;
 }
@@ -298,7 +298,7 @@
   align-items: center;
   gap: 8px;
   min-height: 32px;
-  color: #567560;
+  color: var(--apell-muted);
   font-size: 11px;
 }
 .clip-language {
@@ -319,7 +319,7 @@
 .transcription-compact .text-button {
   min-height: 44px;
   font-size: 12px;
-  color: #416b55;
+  color: var(--apell-primary);
 }
 .transcription-compact .queue-status {
   background: transparent;
@@ -327,17 +327,17 @@
   padding: 6px 0 0;
 }
 .transcription-compact .queue-status.queue-error {
-  background: #fff3e7;
+  background: var(--apell-warning-soft);
   padding: 10px;
 }
 .transcription-compact .queue-status-line strong {
   font-size: 12px;
-  color: #45654f;
+  color: var(--apell-text);
 }
 .transcription-compact .queue-status > p {
   font-size: 12px;
   line-height: 1.5;
-  color: #567560;
+  color: var(--apell-muted);
 }
 .clip-card .save-bar {
   flex-wrap: wrap;
@@ -363,13 +363,13 @@
   height: 52px;
   margin-bottom: 14px;
   border-radius: 18px;
-  background: #e0eae2;
-  color: #5b806b;
+  background: var(--apell-primary-soft);
+  color: var(--apell-primary);
 }
 .channel-empty h3 {
   font-size: 16px;
   font-weight: 600;
-  color: #385e49;
+  color: var(--apell-text);
 }
 .channel-empty p {
   font-size: 13px;
@@ -391,15 +391,15 @@
   min-width: 44px;
   min-height: 44px;
   border: 0;
-  background: #f0f4ef;
-  color: var(--chat-accent, #286b57);
+  background: var(--apell-subtle);
+  color: var(--chat-accent);
 }
 .channel-composer .composer-copy {
   flex: 1;
   min-width: 0;
 }
 .channel-composer .dock-label strong {
-  color: #42624f;
+  color: var(--apell-text);
   font-size: 13px;
   line-height: 1.4;
   overflow: hidden;
@@ -415,7 +415,7 @@
   font-size: 11px;
   line-height: 1.4;
   margin-top: 3px;
-  color: #64776a;
+  color: var(--apell-muted);
 }
 .channel-composer .composer-record {
   width: 50px;
@@ -423,11 +423,11 @@
   height: 50px;
   padding: 0;
   border: 0;
-  background: var(--chat-accent, #286b57);
+  background: var(--recording);
   box-shadow: none;
 }
 .channel-composer .composer-record:enabled:hover {
-  background: #1f5646;
+  background: var(--recording-hover);
 }
 .channel-composer.is-recording {
   flex-wrap: wrap;

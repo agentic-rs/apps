@@ -42,6 +42,7 @@ const server = createServer(async (request, response) => {
           '.html': 'text/html',
           '.js': 'text/javascript',
           '.css': 'text/css',
+          '.svg': 'image/svg+xml',
         } as Record<string, string>
       )[extname(path)] ?? 'application/octet-stream',
     );
@@ -211,6 +212,8 @@ try {
                 image_input: 'unknown',
                 pdf_input: 'unknown',
                 audio_input: 'unknown',
+                image_output: 'unknown',
+                audio_output: 'unknown',
               },
             });
           else if (method === 'llm.cancel') {
@@ -255,6 +258,7 @@ try {
               request_id: params.request_id,
               content,
               tool_calls: [],
+              media: [],
               status: 'completed',
               finish_reason: 'stop',
               provenance,
@@ -402,6 +406,15 @@ try {
     'undefined',
   );
   assert.equal(await native_frame.evaluate(() => innerHeight), 788);
+  await frame
+    .locator('.app-icon')
+    .evaluate((element: HTMLImageElement) => element.decode());
+  assert.ok(
+    await frame
+      .locator('.app-icon')
+      .evaluate((element: HTMLImageElement) => element.naturalWidth > 0),
+    'Official Learning icon must load inside the applet sandbox',
+  );
   await page.screenshot({
     path: resolve(output_root, 'topics-empty-mobile.png'),
   });

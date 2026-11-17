@@ -1,4 +1,5 @@
 import { Icon } from './Icon';
+import recorder_icon from '../../../shared/assets/recorder.svg';
 
 export function WorkspaceWelcome({ mode, native }: { mode: 'document' | 'clip'; native: boolean }) {
   const channels = mode === 'clip';
@@ -8,7 +9,7 @@ export function WorkspaceWelcome({ mode, native }: { mode: 'document' | 'clip'; 
         <span />
         <span />
         <div>
-          <Icon name={channels ? 'chat' : 'text'} size={45} />
+          <img src={recorder_icon} alt="" />
         </div>
       </div>
       <p className="eyebrow">

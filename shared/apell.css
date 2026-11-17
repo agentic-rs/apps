@@ -1,0 +1,52 @@
+/* Shared official applet theme. Host tokens are synced from Apell's src/styles.css. */
+@import './host-tokens.css';
+
+:root {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color-scheme: light dark;
+  color: var(--apell-text);
+  background: var(--apell-canvas);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+  --apell-primary: var(--apell-applet-icon-background);
+  --apell-primary-hover: #574767;
+  --apell-primary-ink: var(--apell-applet-icon-foreground);
+  --apell-primary-soft: var(--apell-selection);
+  --apell-danger-soft: #faeae6;
+  --apell-success: var(--apell-badge-text);
+  --apell-success-soft: var(--apell-badge);
+  --apell-warning: #805020;
+  --apell-warning-soft: #fff0dc;
+  --apell-info: var(--apell-badge-text);
+  --apell-info-soft: var(--apell-badge);
+  --apell-overlay: var(--apell-scrim);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --apell-primary: #bca6d0;
+    --apell-primary-hover: #cfbce0;
+    --apell-primary-ink: #211c2b;
+    --apell-danger-soft: #4b2d30;
+    --apell-warning: #f1c18a;
+    --apell-warning-soft: #463523;
+  }
+}
+
+::selection {
+  color: var(--apell-text);
+  background: var(--apell-selection);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

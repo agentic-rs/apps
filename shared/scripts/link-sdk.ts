@@ -10,8 +10,9 @@ if (metadata.name !== '@apell/sdk') throw new Error('APELL_SDK_DIR must point to
 const link = resolve('.apell-sdk');
 try {
   const stat = await lstat(link);
-  if (!stat.isSymbolicLink())
+  if (!stat.isSymbolicLink()) {
     throw new Error('The SDK link is occupied by a regular file or folder.');
+  }
   if ((await realpath(link).catch(() => '')) !== target) await unlink(link);
 } catch (error) {
   if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;

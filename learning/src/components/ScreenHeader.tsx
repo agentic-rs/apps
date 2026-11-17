@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import learning_icon from '../../../shared/assets/learning.svg';
 import { Icon } from './Icon';
 
 export function ScreenHeader({
@@ -29,7 +30,13 @@ export function ScreenHeader({
           <span>{back_label ?? 'Back'}</span>
         </button>
       ) : (
-        <span className="nav-spacer" />
+        <img
+          className="app-icon"
+          src={learning_icon}
+          alt="Learning"
+          width={36}
+          height={36}
+        />
       )}
       <div className="navigation-title">
         <h1 title={title}>{title}</h1>

@@ -37,6 +37,8 @@ const configuration: LlmConfiguration = {
     image_input: 'unknown',
     pdf_input: 'unknown',
     audio_input: 'unknown',
+    image_output: 'unknown',
+    audio_output: 'unknown',
   },
 };
 const plan_text = JSON.stringify({
@@ -107,6 +109,7 @@ function completed(
     request_id: request.request_id!,
     content,
     tool_calls: [],
+    media: [],
     message: { role: 'assistant', content },
     status: 'completed',
     finish_reason: 'stop',

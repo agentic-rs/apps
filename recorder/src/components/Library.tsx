@@ -4,6 +4,7 @@ import type { RecorderController } from '../lib/useRecorder';
 import { formatTime } from '../lib/recordings';
 import { Icon } from './Icon';
 import { transcriptionLabel } from './TranscriptionStatus';
+import recorder_icon from '../../../shared/assets/recorder.svg';
 
 export function Library({
   controller,
@@ -79,7 +80,8 @@ export function Library({
   return (
     <aside className="library" aria-label={channel_mode ? 'Channels' : 'Documents'}>
       <div className="library-heading">
-        <div>
+        <div className="library-identity">
+          <img src={recorder_icon} alt="" className="app-icon" />
           <h2>
             {channel_mode ? 'Channels' : 'Documents'}{' '}
             <span>{channel_mode ? controller.channels.length : documents.length}</span>

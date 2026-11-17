@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { hostRoot } from './paths';
+import { hostRoot } from '../../shared/scripts/paths';
 
 const metadata = JSON.parse(await readFile('package.json', 'utf8')) as { version: string };
 const manifest = {
