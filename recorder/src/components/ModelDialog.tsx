@@ -1,35 +1,27 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import type { RecorderController } from '../lib/useRecorder';
 import type { SpeechSettings } from '../lib/types';
 import { errorMessage } from '../lib/library';
 import { formatBytes } from '../lib/recordings';
 import { Icon } from './Icon';
+import { ActionDialog } from './ActionDialog';
 
 export function ModelDialog({
   controller,
-  open,
   onClose,
 }: {
   controller: RecorderController;
-  open: boolean;
   onClose: () => void;
 }) {
-  const dialog = useRef<HTMLDialogElement>(null);
-  const [provider, setProvider] = useState<SpeechSettings['provider']>('downloaded');
-  const [api, setApi] = useState<Extract<SpeechSettings, { provider: 'api' }> | null>(null);
+  const { speech, speech_settings } = controller;
+  const [provider, setProvider] = useState(speech_settings.provider);
+  const [api, setApi] = useState<Extract<SpeechSettings, { provider: 'api' }> | null>(
+    speech_settings.provider === 'api' ? speech_settings : null,
+  );
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const requesting = useRef(false);
-  const { speech, speech_settings } = controller;
   const native = controller.platform?.native;
-  useEffect(() => {
-    if (open) {
-      setProvider(speech_settings.provider);
-      setApi(speech_settings.provider === 'api' ? speech_settings : null);
-      setError('');
-      if (!dialog.current?.open) dialog.current?.showModal();
-    } else if (dialog.current?.open) dialog.current.close();
-  }, [open, speech_settings]);
   const withSettings = async (action: () => Promise<void>) => {
     if (requesting.current) return;
     requesting.current = true;
@@ -55,21 +47,21 @@ export function ModelDialog({
         (api.connection_id !== speech_settings.connection_id ||
           api.model_id !== speech_settings.model_id)));
   return (
-    <dialog
-      ref={dialog}
+    <ActionDialog
+      title="Transcription"
       className="model-dialog"
-      onCancel={onClose}
-      onClose={onClose}
-      aria-labelledby="model-title"
+      onCancel={() => {
+        if (!saving) onClose();
+      }}
     >
       <button
         className="icon-button dialog-close"
         aria-label="Close transcription settings"
+        disabled={saving}
         onClick={onClose}
       >
         <Icon name="close" />
       </button>
-      <h2 id="model-title">Transcription</h2>
       <label className="language-select speech-provider">
         <span>Speech recognition</span>
         <select
@@ -188,6 +180,6 @@ export function ModelDialog({
           {saving ? 'Saving…' : 'Use this recognizer'}
         </button>
       )}
-    </dialog>
+    </ActionDialog>
   );
 }

@@ -160,6 +160,7 @@ export function App() {
           <button
             onClick={() => setModelOpen(true)}
             aria-label="Transcription settings"
+            disabled={!controller.platform}
             aria-haspopup="dialog"
             aria-expanded={model_open}
             title="Transcription settings"
@@ -183,11 +184,7 @@ export function App() {
             }}
           />
         )}
-        <ModelDialog
-          controller={controller}
-          open={model_open}
-          onClose={() => setModelOpen(false)}
-        />
+        {model_open && <ModelDialog controller={controller} onClose={() => setModelOpen(false)} />}
       </div>
     </div>
   );

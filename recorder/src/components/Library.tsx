@@ -30,8 +30,10 @@ export function Library({
   const shown_channels = controller.channels
     .filter((channel) => channel.title.toLowerCase().includes(query.toLowerCase()))
     .sort((left, right) => {
-      const a = controller.channel_notes.get(left.id)?.at(-1);
-      const b = controller.channel_notes.get(right.id)?.at(-1);
+      const left_notes = controller.channel_notes.get(left.id);
+      const right_notes = controller.channel_notes.get(right.id);
+      const a = left_notes?.[left_notes.length - 1];
+      const b = right_notes?.[right_notes.length - 1];
       const a_time = a ? Date.parse(noteTime(a)) : -Infinity;
       const b_time = b ? Date.parse(noteTime(b)) : -Infinity;
       return b_time - a_time || left.title.localeCompare(right.title);
@@ -105,7 +107,7 @@ export function Library({
             shown_channels.map((channel) => {
               const notes = controller.channel_notes.get(channel.id);
               const count = notes?.length ?? 0;
-              const latest = notes?.at(-1);
+              const latest = notes?.[count - 1];
               const date = latest ? new Date(noteTime(latest)) : null;
               return (
                 <button

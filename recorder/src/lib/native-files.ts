@@ -29,7 +29,7 @@ export async function listNativeFiles(
     if (
       typeof page.next_cursor !== 'string' ||
       !page.next_cursor ||
-      page.entries.at(-1)?.name !== page.next_cursor ||
+      page.entries[page.entries.length - 1]?.name !== page.next_cursor ||
       seen.has(page.next_cursor)
     )
       throw new Error('The host returned an invalid directory cursor.');

@@ -300,7 +300,7 @@ export function createBrowserPlatform(): RecorderPlatform {
         current.onstop = () => {
           if (!path) return;
           const blob = new Blob(chunks, { type: current.mimeType || 'audio/webm' });
-          const extension = path.split('.').at(-1) ?? 'webm';
+          const extension = path.split('.').pop() ?? 'webm';
           void storage
             .saveAudio(
               {

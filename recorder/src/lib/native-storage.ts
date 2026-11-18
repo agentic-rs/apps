@@ -91,7 +91,7 @@ export function createNativeStore(fs: NativeFileSystem): RecordingStore {
   ): Promise<T[]> => {
     const rows: T[] = [];
     for (const file of await walk(root)) {
-      const name = file.path.split('/').at(-1)!;
+      const name = file.path.split('/').pop()!;
       if (!/^[a-zA-Z0-9-]+\.json$/.test(name)) continue;
       const row = parse(await readJson(file.path));
       if (`${row.id}.json` !== name) throw new Error('Saved metadata has an invalid identity.');
@@ -128,8 +128,8 @@ export function createNativeStore(fs: NativeFileSystem): RecordingStore {
     };
     const files = await walk('recordings');
     return files.flatMap((file) => {
-      const name = file.path.split('/').at(-1)!;
-      const extension = name.split('.').at(-1)?.toLowerCase() ?? '';
+      const name = file.path.split('/').pop()!;
+      const extension = name.split('.').pop()?.toLowerCase() ?? '';
       const mime_type = mime_types[extension];
       return mime_type
         ? [{ ...file, file_name: `Recovered recording.${extension}`, mime_type, duration_ms: 0 }]
@@ -157,7 +157,7 @@ export function createNativeStore(fs: NativeFileSystem): RecordingStore {
         // Audio first: failed removal keeps metadata available for a retry.
         await removeIfPresent(recording.path);
         for (const file of await walk(legacy_root)) {
-          if (file.path.split('/').at(-1) === `${recording.id}.json`) await fs.remove(file.path);
+          if (file.path.split('/').pop() === `${recording.id}.json`) await fs.remove(file.path);
         }
         await removeIfPresent(nativeMetadataPath('recordings', recording.id));
         await clearCapture(recording.id);

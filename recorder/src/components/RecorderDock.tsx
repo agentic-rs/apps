@@ -20,6 +20,9 @@ export function RecorderDock({
   const destination = channel_mode ? (channel?.title ?? 'a channel') : 'a new document';
   const compose = channel_mode && channel && !active;
   const text = channel ? (controller.text_drafts.get(channel.id) ?? '') : '';
+  const sendText = () => {
+    if (channel && !locked && text.trim()) void controller.sendTextNote(channel.id);
+  };
   const field = useRef<HTMLTextAreaElement>(null);
   useLayoutEffect(() => {
     const input = field.current;
@@ -91,7 +94,7 @@ export function RecorderDock({
           className="channel-text-composer"
           onSubmit={(event) => {
             event.preventDefault();
-            if (!locked && text.trim()) void controller.sendTextNote(channel.id);
+            sendText();
           }}
         >
           <textarea
@@ -111,7 +114,7 @@ export function RecorderDock({
                 event.nativeEvent.keyCode !== 229
               ) {
                 event.preventDefault();
-                event.currentTarget.form?.requestSubmit();
+                sendText();
               }
             }}
           />

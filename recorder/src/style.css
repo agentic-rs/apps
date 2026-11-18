@@ -698,6 +698,10 @@ progress::-moz-progress-bar {
   background: var(--apell-scrim);
   backdrop-filter: blur(4px);
 }
+.action-dialog + .backdrop,
+.model-dialog + .backdrop {
+  background: var(--apell-scrim);
+}
 .action-dialog {
   width: min(380px, calc(100% - 32px));
   max-height: calc(100% - 32px);
