@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'bun:test';
-import { IDBFactory } from 'fake-indexeddb';
+import { describe, expect, spyOn, test } from 'bun:test';
+import { IDBFactory, IDBObjectStore } from 'fake-indexeddb';
 import { createBrowserStorage } from '../src/lib/browser-storage';
 import { emptyJournal } from '../src/lib/model';
 import { createBrowserPlatform } from '../src/lib/platform';
@@ -117,6 +117,52 @@ describe('browser journal storage', () => {
     await expect(storage.readPhoto(photo)).rejects.toThrow('missing');
   });
 
+  test('commits only referenced draft photos with the journal and retries an aborted batch', async () => {
+    const factory = new IDBFactory();
+    const storage = createBrowserStorage(factory, 'staging');
+    const reopened = createBrowserStorage(factory, 'staging');
+    const extra = { ...photo, id: 'extra', path: 'images/extra.png' };
+    await storage.load();
+    storage.stagePhoto(photo, blob);
+    storage.stagePhoto(extra, blob);
+    expect(await storage.readPhoto(photo)).toBe(blob);
+    await expect(reopened.readPhoto(photo)).rejects.toThrow('missing');
+    const journal = journalWithTrip();
+    journal.check_ins.push({
+      id: 'event',
+      title: 'Morning',
+      trip_id: journal.trips[0].id,
+      place_id: null,
+      visited_at: timestamp,
+      utc_offset_minutes: 0,
+      actual_location: null,
+      notes: '',
+      photos: [photo],
+      created_at: timestamp,
+      updated_at: timestamp,
+    });
+    // Fail the snapshot update after the transaction has added its photo.
+    const put = spyOn(IDBObjectStore.prototype, 'put').mockImplementationOnce(() => {
+      throw new DOMException('Test storage is full.', 'QuotaExceededError');
+    });
+    try {
+      await expect(storage.save(journal)).rejects.toThrow('storage is full');
+    } finally {
+      put.mockRestore();
+    }
+    expect(await reopened.load()).toEqual(emptyJournal());
+    await expect(reopened.readPhoto(photo)).rejects.toThrow('missing');
+    expect(await storage.readPhoto(photo)).toBe(blob);
+    await Promise.all([storage.save(journal), storage.save(journal)]);
+    expect(await reopened.load()).toEqual(journal);
+    expect(await (await reopened.readPhoto(photo)).text()).toBe(await blob.text());
+    await expect(reopened.readPhoto(extra)).rejects.toThrow('missing');
+    await storage.removePhoto(extra);
+    await expect(storage.readPhoto(extra)).rejects.toThrow('missing');
+    await reopened.removePhoto(photo);
+    await expect(storage.readPhoto(photo)).rejects.toThrow('missing');
+  });
+
   test('rejects mismatched photo bytes and unsafe paths', async () => {
     const storage = createBrowserStorage(new IDBFactory(), 'bad-photos');
     await expect(
@@ -139,6 +185,7 @@ describe('browser journal storage', () => {
       expect(imported?.mime_type).toBe('image/jpeg');
       expect(imported?.path).toMatch(/^images\/.+\.jpg$/);
       expect(await (await platform.readPhoto(imported!)).text()).toBe('photo-data');
+      await expect(createBrowserPlatform().readPhoto(imported!)).rejects.toThrow('missing');
       await expect(
         platform.importPhoto(new File(['<svg/>'], 'image.svg', { type: 'image/svg+xml' })),
       ).rejects.toThrow('Choose a');

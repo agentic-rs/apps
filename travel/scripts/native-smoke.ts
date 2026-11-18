@@ -3,6 +3,8 @@ import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { firefox, type Browser, type Locator, type Page } from 'playwright-core';
+import sharp from 'sharp';
+import type { LlmRequest } from '@apell/sdk';
 import type { Journal } from '../src/lib/types';
 
 // No device APIs or existing journal data are accessed. The real production
@@ -51,11 +53,31 @@ const files = new Map<string, number[]>();
 const directories = new Set<string>();
 const calls: string[] = [];
 const http_urls: string[] = [];
+const event_images: number[][] = [];
+const title_requests: LlmRequest[] = [];
+const model_target = { connection_id: 'smoke-provider', model_id: 'smoke-model' };
 let photo_bytes: number[] = [];
 let cancel_photo = true;
 let cancel_location = true;
 let fail_next_write = false;
 let image_sequence = 0;
+
+async function eventImage(local_time: string, latitude: number): Promise<number[]> {
+  const bytes = await sharp({ create: { width: 16, height: 12, channels: 3, background: 'navy' } })
+    .withExif({
+      IFD0: { ImageDescription: 'PRIVATE-SYNTHETIC-CAPTION' },
+      IFD2: { DateTimeOriginal: local_time, OffsetTimeOriginal: '+02:00' },
+      IFD3: {
+        GPSLatitudeRef: 'N',
+        GPSLatitude: `${latitude}/1 0/1 0/1`,
+        GPSLongitudeRef: 'E',
+        GPSLongitude: '34/1 0/1 0/1',
+      },
+    })
+    .jpeg()
+    .toBuffer();
+  return [...bytes];
+}
 
 function hostCall(request: BridgeRequest): unknown {
   const { method, params } = request;
@@ -109,9 +131,50 @@ function hostCall(request: BridgeRequest): unknown {
         cancel_photo = false;
         return null;
       }
-      const image_path = `images/native-photo-${++image_sequence}.png`;
-      files.set(image_path, [...photo_bytes]);
-      return { path: image_path, mime_type: 'image/png', size_bytes: photo_bytes.length };
+      const event_image = method === 'photos.pick' ? event_images.shift() : undefined;
+      const bytes = event_image ?? photo_bytes;
+      const image_path = `images/native-photo-${++image_sequence}.${event_image ? 'jpg' : 'png'}`;
+      files.set(image_path, [...bytes]);
+      return {
+        path: image_path,
+        mime_type: event_image ? 'image/jpeg' : 'image/png',
+        size_bytes: bytes.length,
+      };
+    }
+    case 'llm.config':
+      return {
+        ...model_target,
+        mode: 'provider',
+        provider_id: 'fixture',
+        provider_name: 'Smoke fixture',
+      };
+    case 'llm.generate': {
+      const generation = params as unknown as LlmRequest;
+      title_requests.push(generation);
+      const input = JSON.parse(String(generation.messages[1]?.content));
+      const failed = title_requests.length === 1;
+      const content = failed
+        ? ''
+        : input.local_time === '2026-06-10T19:30'
+          ? 'June evening'
+          : 'Evening stop';
+      return {
+        request_id: generation.request_id,
+        status: failed ? 'failed' : 'completed',
+        message: failed ? null : { role: 'assistant', content },
+        content,
+        finish_reason: failed ? null : 'stop',
+        provenance: {
+          connection_id: model_target.connection_id,
+          requested_model_id: model_target.model_id,
+          model_id: model_target.model_id,
+        },
+        tool_calls: [],
+        media: [],
+        error: failed
+          ? { code: 'test_error', message: 'Simulated title service failure', retryable: true }
+          : null,
+      };
     }
     case 'location.current': {
       if (cancel_location) {
@@ -264,6 +327,8 @@ try {
   await frame.getByRole('dialog').waitFor({ state: 'hidden' });
   assert.equal(journal().trips.length, 1);
 
+  await frame.getByRole('button', { name: 'Add to journal', exact: true }).click();
+
   await frame.getByRole('button', { name: 'New check-in', exact: true }).click();
   const dialog = frame.getByRole('dialog');
   await dialog.getByLabel('Place name', { exact: true }).fill('Lakeside park');
@@ -333,6 +398,8 @@ try {
     .getByRole('button', { name: 'Open photo: Lakeside park, photo 1', exact: true })
     .scrollIntoViewIfNeeded();
   await imageReady(frame.getByRole('img', { name: 'Lakeside park, photo 1', exact: true }));
+
+  await frame.getByRole('button', { name: 'Add to journal', exact: true }).click();
 
   await frame.getByRole('button', { name: 'New check-in', exact: true }).click();
   await dialog.getByLabel('Choose a saved place').selectOption(saved.places[0].id);
@@ -410,7 +477,7 @@ try {
   assert.equal(await frame.locator('.journal-map-pin').getAttribute('data-longitude'), '34.56789');
   await frame.getByRole('button', { name: '1 without visit coordinates' }).click();
   await frame
-    .getByRole('region', { name: 'Check-ins without coordinates' })
+    .getByRole('region', { name: 'Entries without coordinates' })
     .getByRole('button', { name: 'View check-in' })
     .click();
   await dialog.getByRole('heading', { name: 'Lakeside park', exact: true }).waitFor();
@@ -428,7 +495,7 @@ try {
   );
   await frame.locator('.journal-map-pin').click();
   await frame
-    .getByRole('region', { name: 'Check-ins at selected map pin' })
+    .getByRole('region', { name: 'Entries at selected map pin' })
     .getByRole('button', { name: 'View check-in' })
     .first()
     .click();
@@ -453,6 +520,146 @@ try {
     'Native map should persist disposable tile-cache images.',
   );
   assert.deepEqual(journal(), saved, 'Map viewing must not change stored visit locations.');
+
+  // Pick the evening photo first to exercise chronological grouping across picker calls.
+  event_images.push(
+    ...(await Promise.all([
+      eventImage('2026:06:10 19:30:00', 16),
+      eventImage('2026:06:10 08:28:00', 12),
+      eventImage('2026:06:10 08:15:00', 12),
+    ])),
+  );
+  await frame.getByRole('button', { name: 'Add to journal', exact: true }).click();
+  await frame.getByRole('button', { name: 'Events from photos', exact: true }).click();
+  const importer = frame.getByRole('dialog', { name: 'Events from photos', exact: true });
+  for (let i = 0; i < 3; i++) {
+    await importer.getByRole('button', { name: 'Choose photos', exact: true }).click();
+  }
+  await importer.getByRole('button', { name: 'Review events', exact: true }).click();
+  assert.equal(event_images.length, 0);
+  const drafts = importer.getByRole('article');
+  const morning = drafts.nth(0);
+  const evening = drafts.nth(1);
+  await morning.getByText('Simulated title service failure', { exact: false }).waitFor();
+  const save_events = importer.getByRole('button', { name: 'Save 2 events', exact: true });
+  await save_events.waitFor();
+  assert.equal(await drafts.count(), 2);
+  assert.equal(await morning.getByLabel('Event title').inputValue(), '');
+  assert.equal(await morning.getByLabel('Event date & time').inputValue(), '2026-06-10T08:15');
+  assert.equal(await morning.getByLabel('Event time zone').inputValue(), '120');
+  assert.equal(await morning.getByLabel('Event latitude').inputValue(), '12');
+  assert.equal(await evening.getByLabel('Event date & time').inputValue(), '2026-06-10T19:30');
+  assert.equal(await evening.getByLabel('Event longitude').inputValue(), '34');
+  assert.equal(await evening.getByLabel('Event title').inputValue(), 'June evening');
+  await morning.getByLabel('Event title').fill('June morning');
+  await evening.getByLabel('Event title').fill('PRIVATE-TYPED-TITLE');
+  await evening.getByLabel('Event date & time').fill('2026-06-10T20:10');
+  await evening.getByLabel('Event longitude').fill('35');
+  await evening.getByRole('button', { name: 'Suggest title', exact: true }).click();
+  await save_events.waitFor();
+  assert.equal(await evening.getByLabel('Event title').inputValue(), 'Evening stop');
+
+  const model_inputs = title_requests.map((request) => {
+    assert.deepEqual(request.target, model_target);
+    assert.equal(request.stream, false);
+    assert.deepEqual(
+      request.messages.map(({ role }) => role),
+      ['system', 'user'],
+    );
+    assert.deepEqual(Object.keys(request.messages[1]).sort(), ['content', 'role']);
+    assert.equal(typeof request.messages[1].content, 'string');
+    return JSON.parse(String(request.messages[1].content));
+  });
+  assert.deepEqual(model_inputs, [
+    {
+      local_time: '2026-06-10T08:15',
+      utc_offset_minutes: 120,
+      location: { latitude: 12, longitude: 34 },
+    },
+    {
+      local_time: '2026-06-10T19:30',
+      utc_offset_minutes: 120,
+      location: { latitude: 16, longitude: 34 },
+    },
+    {
+      local_time: '2026-06-10T20:10',
+      utc_offset_minutes: 120,
+      location: { latitude: 16, longitude: 35 },
+    },
+  ]);
+  assert(
+    !/PRIVATE-SYNTHETIC-CAPTION|PRIVATE-TYPED-TITLE|images\/native-photo|Native bridge journey/.test(
+      JSON.stringify(title_requests),
+    ),
+  );
+  fail_next_write = true;
+  await save_events.click();
+  await importer.getByText('Simulated storage failure', { exact: false }).waitFor();
+  assert.deepEqual(
+    journal(),
+    saved,
+    'A failed event batch must leave the complete journal intact.',
+  );
+  await save_events.click();
+  await importer.waitFor({ state: 'hidden' });
+  saved = journal();
+  assert.equal(saved.check_ins.length, 4);
+  const imported = saved.check_ins.filter((entry) => entry.title);
+  assert.deepEqual(
+    imported.map(
+      ({ title, visited_at, utc_offset_minutes, place_id, actual_location, photos }) => ({
+        title,
+        visited_at,
+        utc_offset_minutes,
+        place_id,
+        source: actual_location?.source,
+        latitude: actual_location?.latitude,
+        longitude: actual_location?.longitude,
+        photos: photos.length,
+      }),
+    ),
+    [
+      {
+        title: 'June morning',
+        visited_at: '2026-06-10T06:15:00.000Z',
+        utc_offset_minutes: 120,
+        place_id: null,
+        source: 'photo',
+        latitude: 12,
+        longitude: 34,
+        photos: 2,
+      },
+      {
+        title: 'Evening stop',
+        visited_at: '2026-06-10T18:10:00.000Z',
+        utc_offset_minutes: 120,
+        place_id: null,
+        source: 'manual',
+        latitude: 16,
+        longitude: 35,
+        photos: 1,
+      },
+    ],
+  );
+  assert.equal(new Set(imported.flatMap(({ photos }) => photos.map(({ path }) => path))).size, 3);
+  assert.equal(title_requests.length, 3, 'Retrying storage must preserve the reviewed titles.');
+
+  await frame.getByRole('button', { name: 'Open event June morning', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Edit event', exact: true }).click();
+  await dialog.getByLabel('Event title').fill('A quiet morning');
+  await dialog.getByRole('button', { name: 'Save event', exact: true }).click();
+  await dialog.getByRole('heading', { name: 'A quiet morning' }).waitFor();
+  saved = journal();
+  await native_frame.goto(`http://127.0.0.1:${server.port}/index.html`);
+  await frame.getByRole('button', { name: 'Open event A quiet morning', exact: true }).click();
+  await imageReady(dialog.getByRole('img', { name: 'A quiet morning, photo 2' }));
+  assert.deepEqual(journal(), saved);
+  assert.equal(
+    journal().check_ins.find(({ title }) => title === 'A quiet morning')?.id,
+    imported[0].id,
+  );
+  assert.equal(title_requests.length, 3, 'Editing and reopening must not regenerate a title.');
+  await dialog.getByRole('button', { name: 'Close dialog' }).click();
   assert.deepEqual(errors, [], 'The native applet should not produce uncaught browser errors.');
   for (const method of [
     'photos.pick',
@@ -462,6 +669,8 @@ try {
     'fs.read',
     'fs.stat',
     'http.request',
+    'llm.config',
+    'llm.generate',
   ]) {
     assert(calls.includes(method), `The applet should exercise ${method}.`);
   }
@@ -469,8 +678,9 @@ try {
     JSON.stringify(
       {
         opaque_origin: 'null',
-        check_ins: saved.check_ins.length,
-        photos: saved.check_ins[0].photos.length,
+        entries: saved.check_ins.length,
+        imported_events: imported.length,
+        photos: saved.check_ins.reduce((count, entry) => count + entry.photos.length, 0),
         verified: [
           'production CSP and SDK handshake',
           'opaque-origin UUID fallback',
@@ -482,6 +692,8 @@ try {
           'Timeline and Map with fixed compact navigation',
           'mocked native tile requests and cache',
           'distinct map position modes and missing coordinates',
+          'multi-photo EXIF grouping, title request privacy, editable AI and manual titles',
+          'atomic event batch retry, edit and reopen with photos',
         ],
       },
       null,

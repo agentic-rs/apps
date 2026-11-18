@@ -1,4 +1,5 @@
 import { formatVisitDate, toVisitInput } from '../lib/dates';
+import { formatEntryCount, visitTitle } from '../lib/model';
 import type { CheckIn, PhotoAsset, Place, TravelPlatform, Trip } from '../lib/types';
 import { Icon } from './Icon';
 import { VisitCard } from './VisitCard';
@@ -29,8 +30,15 @@ export function TimelineView({
   const by_place = new Map(places.map((place) => [place.id, place]));
   const by_trip = new Map(trips.map((trip) => [trip.id, trip]));
   const filtered = visits.filter((visit) => {
-    const place = by_place.get(visit.place_id)!;
-    return `${place.name} ${place.locality} ${visit.notes} ${by_trip.get(visit.trip_id)!.title}`
+    const place = visit.place_id === null ? undefined : by_place.get(visit.place_id);
+    return [
+      visit.title,
+      place?.name,
+      place?.locality,
+      visit.notes,
+      by_trip.get(visit.trip_id)!.title,
+    ]
+      .join(' ')
       .toLocaleLowerCase()
       .includes(search.toLocaleLowerCase());
   });
@@ -41,7 +49,7 @@ export function TimelineView({
           <label className="search-box">
             <Icon name="search" size={18} />
             <input
-              aria-label="Search check-ins"
+              aria-label="Search timeline"
               placeholder="Find a memory"
               value={search}
               onChange={(event) => onSearch(event.target.value)}
@@ -56,9 +64,7 @@ export function TimelineView({
               </button>
             )}
           </label>
-          <span className="timeline-count">
-            {filtered.length} check-in{filtered.length === 1 ? '' : 's'}
-          </span>
+          <span className="timeline-count">{formatEntryCount(filtered.length)}</span>
         </div>
       )}
       {filtered.length === 0 ? (
@@ -69,7 +75,7 @@ export function TimelineView({
           <h2>{search ? 'No matching moments' : 'Your next stop starts here'}</h2>
           <p>
             {search
-              ? 'Try a place name or a word from your notes.'
+              ? 'Try an event title, a place name, or a word from your notes.'
               : 'Check in, keep a photo, and remember where you were.'}
           </p>
           {!search && (
@@ -87,7 +93,7 @@ export function TimelineView({
             const show_day =
               !previous ||
               toVisitInput(previous.visited_at, previous.utc_offset_minutes).slice(0, 10) !== day;
-            const place = by_place.get(visit.place_id)!;
+            const place = visit.place_id === null ? undefined : by_place.get(visit.place_id);
             return (
               <div className="timeline-entry" key={visit.id}>
                 {show_day && (
@@ -102,7 +108,7 @@ export function TimelineView({
                   trip={by_trip.get(visit.trip_id)!}
                   platform={platform}
                   onOpen={() => onOpenVisit(visit.id)}
-                  onPhoto={(photo) => onPhoto(photo, place.name)}
+                  onPhoto={(photo) => onPhoto(photo, visitTitle(visit, place))}
                 />
               </div>
             );

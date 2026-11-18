@@ -16,7 +16,7 @@ import '../map.css';
 import { formatVisitDate, formatVisitTime } from '../lib/dates';
 import { fitCoordinates, mapPoints, type MapMode, type MapPoint } from '../lib/map';
 import { createTileSource } from '../lib/map-tiles';
-import { formatCoordinates } from '../lib/model';
+import { formatCoordinates, formatEntryCount, visitTitle } from '../lib/model';
 import type { CheckIn, Coordinates, Place, TravelPlatform } from '../lib/types';
 import { Icon } from './Icon';
 import { Photo } from './Photo';
@@ -267,7 +267,7 @@ export function MapView({
       count.textContent = String(group.visit_ids.length);
       content.append(count);
       const names = [...new Set(group.points.map((point) => point.label))].join(', ');
-      const label = `${names}: ${group.visit_ids.length} ${group.visit_ids.length === 1 ? 'check-in' : 'check-ins'}`;
+      const label = `${names}: ${formatEntryCount(group.visit_ids.length)}`;
       const pin = marker(visiblePosition(group.position, map), {
         icon: divIcon({
           className: `journal-map-pin ${mode}`,
@@ -376,7 +376,7 @@ export function MapView({
         <span>
           {mode === 'visits' ? 'Where your visits happened' : 'Standard positions of named places'}
           <small>
-            {mapped_visits} of {visits.length} check-ins on the map
+            {mapped_visits} of {formatEntryCount(visits.length)} on the map
           </small>
         </span>
       </div>
@@ -417,7 +417,7 @@ export function MapView({
           <span>
             {visits.length
               ? mode === 'visits'
-                ? 'Add actual visit coordinates to see your check-ins here.'
+                ? 'Add actual visit coordinates to see your entries here.'
                 : 'Add reference coordinates to your named places to see them here.'
               : 'Check in on a trip to put a memory on the map.'}
           </span>
@@ -453,7 +453,7 @@ export function MapView({
           className="map-selection-card"
           ref={panel}
           aria-label={
-            unlocated_open ? 'Check-ins without coordinates' : 'Check-ins at selected map pin'
+            unlocated_open ? 'Entries without coordinates' : 'Entries at selected map pin'
           }
         >
           <header>
@@ -461,7 +461,7 @@ export function MapView({
               <span className="map-card-kicker">
                 {unlocated_open
                   ? 'NOT ON THIS MAP'
-                  : `${selected_visits.length} ${selected_visits.length === 1 ? 'CHECK-IN' : 'CHECK-INS'}`}
+                  : formatEntryCount(selected_visits.length).toUpperCase()}
               </span>
               <h2>
                 {unlocated_open
@@ -492,12 +492,13 @@ export function MapView({
           </header>
           <div className="map-selected-visits">
             {selected_visits.map((visit) => {
-              const place = places_by_id.get(visit.place_id)!;
+              const place = visit.place_id === null ? undefined : places_by_id.get(visit.place_id);
+              const title = visitTitle(visit, place);
               return (
                 <article className="map-visit-row" key={visit.id}>
                   {visit.photos[0] ? (
                     <div className="map-visit-photo">
-                      <Photo photo={visit.photos[0]} platform={platform} alt={place.name} />
+                      <Photo photo={visit.photos[0]} platform={platform} alt={title} />
                     </div>
                   ) : (
                     <span className="map-visit-symbol">
@@ -505,7 +506,7 @@ export function MapView({
                     </span>
                   )}
                   <div className="map-visit-copy">
-                    <h3>{place.name}</h3>
+                    <h3>{title}</h3>
                     <p>
                       {formatVisitDate(visit.visited_at, visit.utc_offset_minutes)} ·{' '}
                       {formatVisitTime(visit.visited_at, visit.utc_offset_minutes)}
@@ -516,7 +517,7 @@ export function MapView({
                       className="map-open-visit"
                       onClick={() => onOpenVisit(visit.id)}
                     >
-                      View check-in
+                      {visit.title ? 'View event' : 'View check-in'}
                       <Icon name="arrow" size={14} />
                     </button>
                   </div>

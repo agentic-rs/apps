@@ -12,7 +12,7 @@ const manifest = {
   applet_id: 'travel',
   name: 'Fieldnotes',
   version: metadata.version,
-  permissions: ['fs', 'camera', 'photos', 'location', 'http'],
+  permissions: ['fs', 'camera', 'photos', 'location', 'http', 'llm'],
 };
 await mkdir('artifacts', { recursive: true });
 await writePackageIcon('fieldnotes');

@@ -1,4 +1,4 @@
-import { formatCoordinates } from '../lib/model';
+import { formatCoordinates, visitTitle } from '../lib/model';
 import { formatVisitDate, formatVisitTime } from '../lib/dates';
 import type { CheckIn, PhotoAsset, Place, TravelPlatform, Trip } from '../lib/types';
 import { Icon } from './Icon';
@@ -14,7 +14,7 @@ export function VisitCard({
   onPhoto,
 }: {
   visit: CheckIn;
-  place: Place;
+  place?: Place;
   trip: Trip;
   platform: TravelPlatform;
   detail?: boolean;
@@ -22,6 +22,7 @@ export function VisitCard({
   onPhoto(photo: PhotoAsset): void;
 }) {
   const photos = detail ? visit.photos : visit.photos.slice(0, 2);
+  const title = visitTitle(visit, place);
   return (
     <article className={`visit-card${detail ? ' visit-detail' : ''}`}>
       <header className="visit-header">
@@ -30,19 +31,19 @@ export function VisitCard({
         </span>
         <div className="visit-heading">
           {detail ? (
-            <h3>{place.name}</h3>
+            <h3>{title}</h3>
           ) : (
             <button
               className="visit-open"
-              aria-label={`Open check-in at ${place.name}`}
+              aria-label={visit.title ? `Open event ${title}` : `Open check-in at ${title}`}
               onClick={onOpen}
             >
-              <h3>{place.name}</h3>
+              <h3>{title}</h3>
               <Icon name="arrow" size={17} />
             </button>
           )}
           <p>
-            {place.locality || trip.title}
+            {(visit.title && place?.name) || place?.locality || trip.title}
             <span>·</span>
             {formatVisitTime(visit.visited_at, visit.utc_offset_minutes)}
           </p>
@@ -58,7 +59,7 @@ export function VisitCard({
               key={photo.id}
               photo={photo}
               platform={platform}
-              alt={`${place.name}, photo ${index + 1}`}
+              alt={`${title}, photo ${index + 1}`}
               onOpen={() => onPhoto(photo)}
             />
           ))}
@@ -95,21 +96,27 @@ export function VisitCard({
                   <em>
                     {visit.actual_location.source === 'device'
                       ? `Device GPS${visit.actual_location.accuracy_m !== null ? ` · ±${Math.round(visit.actual_location.accuracy_m)} m` : ''}`
-                      : 'Entered manually'}
+                      : visit.actual_location.source === 'photo'
+                        ? 'Photo GPS'
+                        : 'Entered manually'}
                   </em>
                 )}
               </span>
             </div>
-            <div>
-              <Icon name="pin" size={20} />
-              <span>
-                <small>NAMED PLACE</small>
-                {place.name}
-                <em>
-                  {place.position ? formatCoordinates(place.position) : 'No reference coordinates'}
-                </em>
-              </span>
-            </div>
+            {place && (
+              <div>
+                <Icon name="pin" size={20} />
+                <span>
+                  <small>NAMED PLACE</small>
+                  {place.name}
+                  <em>
+                    {place.position
+                      ? formatCoordinates(place.position)
+                      : 'No reference coordinates'}
+                  </em>
+                </span>
+              </div>
+            )}
           </div>
         </>
       )}

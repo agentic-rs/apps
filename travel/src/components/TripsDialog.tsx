@@ -1,5 +1,6 @@
 import type { CheckIn, Trip } from '../lib/types';
 import { formatTripDates } from '../lib/dates';
+import { formatEntryCount } from '../lib/model';
 import { Dialog } from './Dialog';
 import { Icon } from './Icon';
 
@@ -27,7 +28,7 @@ export function TripsDialog({
   return (
     <Dialog title={choosing ? 'Choose a trip' : 'Your trips'} onDismiss={onClose} anchor={anchor}>
       <div className="trips-list">
-        {trips.length === 0 && <p className="muted">Start a trip to group your check-ins.</p>}
+        {trips.length === 0 && <p className="muted">Start a trip to group your journal entries.</p>}
         {trips.map((trip) => (
           <div className="trip-row" key={trip.id}>
             <button className="trip-select" onClick={() => onSelect(trip)}>
@@ -38,7 +39,7 @@ export function TripsDialog({
                 <strong>{trip.title}</strong>
                 <small>{formatTripDates(trip.start_date, trip.end_date)}</small>
                 <small>
-                  {visits.filter((visit) => visit.trip_id === trip.id).length} check-ins
+                  {formatEntryCount(visits.filter((visit) => visit.trip_id === trip.id).length)}
                 </small>
               </span>
             </button>

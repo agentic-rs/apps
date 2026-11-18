@@ -68,6 +68,30 @@ describe('map locations', () => {
     ).toEqual(actual.points.map((point) => point.id).sort());
   });
 
+  test('events map to their photo coordinates and keep distinct titles at a shared pin', () => {
+    const position = { latitude: 12, longitude: -34 };
+    const first = { ...visit('one', 'a', position), place_id: null, title: 'Morning at the lake' };
+    const second = { ...first, id: 'two', title: 'Evening at the lake' };
+    const events = [first, second];
+    expect(mapPoints(events, [], 'visits').points.map(({ label }) => label)).toEqual(
+      events.map(({ title }) => title),
+    );
+    expect(mapPoints(events, [], 'places')).toEqual({
+      points: [],
+      unlocated_visit_ids: ['one', 'two'],
+    });
+    const named_place = place('a', { latitude: 12, longitude: -35 });
+    const linked = [{ ...first, place_id: named_place.id }];
+    expect(mapPoints(linked, [named_place], 'places').points[0]).toMatchObject({
+      label: named_place.name,
+      position: named_place.position,
+    });
+    expect(mapPoints(linked, [named_place], 'visits').points[0]).toMatchObject({
+      label: first.title,
+      position,
+    });
+  });
+
   test('missing positions are reported per visit without borrowing another location', () => {
     const places = [
       place('reference-only', { latitude: 12, longitude: 34 }),

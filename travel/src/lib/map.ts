@@ -1,4 +1,4 @@
-import { parseCoordinates } from './model';
+import { parseCoordinates, visitTitle } from './model';
 import type { CheckIn, Coordinates, Place } from './types';
 
 export type MapMode = 'visits' | 'places';
@@ -6,7 +6,7 @@ export type MapMode = 'visits' | 'places';
 export interface MapPoint {
   id: string;
   position: Coordinates;
-  place_id: string;
+  place_id: string | null;
   visit_ids: string[];
   label: string;
 }
@@ -44,18 +44,21 @@ export function mapPoints(
   const points_by_id = new Map<string, MapPoint>();
   const unlocated_visit_ids: string[] = [];
   for (const visit of visits) {
-    const place = places_by_id.get(visit.place_id);
-    if (!place) throw new Error('A mapped check-in refers to a missing place.');
-    const source = mode === 'visits' ? visit.actual_location : place.position;
+    const place = visit.place_id === null ? undefined : places_by_id.get(visit.place_id);
+    if (visit.place_id !== null && !place)
+      throw new Error('A mapped check-in refers to a missing place.');
+    const source = mode === 'visits' ? visit.actual_location : place?.position;
     if (!source) {
       unlocated_visit_ids.push(visit.id);
       continue;
     }
     const position = parseCoordinates(source);
     const point_id =
-      mode === 'visits'
-        ? `visit:${place.id}:${position.latitude}:${position.longitude}`
-        : `place:${place.id}`;
+      mode === 'places'
+        ? `place:${visit.place_id}`
+        : visit.title
+          ? `event:${visit.id}`
+          : `visit:${visit.place_id}:${position.latitude}:${position.longitude}`;
     const point = points_by_id.get(point_id);
     if (point) {
       point.visit_ids.push(visit.id);
@@ -63,9 +66,9 @@ export function mapPoints(
       points_by_id.set(point_id, {
         id: point_id,
         position,
-        place_id: place.id,
+        place_id: visit.place_id,
         visit_ids: [visit.id],
-        label: place.name,
+        label: mode === 'places' && place ? place.name : visitTitle(visit, place),
       });
     }
   }

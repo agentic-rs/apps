@@ -16,6 +16,7 @@ export const text_limits = {
   trip_description: 10_000,
   place_name: 200,
   place_locality: 300,
+  check_in_title: 200,
   check_in_notes: 20_000,
 } as const;
 export const supported_image_types = [
@@ -82,6 +83,13 @@ export function parseCoordinates(value: unknown): Coordinates {
   return { latitude: row.latitude, longitude: row.longitude };
 }
 
+export function readCoordinates(latitude: string, longitude: string): Coordinates | null {
+  if (!latitude.trim() && !longitude.trim()) return null;
+  if (!latitude.trim() || !longitude.trim())
+    throw new Error('Enter both latitude and longitude, or leave both blank.');
+  return parseCoordinates({ latitude: Number(latitude), longitude: Number(longitude) });
+}
+
 export function parseVisitLocation(value: unknown): VisitLocation {
   const row = record(value, 'Visit location');
   const position = parseCoordinates(row);
@@ -91,7 +99,7 @@ export function parseVisitLocation(value: unknown): VisitLocation {
   ) {
     throw new Error('Location accuracy is invalid.');
   }
-  if (row.source !== 'device' && row.source !== 'manual') {
+  if (row.source !== 'device' && row.source !== 'manual' && row.source !== 'photo') {
     throw new Error('Location source is invalid.');
   }
   return {
@@ -191,10 +199,17 @@ export function parseCheckIn(value: unknown): CheckIn {
   const visited_at = timestamp(row.visited_at, 'Visit time');
   const utc_offset_minutes = validateOffset(row.utc_offset_minutes);
   toVisitInput(visited_at, utc_offset_minutes);
+  const title =
+    row.title === undefined
+      ? ''
+      : text(row.title, 'Event title', text_limits.check_in_title).trim();
+  const place_id = row.place_id === null ? null : id(row.place_id, 'Place');
+  if (!place_id && !title) throw new Error('Enter an event title or choose a named place.');
   return {
     id: id(row.id, 'Check-in'),
     trip_id: id(row.trip_id, 'Trip'),
-    place_id: id(row.place_id, 'Place'),
+    place_id,
+    ...(title && { title }),
     visited_at,
     utc_offset_minutes,
     actual_location: row.actual_location === null ? null : parseVisitLocation(row.actual_location),
@@ -222,7 +237,8 @@ export function parseJournal(value: unknown): Journal {
   const place_ids = new Set(places.map((place) => place.id));
   for (const check_in of check_ins) {
     if (!trip_ids.has(check_in.trip_id)) throw new Error('A check-in refers to a missing trip.');
-    if (!place_ids.has(check_in.place_id)) throw new Error('A check-in refers to a missing place.');
+    if (check_in.place_id !== null && !place_ids.has(check_in.place_id))
+      throw new Error('A check-in refers to a missing place.');
   }
   const photos = check_ins.flatMap((check_in) => check_in.photos);
   unique(photos, (photo) => photo.id, 'Journal photos');
@@ -242,15 +258,28 @@ export function upsertTrip(journal: Journal, value: Trip): Journal {
 }
 
 /** The place and the visit enter the journal together, so neither can leave a dangling reference. */
-export function saveCheckIn(journal: Journal, value: CheckIn, place_value: Place): Journal {
+export function saveCheckIn(journal: Journal, value: CheckIn, place_value: Place | null): Journal {
   const check_in = parseCheckIn(value);
-  const place = parsePlace(place_value);
-  if (check_in.place_id !== place.id) throw new Error('Choose the place linked to this check-in.');
+  const place = place_value === null ? null : parsePlace(place_value);
+  if (check_in.place_id !== (place?.id ?? null))
+    throw new Error('Choose the place linked to this check-in.');
   return parseJournal({
     ...journal,
-    places: upsert(journal.places, place),
+    places: place ? upsert(journal.places, place) : journal.places,
     check_ins: upsert(journal.check_ins, check_in),
   });
+}
+
+export function visitTitle(visit: CheckIn, place?: Place): string {
+  return visit.title || place?.name || 'Check-in';
+}
+
+export function formatEntryCount(count: number): string {
+  return `${count} ${count === 1 ? 'entry' : 'entries'}`;
+}
+
+export function addPhotoEvents(journal: Journal, events: CheckIn[]): Journal {
+  return parseJournal({ ...journal, check_ins: [...journal.check_ins, ...events] });
 }
 
 export function removeCheckIn(journal: Journal, check_in_id: string): Journal {

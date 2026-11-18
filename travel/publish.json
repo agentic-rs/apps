@@ -1,5 +1,5 @@
 {
   "project_url": "https://github.com/agentic-rs/apps/tree/main/travel",
-  "description": "Keep a travel journal with photo check-ins, notes, and trips. Browse your visits in Timeline and Map views, with separate recorded visit coordinates and named-place locations. Journal data stays local; the map downloads OpenStreetMap tiles for the area you view.",
-  "release_notes": "Official Apell appearance with shared light and dark themes, updated Fieldnotes artwork, and a package icon for the launcher. Includes mobile Timeline and Map views, full-screen check-in editors, and anchored trip menus."
+  "description": "Keep a travel journal with photo events, check-ins, notes, and trips. Browse entries in Timeline and Map. Photos stay local. AI title suggestions use only the event time and coordinates. The map downloads tiles for the area you view.",
+  "release_notes": "Import photos and group them into events using capture times and GPS. Review each group, edit its AI-suggested title, and save the events to a trip."
 }
