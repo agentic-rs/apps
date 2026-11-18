@@ -1,5 +1,5 @@
 {
   "project_url": "https://github.com/agentic-rs/apps/tree/main/recorder",
   "description": "Record conversations as editable documents and keep text and voice notes together in channels. Transcribe locally or choose a speech API in Apell, then review and share your transcript.",
-  "release_notes": "Write directly in channels, choose a transcription provider in Settings, and confirm deletions in a focused dialog. The updated Apell host supports recoverable model downloads, Apple system recognition where available, and compatible transcription APIs."
+  "release_notes": "Transcription settings now show when a recognizer requires an Apell update and explain when Recorder lacks access to transcription APIs."
 }

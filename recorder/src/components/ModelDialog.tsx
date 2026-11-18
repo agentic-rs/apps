@@ -6,6 +6,12 @@ import { formatBytes } from '../lib/recordings';
 import { Icon } from './Icon';
 import { ActionDialog } from './ActionDialog';
 
+function providerLabel(name: string, available: boolean | undefined, native: boolean) {
+  if (available) return name;
+  if (native && available === undefined) return `${name} · update Apell`;
+  return `${name} · unavailable`;
+}
+
 export function ModelDialog({
   controller,
   onClose,
@@ -21,7 +27,7 @@ export function ModelDialog({
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const requesting = useRef(false);
-  const native = controller.platform?.native;
+  const native = controller.platform?.native === true;
   const withSettings = async (action: () => Promise<void>) => {
     if (requesting.current) return;
     requesting.current = true;
@@ -73,16 +79,21 @@ export function ModelDialog({
           }}
         >
           <option value="system" disabled={!speech.system_available}>
-            System recognizer{speech.system_available ? '' : ' · unavailable'}
+            {providerLabel('System recognizer', speech.system_available, native)}
           </option>
           <option value="downloaded">Downloaded model</option>
           <option value="api" disabled={!speech.api_available}>
-            Transcription API{speech.api_available ? '' : ' · unavailable'}
+            {providerLabel('Transcription API', speech.api_available, native)}
           </option>
         </select>
       </label>
       {native && !speech.system_available && speech.system_unavailable_reason && (
         <p className="model-footnote">{speech.system_unavailable_reason}</p>
+      )}
+      {native && speech.api_available === false && (
+        <p className="model-footnote">
+          API transcription requires a Recorder package with network and model-provider access.
+        </p>
       )}
       {!native ? (
         <p className="model-description">Open Recorder in Apell to choose a speech recognizer.</p>
