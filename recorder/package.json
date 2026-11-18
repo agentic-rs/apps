@@ -9,6 +9,7 @@
     "check": "tsc --noEmit",
     "build": "bun run check && vite build",
     "pack": "bun run build && bun scripts/pack.ts",
+    "sync:simulator": "bun run pack && bun scripts/sync-simulator.ts",
     "test": "bun test",
     "preview": "vite preview --host 127.0.0.1"
   },

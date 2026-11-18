@@ -7,7 +7,7 @@ Recorder keeps audio documents and channel notes in one library.
 
 Recording or importing audio in a channel queues it for transcription. Typed notes appear immediately. Document transcription starts when you choose **Transcribe**. Settings controls which recognizer handles queued audio.
 
-The applet requires the Apell host with `audio` and `speech` services, including long-audio transcription support. Setup discovers the sibling `apell` checkout through Git, including from linked worktrees. Set `APELL_ROOT` to select another host checkout, or use `APELL_SDK_DIR` and `APELL_BIN` to override the SDK and packer separately.
+The applet requires the Apell host with `audio` and `speech` services, including long-audio transcription support. Setup discovers the sibling `apell` checkout through Git, including from linked worktrees. To pair an apps worktree with a host worktree, enable Git's worktree configuration once (`git config extensions.worktreeConfig true`), then run `git config --worktree apell.hostRoot /absolute/path/to/host-worktree`. Set `APELL_ROOT` to override the checkout for a single run, or `APELL_SDK_DIR` for a separate SDK. Recorder uses `APELL_BIN`, then `apell` on PATH, then the host checkout’s debug CLI.
 
 ## Develop and package
 
@@ -24,6 +24,8 @@ The development server binds to loopback. The browser preview supports microphon
 Recorder owns its canonical icon in `shared/assets/recorder.svg` and uses the collection's shared light/dark theme. See the [collection README](../README.md) for artwork ownership and platform-theme updates.
 
 `bun run pack` creates `artifacts/recorder.apel`, its SHA-256 checksum, and `artifacts/icon.png` for Store reuse. The same 256 × 256 PNG is included as `icon.png` in the package. Install the package from Apell’s **+ → Install from file** flow. The stable applet ID is `recorder`; updates retain private data. Restart Apell before opening an updated applet if it had already been running.
+
+After changing Recorder or its native host features, run `bun run sync:simulator` from this directory with an Apell CLI that supports `dev --install`. It packages Recorder, builds the signed development host, relaunches Apell on **Apell iPhone 16 Pro**, and waits for the host to report `Installed recorder <version>`. Set `APELL_SIMULATOR` to select another iPhone simulator by name or UDID. You can repeat the command for local changes at the same version. Existing documents and channels stay on the simulator.
 
 Use the bottom navigation to switch between **Documents** and **Channels**, or open **Settings** to choose a transcription provider. The recording controls sit above navigation while the library, editor, and timeline scroll independently.
 
