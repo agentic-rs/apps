@@ -96,13 +96,6 @@
   font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
-.channel-mode .new-channel-form {
-  flex-shrink: 0;
-  margin: 0 16px 12px;
-}
-.channel-mode .new-channel-form input {
-  font-size: 16px;
-}
 .channel-mode .welcome {
   flex: 1;
   min-height: 0;
@@ -162,23 +155,6 @@
   min-height: 44px;
   min-width: 44px;
   color: var(--chat-muted);
-}
-.channel-rename {
-  display: flex;
-  flex-shrink: 0;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 9px;
-  padding: 12px 18px;
-  border-bottom: 1px solid var(--chat-line);
-  background: var(--apell-surface);
-}
-.channel-rename label {
-  flex: 1;
-  min-width: 140px;
-}
-.channel-rename input {
-  font-size: 16px;
 }
 .channel-messages {
   flex: 1;
@@ -345,9 +321,6 @@
   position: static;
   padding: 10px;
 }
-.clip-card .inline-confirm > div {
-  flex-wrap: wrap;
-}
 .channel-empty {
   margin: auto;
   max-width: 300px;
@@ -376,14 +349,47 @@
   line-height: 1.6;
   margin-top: 8px;
 }
-.channel-detail > .inline-confirm {
-  flex-shrink: 0;
-  margin: 12px 18px;
-}
 .channel-composer {
   display: flex;
   align-items: center;
   flex-wrap: nowrap;
+}
+.channel-text-composer {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+.channel-text-composer textarea {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  max-height: 7em;
+  padding: 10px 14px;
+  resize: none;
+  border: 1px solid var(--apell-control-line);
+  border-radius: 16px;
+  color: var(--apell-text);
+  background: var(--apell-subtle);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1.4;
+}
+.channel-composer .composer-send {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: var(--apell-primary);
+  color: var(--apell-primary-ink);
+}
+.channel-composer .composer-send:enabled:hover {
+  background: var(--apell-primary-hover);
+}
+.clip-card.text-note {
+  width: fit-content;
+  min-width: 102px;
+  max-width: min(92%, 520px);
 }
 .channel-composer .composer-attachment {
   width: 44px;

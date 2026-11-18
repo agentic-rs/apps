@@ -6,6 +6,8 @@ import type {
   RecorderPlatform,
   Recording,
   SpeechStatus,
+  SpeechSettings,
+  TextNote,
   Transcript,
 } from '../src/lib/types';
 
@@ -48,11 +50,14 @@ function clip(time = '2026-01-01T12:00:00.000Z') {
 function fixture(saved: Recording[] = [], model_ready = true) {
   const recordings = new Map(saved.map((recording) => [recording.id, structuredClone(recording)]));
   const channels = new Map<string, Channel>([[channel.id, channel]]);
+  const text_notes = new Map<string, TextNote>();
   const calls: {
     path: string;
     language?: string;
+    settings: SpeechSettings;
     result: ReturnType<typeof deferred<Transcript>>;
   }[] = [];
+  let speech_settings: SpeechSettings = { provider: 'downloaded' };
   let fail_save = false;
   let fail_remove = false;
   const speech: SpeechStatus = {
@@ -81,6 +86,14 @@ function fixture(saved: Recording[] = [], model_ready = true) {
       removeChannel: async (id) => {
         channels.delete(id);
       },
+      listTextNotes: async () => [...text_notes.values()],
+      addTextNote: async (note) => {
+        if (fail_save) throw new Error('Storage full');
+        text_notes.set(note.id, note);
+      },
+      removeTextNote: async (id) => {
+        text_notes.delete(id);
+      },
       saveCapture: async () => {},
       clearCapture: async () => {},
     },
@@ -103,12 +116,19 @@ function fixture(saved: Recording[] = [], model_ready = true) {
       duration_ms: 0,
     }),
     speechStatus: async () => ({ ...speech }),
+    speechSettings: {
+      read: async () => structuredClone(speech_settings),
+      save: async (settings) => {
+        speech_settings = structuredClone(settings);
+      },
+      chooseApi: async () => null,
+    },
     downloadModel: async () => {
       speech.model_ready = true;
     },
-    transcribe: (path, language) => {
+    transcribe: (path, language, settings) => {
       const result = deferred<Transcript>();
-      calls.push({ path, language, result });
+      calls.push({ path, language, settings, result });
       return result.promise;
     },
     cancelSpeech: async () => {},
@@ -130,6 +150,113 @@ function fixture(saved: Recording[] = [], model_ready = true) {
 }
 
 describe('durable channel transcription queue', () => {
+  test('requests save recovery only when a write fails', async () => {
+    const f = fixture([], false);
+    await f.library.load();
+    const pending_ids: string[] = [];
+    const unsubscribe = f.library.subscribe(() => {
+      const pending = f.library.getSnapshot().pending_recording;
+      if (pending) pending_ids.push(pending.id);
+    });
+    await f.library.add(clip());
+    expect(pending_ids).toEqual([]);
+    f.failSave(true);
+    const failed = clip();
+    await expect(f.library.add(failed)).rejects.toThrow('Storage full');
+    expect(pending_ids).toEqual([failed.id]);
+    f.failSave(false);
+    await f.library.retrySave();
+    expect(f.library.getSnapshot().pending_recording).toBeNull();
+    unsubscribe();
+    f.library.dispose();
+  });
+
+  test('keeps a background download error through status polls and clears it on retry', async () => {
+    const f = fixture([], false);
+    await f.library.load();
+    const attempt = deferred<void>();
+    f.library.platform.downloadModel = () => attempt.promise;
+    const first = f.library.downloadModel();
+    attempt.reject(new Error('Connection interrupted'));
+    await first;
+    f.library.updateSpeech(f.speech);
+    expect(f.library.getSnapshot().download_error).toBe('Connection interrupted');
+
+    const retry = deferred<void>();
+    const cancellation = deferred<void>();
+    f.library.platform.downloadModel = () => retry.promise;
+    f.library.platform.cancelSpeech = () => cancellation.promise;
+    const second = f.library.downloadModel();
+    expect(f.library.getSnapshot().download_error).toBe('');
+    f.library.cancelModelDownload();
+    retry.reject(new Error('Cancelled'));
+    await Promise.resolve();
+    expect(f.library.getSnapshot().job).toBe('download');
+    cancellation.resolve();
+    await second;
+    expect(f.library.getSnapshot().download_error).toBe('');
+    expect(f.library.getSnapshot().job).toBeNull();
+    f.library.dispose();
+  });
+
+  test('routes queued clips through the chosen recognizer without a download', async () => {
+    const f = fixture([clip(), clip('2026-01-02T12:00:00.000Z')], false);
+    f.speech.system_available = true;
+    f.speech.api_available = true;
+    await f.library.load();
+    expect(f.calls).toHaveLength(0);
+    await f.library.setSpeechSettings({ provider: 'system' });
+    await until(() => f.calls.length === 1);
+    expect(f.calls[0].settings).toEqual({ provider: 'system' });
+    const api = { provider: 'api', connection_id: 'fixture', model_id: 'transcriber' } as const;
+    await f.library.setSpeechSettings(api);
+    f.calls[0].result.resolve(transcript);
+    await until(() => f.calls.length === 2);
+    expect(f.calls[1].settings).toEqual(api);
+    f.calls[1].result.resolve(transcript);
+    await until(() => f.library.getSnapshot().job === null);
+    await f.library.load();
+    expect(f.library.getSnapshot().speech_settings).toEqual(api);
+    f.library.dispose();
+  });
+
+  test('an unavailable persisted recognizer leaves audio queued', async () => {
+    const f = fixture([clip()], false);
+    await f.library.setSpeechSettings({ provider: 'system' });
+    await f.library.load();
+    f.speech.model_ready = true;
+    f.library.updateSpeech(f.speech);
+    await Promise.resolve();
+    expect(f.calls).toHaveLength(0);
+    await f.library.setSpeechSettings({ provider: 'downloaded' });
+    await until(() => f.calls.length === 1);
+    expect(f.calls[0].settings.provider).toBe('downloaded');
+    f.calls[0].result.resolve(transcript);
+    await until(() => f.library.getSnapshot().job === null);
+    f.library.dispose();
+  });
+
+  test('publishes a text note once storage succeeds and keeps it out of the speech queue', async () => {
+    const f = fixture();
+    await f.library.load();
+    f.failSave(true);
+    await expect(f.library.addTextNote(channel.id, 'Remember this')).rejects.toThrow(
+      'Storage full',
+    );
+    expect(f.library.getSnapshot().text_notes).toHaveLength(0);
+    f.failSave(false);
+    await f.library.addTextNote(channel.id, 'Remember this');
+    await f.library.load();
+    const [note] = f.library.getSnapshot().text_notes;
+    expect(note).toMatchObject({ channel_id: channel.id, text: 'Remember this' });
+    expect(f.library.getSnapshot().recordings).toHaveLength(0);
+    expect(f.calls).toHaveLength(0);
+    await expect(f.library.removeChannel(channel.id)).rejects.toThrow('empty channels');
+    await f.library.removeTextNote(note.id);
+    await f.library.removeChannel(channel.id);
+    expect(f.library.getSnapshot().channels).toHaveLength(0);
+    f.library.dispose();
+  });
   test('serializes clips in recording order while allowing the next clip to save', async () => {
     const first = clip();
     const second = clip('2026-01-01T12:01:00.000Z');

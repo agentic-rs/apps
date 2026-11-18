@@ -1,3 +1,4 @@
+import { ConfirmDialog } from './ConfirmDialog';
 import { useEffect, useState } from 'react';
 import type { RecorderController } from '../lib/useRecorder';
 import type { Recording } from '../lib/types';
@@ -41,6 +42,7 @@ export function RecordingDetail({
         <button
           className="icon-button delete-button"
           aria-label="Delete document"
+          aria-haspopup="dialog"
           disabled={controller.busy || draft.dirty || controller.audio.recording_state !== 'idle'}
           onClick={() => setConfirmDelete(true)}
         >
@@ -68,14 +70,15 @@ export function RecordingDetail({
         <div className="section-heading">
           <Icon name="text" />
           <h2>Document</h2>
-          {recording.transcript && (
-            <span className="language-chip">
-              <Icon name="globe" size={13} />
-              {recording.transcript.language === 'und'
-                ? 'Written notes'
-                : languageName(recording.transcript.language)}
-            </span>
-          )}
+          {recording.transcript &&
+            (recording.transcript.language !== 'und' || !recording.transcript.model_id) && (
+              <span className="language-chip">
+                <Icon name="globe" size={13} />
+                {recording.transcript.language === 'und'
+                  ? 'Written notes'
+                  : languageName(recording.transcript.language)}
+              </span>
+            )}
         </div>
         {recording.transcript && (
           <button
@@ -111,24 +114,15 @@ export function RecordingDetail({
               spellCheck
             />
           </label>
-          <p className="transcript-footnote">
-            {recording.transcript
-              ? `${recording.transcript_edited ? 'Edited document' : 'Transcribed on device'} · Click anywhere in the text to edit.`
-              : 'Saved writing is preserved. Use Transcribe again when you want to replace it with a transcript.'}
-          </p>
         </div>
       ) : (
         <div className="document-empty">
           <Icon name="text" size={32} />
-          <h3>A conversation, ready to become a document.</h3>
-          <p>
-            Choose Transcribe when you are ready to turn audio into text.
-            <br />
-            Then make it yours: edit, review, and share.
-          </p>
+          <h3>No document text yet</h3>
+          <p>Transcribe the audio or write your own notes.</p>
           <button className="text-button" onClick={() => setWriting(true)}>
             <Icon name="edit" size={15} />
-            Start writing your own notes
+            Write notes
           </button>
         </div>
       )}
@@ -148,26 +142,16 @@ export function RecordingDetail({
         </div>
       )}
       {confirm_delete && (
-        <div className="inline-confirm" role="alert">
-          <strong>Delete this document?</strong>
-          <p>Its audio and saved text will be removed from this device.</p>
-          <div>
-            <button
-              className="button button-small"
-              onClick={() => setConfirmDelete(false)}
-              disabled={controller.busy}
-            >
-              Keep document
-            </button>
-            <button
-              className="button button-danger button-small"
-              onClick={() => void controller.remove(recording)}
-              disabled={controller.busy}
-            >
-              Delete document
-            </button>
-          </div>
-        </div>
+        <ConfirmDialog
+          title={`Delete “${recording.title}”?`}
+          description="This permanently removes the document, its audio, and its saved text."
+          confirm_label="Delete document"
+          onCancel={() => setConfirmDelete(false)}
+          onConfirm={() => {
+            setConfirmDelete(false);
+            void controller.remove(recording);
+          }}
+        />
       )}
     </section>
   );

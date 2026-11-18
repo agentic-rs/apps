@@ -1,3 +1,4 @@
+import { ConfirmDialog } from './components/ConfirmDialog';
 import { useCallback, useEffect, useState } from 'react';
 import { ChannelTimeline } from './components/ChannelTimeline';
 import { Icon } from './components/Icon';
@@ -12,6 +13,7 @@ export function App() {
   const controller = useRecorder();
   const native = controller.platform?.native ?? window.parent !== window;
   const [model_open, setModelOpen] = useState(false);
+  const [leave, setLeave] = useState<(() => void) | null>(null);
   const [dirty_ids, setDirtyIds] = useState<Set<string>>(() => new Set());
   const dirty = dirty_ids.size > 0;
   useEffect(() => {
@@ -44,10 +46,10 @@ export function App() {
       : undefined;
   const recording_active = controller.audio.recording_state !== 'idle';
   const locked =
-    controller.loading || controller.busy || Boolean(controller.pending_recording) || dirty;
+    !controller.platform || controller.busy || Boolean(controller.pending_recording) || dirty;
   const navigate = (action: () => void) => {
     if (dirty) {
-      controller.setError('Save or discard your changes before leaving this workspace.');
+      setLeave(() => action);
       return;
     }
     action();
@@ -59,34 +61,21 @@ export function App() {
       >
         <h1 className="sr-only">Recorder</h1>
         <div className="app-notices">
-          {(controller.error || controller.notice) && (
-            <div
-              className={`message-bar ${controller.error ? 'message-error' : 'message-success'}`}
-              role={controller.error ? 'alert' : 'status'}
-            >
-              <span>{controller.error || controller.notice}</span>
-              {controller.error && (
-                <div className="inline-actions">
-                  <button
-                    className="text-button"
-                    onClick={() => void controller.reload()}
-                    disabled={
-                      controller.busy ||
-                      recording_active ||
-                      Boolean(controller.pending_recording) ||
-                      dirty
-                    }
-                  >
-                    Retry connection
-                  </button>
-                  <button
-                    className="icon-button"
-                    aria-label="Dismiss error"
-                    onClick={() => controller.setError('')}
-                  >
-                    <Icon name="close" size={16} />
-                  </button>
-                </div>
+          {controller.error && !model_open && (
+            <div className="message-bar message-error" role="alert">
+              <span>{controller.error}</span>
+              {controller.open_failed ? (
+                <button className="text-button" onClick={controller.retryOpen}>
+                  Retry opening library
+                </button>
+              ) : (
+                <button
+                  className="icon-button"
+                  aria-label="Dismiss error"
+                  onClick={() => controller.setError('')}
+                >
+                  <Icon name="close" size={16} />
+                </button>
               )}
             </div>
           )}
@@ -110,8 +99,13 @@ export function App() {
           <Library
             controller={controller}
             locked={locked}
-            onSelectDocument={(id) => navigate(() => controller.setSelectedId(id))}
-            onSelectChannel={(id) => navigate(() => controller.setSelectedChannelId(id))}
+            onSelectDocument={(id) =>
+              id !== controller.selected_id && navigate(() => controller.setSelectedId(id))
+            }
+            onSelectChannel={(id) =>
+              id !== controller.selected_channel_id &&
+              navigate(() => controller.setSelectedChannelId(id))
+            }
             onDirtyChange={onDirtyChange}
           />
           <div className="workspace-content">
@@ -134,7 +128,7 @@ export function App() {
                 onDirtyChange={onDirtyChange}
               />
             ) : (
-              <WorkspaceWelcome mode={controller.mode} native={native} />
+              <WorkspaceWelcome mode={controller.mode} />
             )}
             {controller.mode === 'clip' && <RecorderDock controller={controller} locked={locked} />}
           </div>
@@ -144,7 +138,9 @@ export function App() {
           <button
             aria-pressed={controller.mode === 'document'}
             className={controller.mode === 'document' ? 'active' : ''}
-            onClick={() => navigate(() => controller.setMode('document'))}
+            onClick={() =>
+              controller.mode !== 'document' && navigate(() => controller.setMode('document'))
+            }
           >
             <span className="nav-icon">
               <Icon name="text" size={22} />
@@ -154,7 +150,7 @@ export function App() {
           <button
             aria-pressed={controller.mode === 'clip'}
             className={controller.mode === 'clip' ? 'active' : ''}
-            onClick={() => navigate(() => controller.setMode('clip'))}
+            onClick={() => controller.mode !== 'clip' && navigate(() => controller.setMode('clip'))}
           >
             <span className="nav-icon">
               <Icon name="chat" size={22} />
@@ -162,26 +158,31 @@ export function App() {
             <span>Channels</span>
           </button>
           <button
-            className={controller.speech.model_ready ? 'model-ready' : ''}
             onClick={() => setModelOpen(true)}
             aria-label="Transcription settings"
             aria-haspopup="dialog"
             aria-expanded={model_open}
-            title={
-              controller.job === 'download'
-                ? 'Setting up transcription…'
-                : controller.speech.model_ready
-                  ? 'On-device transcription ready'
-                  : 'Set up on-device transcription'
-            }
+            title="Transcription settings"
           >
             <span className="nav-icon">
               <Icon name="settings" size={22} />
-              <span className="status-dot" />
             </span>
             <span>Settings</span>
           </button>
         </nav>
+        {leave && (
+          <ConfirmDialog
+            title="Discard unsaved changes?"
+            description="Leaving this editor will discard your changes."
+            cancel_label="Keep editing"
+            confirm_label="Discard changes"
+            onCancel={() => setLeave(null)}
+            onConfirm={() => {
+              setLeave(null);
+              leave();
+            }}
+          />
+        )}
         <ModelDialog
           controller={controller}
           open={model_open}

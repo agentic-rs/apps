@@ -2,7 +2,7 @@
 
 The official Apell apps, developed together on `main` and packaged independently.
 
-- [Recorder](recorder/README.md): audio recording, import, playback, on-device transcription, and sharing.
+- [Recorder](recorder/README.md) supports audio documents, text and voice channels, local or API transcription, playback, and sharing.
 - [Learning](learning/README.md): an AI guide for exploring topics, understanding key points, and remembering what you learn.
 - [Fieldnotes](travel/README.md): a mobile travel journal with Timeline and Map views, photo check-ins, and distinct visit and named-place locations.
 

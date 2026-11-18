@@ -50,6 +50,14 @@ export interface Channel {
   updated_at: string;
 }
 
+export interface TextNote {
+  schema_version: 1;
+  id: string;
+  channel_id: string;
+  created_at: string;
+  text: string;
+}
+
 export interface CaptureDraft {
   schema_version: 1;
   id: string;
@@ -80,7 +88,15 @@ export interface Capabilities {
   playback: boolean;
 }
 
+export type SpeechSettings =
+  | { provider: 'system' }
+  | { provider: 'downloaded' }
+  | { provider: 'api'; connection_id: string; model_id: string };
+
 export interface SpeechStatus {
+  system_available?: boolean;
+  system_unavailable_reason?: string | null;
+  api_available?: boolean;
   model_ready: boolean;
   model_size_bytes: number;
   busy: boolean;
@@ -95,6 +111,9 @@ export interface RecordingStore {
   listChannels(): Promise<Channel[]>;
   saveChannel(channel: Channel): Promise<void>;
   removeChannel(id: string): Promise<void>;
+  listTextNotes(): Promise<TextNote[]>;
+  addTextNote(note: TextNote): Promise<void>;
+  removeTextNote(id: string): Promise<void>;
   saveCapture(draft: CaptureDraft): Promise<void>;
   clearCapture(id: string): Promise<void>;
 }
@@ -115,8 +134,19 @@ export interface RecorderPlatform {
   seek(position_ms: number): Promise<void>;
   status(): Promise<AudioStatus>;
   speechStatus(): Promise<SpeechStatus>;
+  speechSettings?: {
+    read(): Promise<SpeechSettings>;
+    save(settings: SpeechSettings): Promise<void>;
+    chooseApi(
+      current?: Extract<SpeechSettings, { provider: 'api' }>,
+    ): Promise<Extract<SpeechSettings, { provider: 'api' }> | null>;
+  };
   downloadModel(): Promise<void>;
-  transcribe(path: string, language?: string): Promise<Transcript>;
+  transcribe(
+    path: string,
+    language: string | undefined,
+    settings: SpeechSettings,
+  ): Promise<Transcript>;
   cancelSpeech(): Promise<void>;
   dispose(): void;
 }

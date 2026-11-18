@@ -160,12 +160,6 @@
 .bottom-navigation .active .nav-icon {
   background: var(--apell-selection);
 }
-.nav-icon .status-dot {
-  position: absolute;
-  top: 2px;
-  right: 5px;
-  outline: 2px solid var(--apell-surface);
-}
 @media (max-width: 700px) {
   .workspace {
     display: flex;

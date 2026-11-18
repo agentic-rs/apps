@@ -1,13 +1,17 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { ChannelNameDialog } from './ChannelNameDialog';
+import { ConfirmDialog } from './ConfirmDialog';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { Channel, Recording } from '../lib/types';
 import type { RecorderController } from '../lib/useRecorder';
-import { languageName } from '../lib/recordings';
+import { languageName, noteTime, type ChannelNote } from '../lib/recordings';
 import { AudioPlayer } from './AudioPlayer';
+import { TextNoteCard } from './TextNoteCard';
 import { Icon } from './Icon';
 import { TranscriptionStatus } from './TranscriptionStatus';
 import { useRecordingDraft } from './useRecordingDraft';
 
 type DirtyHandler = (id: string, dirty: boolean) => void;
+const empty_notes: ChannelNote[] = [];
 
 function ClipCard({
   recording,
@@ -135,29 +139,19 @@ function ClipCard({
         </div>
       )}
       {confirm_delete && (
-        <div className="inline-confirm" role="alert">
-          <strong>Delete this voice note?</strong>
-          <p>Its audio and transcript will be removed. Other notes stay in the channel.</p>
-          <div>
-            <button
-              className="button button-small"
-              onClick={() => setConfirmDelete(false)}
-              disabled={controller.busy}
-            >
-              Keep note
-            </button>
-            <button
-              className="button button-danger button-small"
-              onClick={() => void controller.remove(recording)}
-              disabled={controller.busy}
-            >
-              Delete note
-            </button>
-          </div>
-        </div>
+        <ConfirmDialog
+          title="Delete this voice note?"
+          description="This permanently removes its audio and transcript from the channel."
+          confirm_label="Delete note"
+          onCancel={() => setConfirmDelete(false)}
+          onConfirm={() => {
+            setConfirmDelete(false);
+            void controller.remove(recording);
+          }}
+        />
       )}
       <footer className="clip-meta">
-        {recording.transcript && (
+        {recording.transcript && recording.transcript.language !== 'und' && (
           <span className="clip-language">
             {languageName(recording.transcript.language)}
             {recording.transcript_edited ? ' · Edited' : ''}
@@ -170,6 +164,7 @@ function ClipCard({
           <button
             className="icon-button clip-delete"
             aria-label="Delete voice note"
+            aria-haspopup="dialog"
             disabled={controller.busy || draft.dirty || controller.audio.recording_state !== 'idle'}
             onClick={() => setConfirmDelete(true)}
           >
@@ -209,41 +204,18 @@ export function ChannelTimeline({
   onModel: () => void;
   onDirtyChange: DirtyHandler;
 }) {
-  const [rename_value, setRenameValue] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState(false);
   const [confirm_delete, setConfirmDelete] = useState(false);
   const messages = useRef<HTMLDivElement>(null);
   const message_list = useRef<HTMLDivElement>(null);
   const previous_ids = useRef<Set<string> | null>(null);
   const follow_end = useRef(true);
-  const clips = useMemo(
-    () =>
-      controller.recordings
-        .filter((recording) => recording.mode === 'clip' && recording.channel_id === channel.id)
-        .sort(
-          (left, right) =>
-            (left.started_at ?? left.created_at).localeCompare(
-              right.started_at ?? right.created_at,
-            ) || left.id.localeCompare(right.id),
-        ),
-    [controller.recordings, channel.id],
-  );
-  const rename_dirty = rename_value !== null && rename_value !== channel.title;
-  const channel_key = `channel-${channel.id}`;
-  const renameChannel = () => {
-    if (!controller.busy && rename_dirty && rename_value?.trim())
-      void controller.renameChannel(channel, rename_value.trim());
-  };
-  useEffect(() => {
-    onDirtyChange(channel_key, rename_dirty);
-  }, [channel_key, rename_dirty, onDirtyChange]);
-  useEffect(() => () => onDirtyChange(channel_key, false), [channel_key, onDirtyChange]);
-  useEffect(() => {
-    setRenameValue(null);
-  }, [channel.title]);
+  const notes = controller.channel_notes.get(channel.id) ?? empty_notes;
+  const has_draft = Boolean(controller.text_drafts.get(channel.id)?.trim());
   useLayoutEffect(() => {
     const container = messages.current;
     if (!container) return;
-    const added_note = clips.some((clip) => !previous_ids.current?.has(clip.id));
+    const added_note = notes.some((note) => !previous_ids.current?.has(note.id));
     const editing_current = Boolean(container.querySelector('.clip-editor'));
     if (editing_current) follow_end.current = false;
     if (!editing_current && (previous_ids.current === null || added_note || follow_end.current)) {
@@ -251,8 +223,8 @@ export function ChannelTimeline({
       container.scrollTop = container.scrollHeight;
       follow_end.current = true;
     }
-    previous_ids.current = new Set(clips.map((clip) => clip.id));
-  }, [clips]);
+    previous_ids.current = new Set(notes.map((note) => note.id));
+  }, [notes]);
   useEffect(() => {
     const container = messages.current;
     const content = message_list.current;
@@ -280,30 +252,32 @@ export function ChannelTimeline({
         <div className="channel-heading">
           <h2>{channel.title}</h2>
           <p>
-            {clips.length} {clips.length === 1 ? 'voice note' : 'voice notes'} · Only you
+            {notes.length} {notes.length === 1 ? 'note' : 'notes'}
           </p>
         </div>
         <div className="channel-tools">
           <button
             className="icon-button"
             aria-label="Rename channel"
-            onClick={() => setRenameValue(channel.title)}
-            disabled={controller.busy || rename_value !== null}
+            aria-haspopup="dialog"
+            onClick={() => setRenaming(true)}
+            disabled={controller.busy}
           >
             <Icon name="edit" size={17} />
           </button>
           <button
             className="icon-button"
             aria-label="Delete empty channel"
+            aria-haspopup="dialog"
             title={
-              clips.length
-                ? 'Remove the voice notes before deleting this channel'
+              notes.length || has_draft
+                ? 'Clear this channel’s notes and draft before deleting it'
                 : 'Delete empty channel'
             }
             disabled={
-              Boolean(clips.length) ||
+              Boolean(notes.length) ||
+              has_draft ||
               controller.busy ||
-              rename_dirty ||
               controller.active_capture?.channel_id === channel.id
             }
             onClick={() => setConfirmDelete(true)}
@@ -312,57 +286,31 @@ export function ChannelTimeline({
           </button>
         </div>
       </header>
-      {rename_value !== null && (
-        <div className="channel-rename" role="form" aria-label="Rename channel">
-          <label>
-            <span className="sr-only">Channel name</span>
-            <input
-              value={rename_value}
-              maxLength={100}
-              onChange={(event) => setRenameValue(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
-                  event.preventDefault();
-                  renameChannel();
-                }
-              }}
-              autoFocus
-            />
-          </label>
-          <button
-            className="button button-dark button-small"
-            onClick={renameChannel}
-            disabled={controller.busy || !rename_value.trim() || !rename_dirty}
-          >
-            Save name
-          </button>
-          <button type="button" className="text-button" onClick={() => setRenameValue(null)}>
-            Cancel
-          </button>
-        </div>
+      {renaming && (
+        <ChannelNameDialog
+          channel={channel}
+          controller={controller}
+          onClose={() => setRenaming(false)}
+          onDirtyChange={onDirtyChange}
+        />
       )}
       {confirm_delete && (
-        <div className="inline-confirm" role="alert">
-          <strong>Delete this empty channel?</strong>
-          <div>
-            <button className="button button-small" onClick={() => setConfirmDelete(false)}>
-              Keep channel
-            </button>
-            <button
-              className="button button-danger button-small"
-              disabled={controller.busy}
-              onClick={() => void controller.removeChannel(channel)}
-            >
-              Delete channel
-            </button>
-          </div>
-        </div>
+        <ConfirmDialog
+          title={`Delete “${channel.title}”?`}
+          description="This empty channel will be removed from your library."
+          confirm_label="Delete channel"
+          onCancel={() => setConfirmDelete(false)}
+          onConfirm={() => {
+            setConfirmDelete(false);
+            void controller.removeChannel(channel);
+          }}
+        />
       )}
       <div
         ref={messages}
         className="channel-messages"
         role="region"
-        aria-label="Voice notes"
+        aria-label="Channel notes"
         tabIndex={0}
         onScroll={(event) => {
           const container = event.currentTarget;
@@ -372,9 +320,9 @@ export function ChannelTimeline({
         }}
       >
         <div ref={message_list} className="channel-message-list">
-          {clips.length ? (
-            clips.map((recording) => {
-              const date = new Date(recording.started_at ?? recording.created_at);
+          {notes.length ? (
+            notes.map((note) => {
+              const date = new Date(noteTime(note));
               const day = date.toLocaleDateString(undefined, {
                 month: 'long',
                 day: 'numeric',
@@ -383,32 +331,32 @@ export function ChannelTimeline({
               const show_day = day !== previous_day;
               previous_day = day;
               return (
-                <div key={recording.id} className="clip-entry">
+                <div key={note.id} className="clip-entry">
                   {show_day && (
                     <div className="timeline-date">
                       <span>{day}</span>
                     </div>
                   )}
-                  <ClipCard
-                    recording={recording}
-                    controller={controller}
-                    onModel={onModel}
-                    onDirtyChange={onDirtyChange}
-                  />
+                  {'text' in note ? (
+                    <TextNoteCard note={note} controller={controller} />
+                  ) : (
+                    <ClipCard
+                      recording={note}
+                      controller={controller}
+                      onModel={onModel}
+                      onDirtyChange={onDirtyChange}
+                    />
+                  )}
                 </div>
               );
             })
           ) : (
             <div className="channel-empty">
               <span className="channel-empty-icon">
-                <Icon name="mic" size={24} />
+                <Icon name="chat" size={24} />
               </span>
-              <h3>Your thoughts, one note at a time.</h3>
-              <p>
-                {controller.platform?.native
-                  ? 'Tap the microphone. Your words will appear here.'
-                  : 'Tap the microphone to save a voice note.'}
-              </p>
+              <h3>No notes yet</h3>
+              <p>Type a note or tap the microphone to record.</p>
             </div>
           )}
         </div>

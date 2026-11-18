@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { speechReady } from './speech';
+import type { SpeechSettings } from './types';
 import { createPlatform } from './platform';
-import { createId, createRecording } from './recordings';
+import { createId, createRecording, groupChannelNotes } from './recordings';
 import { empty_library, errorMessage, RecorderLibrary, type RecordingEditFields } from './library';
 import type {
   AudioStatus,
@@ -37,12 +39,18 @@ export function useRecorder() {
   const [mode, setMode] = useState<'document' | 'clip'>('document');
   const [selected_id, setSelectedId] = useState<string | null>(null);
   const [selected_channel_id, setSelectedChannelId] = useState<string | null>(null);
+  const [text_drafts, setTextDrafts] = useState(() => new Map<string, string>());
+  const channel_notes = useMemo(
+    () => groupChannelNotes(state.recordings, state.text_notes),
+    [state.recordings, state.text_notes],
+  );
   const [active_capture, setActiveCapture] = useState<CaptureDraft | null>(null);
   const [audio, setAudio] = useState<AudioStatus>(idle_audio);
   const [capabilities, setCapabilities] = useState<Capabilities>(empty_capabilities);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [initial_error, setInitialError] = useState('');
+  const [open_attempt, setOpenAttempt] = useState(0);
   const [playing_id, setPlayingId] = useState<string | null>(null);
   const action_lock = useRef(false);
   const capture = useRef<CaptureDraft | null>(null);
@@ -52,6 +60,8 @@ export function useRecorder() {
     let active = true;
     let current: RecorderPlatform | null = null;
     let manager: RecorderLibrary | null = null;
+    setLoading(true);
+    setInitialError('');
     mounted.current = true;
     void (async () => {
       try {
@@ -61,17 +71,14 @@ export function useRecorder() {
           return;
         }
         manager = new RecorderLibrary(current);
-        setPlatform(current);
-        setLibrary(manager);
         const [, supported] = await Promise.all([manager.load(), current.capabilities()]);
         if (!active) return;
+        setPlatform(current);
+        setLibrary(manager);
         setCapabilities(supported);
         setSelectedChannelId(manager.getSnapshot().channels[0]?.id ?? null);
       } catch (error) {
-        if (active) {
-          if (manager) manager.setError(errorMessage(error));
-          else setInitialError(errorMessage(error));
-        }
+        if (active) setInitialError(errorMessage(error));
       } finally {
         if (active) setLoading(false);
       }
@@ -82,7 +89,7 @@ export function useRecorder() {
       manager?.dispose();
       current?.dispose();
     };
-  }, []);
+  }, [open_attempt]);
 
   useEffect(() => {
     if (!platform || !library) return;
@@ -125,14 +132,19 @@ export function useRecorder() {
 
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {
-      if (audio.recording_state !== 'idle' || state.pending_recording || state.job) {
+      if (
+        audio.recording_state !== 'idle' ||
+        state.pending_recording ||
+        state.job ||
+        text_drafts.size
+      ) {
         event.preventDefault();
         event.returnValue = '';
       }
     };
     window.addEventListener('beforeunload', warn);
     return () => window.removeEventListener('beforeunload', warn);
-  }, [audio.recording_state, state.pending_recording, state.job]);
+  }, [audio.recording_state, state.pending_recording, state.job, text_drafts.size]);
 
   const setError = useCallback(
     (error: string) => {
@@ -182,10 +194,12 @@ export function useRecorder() {
       if (capture.current) throw new Error('Save the current recording first.');
       // Freeze destination before awaiting a microphone permission prompt.
       const target = destination();
-      if (target.mode === 'document') setSelectedId(null);
       await current.pausePlayback();
       setPlayingId(null);
       const started = await current.start();
+      if (target.mode === 'document') {
+        setSelectedId((selected) => (selected === selected_id ? null : selected));
+      }
       const draft: CaptureDraft = {
         schema_version: 1,
         id: createId(),
@@ -252,11 +266,12 @@ export function useRecorder() {
       if (manager.getSnapshot().pending_recording)
         throw new Error('Save the pending recording first.');
       const target = destination();
-      if (target.mode === 'document') setSelectedId(null);
       const asset = await current.importAudio();
       if (!asset) return;
       const recording = createRecording(asset, 'import', target);
-      selectSaved(recording);
+      if (target.mode === 'document') {
+        setSelectedId((selected) => (selected === selected_id ? recording.id : selected));
+      }
       await manager.add(recording);
     });
 
@@ -297,21 +312,8 @@ export function useRecorder() {
     run((_current, manager) => manager.enqueue(recording.id, language));
   const cancelTranscription = (recording: Recording) =>
     run((_current, manager) => manager.cancel(recording.id));
-  const cancelSpeech = () =>
-    run(async (current, manager) => {
-      const job = manager.getSnapshot().job;
-      if (job && job !== 'download') await manager.cancel(job);
-      else await current.cancelSpeech();
-    });
   // Downloads and recognition never occupy the recording action lock.
-  const downloadModel = async () => {
-    if (!library) return;
-    try {
-      await library.downloadModel();
-    } catch (error) {
-      library.setError(errorMessage(error));
-    }
-  };
+  const downloadModel = () => library?.downloadModel();
   const shareAudio = (recording: Recording) => run((current) => current.shareAudio(recording));
   const shareTranscript = (recording: Recording) =>
     run((current) => current.shareTranscript(recording));
@@ -321,35 +323,60 @@ export function useRecorder() {
       setSelectedChannelId(channel.id);
       return channel;
     });
+  const setTextDraft = (channel_id: string, text: string) => {
+    setTextDrafts((drafts) => {
+      const next = new Map(drafts);
+      if (text) next.set(channel_id, text);
+      else next.delete(channel_id);
+      return next;
+    });
+  };
+  const sendTextNote = (channel_id: string) =>
+    run(async (_current, manager) => {
+      const text = text_drafts.get(channel_id);
+      if (!text?.trim()) return;
+      await manager.addTextNote(channel_id, text);
+      setTextDrafts((drafts) => {
+        if (drafts.get(channel_id) !== text) return drafts;
+        const next = new Map(drafts);
+        next.delete(channel_id);
+        return next;
+      });
+    });
+  const removeTextNote = (id: string) => run((_current, manager) => manager.removeTextNote(id));
   const renameChannel = (channel: Channel, title: string) =>
     run((_current, manager) => manager.renameChannel(channel, title));
   const removeChannel = (channel: Channel) =>
     run(async (_current, manager) => {
+      if (text_drafts.get(channel.id)?.trim())
+        throw new Error('Send or clear the draft before deleting this channel.');
       if (capture.current?.channel_id === channel.id)
         throw new Error('Save the current clip before deleting this channel.');
       await manager.removeChannel(channel.id);
+      setTextDraft(channel.id, '');
       if (selected_channel_id === channel.id)
         setSelectedChannelId(manager.getSnapshot().channels[0]?.id ?? null);
     });
-  const reload = () =>
-    run(async (current, manager) => {
-      if (capture.current || manager.getSnapshot().pending_recording || manager.getSnapshot().job)
-        throw new Error('Finish the current recording or save operation before reloading.');
-      await manager.load();
-      setCapabilities(await current.capabilities());
-      if (!manager.getSnapshot().channels.some((channel) => channel.id === selected_channel_id))
-        setSelectedChannelId(manager.getSnapshot().channels[0]?.id ?? null);
-    });
-
   return {
     platform,
     ...state,
+    speech_provider: state.speech_settings.provider,
+    speech_ready: Boolean(platform?.native && speechReady(state.speech_settings, state.speech)),
+    setSpeechSettings: (settings: SpeechSettings) => {
+      if (!library) throw new Error('Wait for the library to open.');
+      return library.setSpeechSettings(settings);
+    },
     error: state.error || initial_error,
     mode,
     setMode,
     selected_id,
     setSelectedId,
     selected_channel_id,
+    channel_notes,
+    text_drafts,
+    setTextDraft,
+    sendTextNote,
+    removeTextNote,
     setSelectedChannelId,
     active_capture,
     audio,
@@ -370,13 +397,14 @@ export function useRecorder() {
     downloadModel,
     transcribe,
     cancelTranscription,
-    cancelSpeech,
+    cancelModelDownload: () => library?.cancelModelDownload(),
     shareAudio,
     shareTranscript,
     createChannel,
     renameChannel,
     removeChannel,
-    reload,
+    open_failed: Boolean(initial_error) && !library,
+    retryOpen: () => setOpenAttempt((attempt) => attempt + 1),
   };
 }
 

@@ -12,7 +12,7 @@ const manifest = {
   applet_id: 'recorder',
   name: 'Recorder',
   version: metadata.version,
-  permissions: ['fs', 'audio', 'speech'],
+  permissions: ['fs', 'audio', 'speech', 'config', 'llm'],
 };
 await mkdir('artifacts', { recursive: true });
 await writePackageIcon('recorder');

@@ -1,3 +1,4 @@
+import { ConfirmDialog } from './ConfirmDialog';
 import { useState } from 'react';
 import type { Recording } from '../lib/types';
 import type { RecorderController } from '../lib/useRecorder';
@@ -17,7 +18,9 @@ export function transcriptionLabel(recording: Recording): string {
     case 'complete':
       return recording.transcript
         ? recording.transcript.language === 'und'
-          ? 'Written notes'
+          ? recording.transcript.model_id
+            ? 'Transcribed'
+            : 'Written notes'
           : `${languageName(recording.transcript.language)} · Transcribed`
         : 'Transcription complete';
     default:
@@ -52,12 +55,12 @@ export function TranscriptionStatus({
     void controller.transcribe(recording, language || undefined);
   };
   const status = running
-    ? 'Transcribing on this device'
+    ? 'Transcribing…'
     : queued
       ? !controller.platform?.native
         ? 'Transcription is available in Apell'
-        : !controller.speech.model_ready
-          ? 'Waiting for the language model'
+        : !controller.speech_ready
+          ? 'Waiting for transcription setup'
           : 'Queued for transcription'
       : failed
         ? 'Could not transcribe this recording'
@@ -89,18 +92,18 @@ export function TranscriptionStatus({
             <progress
               max="100"
               value={
-                controller.job === recording.id
+                controller.job === recording.id && controller.speech.progress > 0
                   ? Math.max(0, Math.min(100, controller.speech.progress))
-                  : 0
+                  : undefined
               }
             />
           )}
           {queued && !compact && (
             <p>
               {!controller.platform?.native
-                ? 'Open the applet in Apell for on-device transcription.'
-                : !controller.speech.model_ready
-                  ? 'Download the model once. Saved recordings will then transcribe automatically.'
+                ? 'Open Recorder in Apell to transcribe.'
+                : !controller.speech_ready
+                  ? 'Choose an available recognizer in Settings to transcribe queued recordings.'
                   : 'This recording will start when the current job finishes. You can keep recording.'}
             </p>
           )}
@@ -112,11 +115,11 @@ export function TranscriptionStatus({
         </div>
       )}
       {!controller.platform?.native ? (
-        !compact && <p className="preview-note">On-device transcription is available in Apell.</p>
-      ) : !controller.speech.model_ready ? (
+        !compact && <p className="preview-note">Transcription is available in Apell.</p>
+      ) : !controller.speech_ready ? (
         <button className="text-button setup-link" onClick={onModel}>
           <Icon name="download" size={15} />
-          Set up on-device transcription
+          Set up transcription
         </button>
       ) : (
         !active &&
@@ -130,7 +133,11 @@ export function TranscriptionStatus({
                   onChange={(event) => setLanguage(event.target.value)}
                   disabled={dirty || controller.busy}
                 >
-                  <option value="">Detect automatically</option>
+                  <option value="">
+                    {controller.speech_provider === 'system'
+                      ? 'Device language'
+                      : 'Detect automatically'}
+                  </option>
                   {[
                     ['en', 'English'],
                     ['zh', 'Chinese'],
@@ -168,18 +175,13 @@ export function TranscriptionStatus({
         )
       )}
       {confirm_replace && (
-        <div className="inline-confirm" role="alert">
-          <strong>Replace this transcript?</strong>
-          <p>A new transcription will replace the saved text, including edits.</p>
-          <div>
-            <button className="button button-small" onClick={() => setConfirmReplace(false)}>
-              Keep text
-            </button>
-            <button className="button button-dark button-small" onClick={transcribe}>
-              Replace transcript
-            </button>
-          </div>
-        </div>
+        <ConfirmDialog
+          title="Replace this transcript?"
+          description="A new transcription will replace the saved text, including your edits."
+          confirm_label="Replace transcript"
+          onCancel={() => setConfirmReplace(false)}
+          onConfirm={transcribe}
+        />
       )}
     </div>
   );

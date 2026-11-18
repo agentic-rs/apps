@@ -9,6 +9,7 @@ const paths = {
     </>
   ),
   plus: <path d="M12 5v14M5 12h14" />,
+  send: <path d="M12 20V4m-7 7 7-7 7 7" />,
   chat: (
     <path d="M20 4H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h4l4 4v-4h8a1 1 0 0 0 1-1V5a1 1 0 0 0-1-1ZM7 9h10M7 13h7" />
   ),

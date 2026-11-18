@@ -76,15 +76,6 @@ h3,
 p {
   margin: 0;
 }
-.status-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--apell-warning);
-}
-.model-ready .status-dot {
-  background: var(--apell-success);
-}
 .message-bar {
   display: flex;
   align-items: center;
@@ -99,10 +90,6 @@ p {
 .message-error {
   color: var(--apell-danger);
   background: var(--apell-danger-soft);
-}
-.message-success {
-  color: var(--apell-success);
-  background: var(--apell-success-soft);
 }
 .message-bar .text-button {
   font-size: 12px;
@@ -289,68 +276,26 @@ p {
   color: var(--apell-muted);
 }
 .welcome {
-  padding: 58px 35px 35px;
-  text-align: center;
+  min-height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-}
-.welcome-orbit {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 190px;
-  height: 150px;
-  margin-bottom: 28px;
-}
-.welcome-orbit > span {
-  position: absolute;
-  width: 148px;
-  height: 148px;
-  border: 1px solid var(--apell-line);
-  border-radius: 50%;
-}
-.welcome-orbit > span:nth-child(2) {
-  width: 184px;
-  height: 184px;
-  border-style: dashed;
-  border-color: var(--apell-line);
-}
-.welcome-orbit > div {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 110px;
-  height: 110px;
-  border-radius: 26px;
-  background: var(--apell-subtle);
+  gap: 10px;
+  padding: 24px;
+  text-align: center;
   color: var(--apell-muted);
-}
-.welcome-orbit img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  border-radius: inherit;
-}
-.welcome .eyebrow {
-  font-size: 10px;
-  margin-bottom: 15px;
 }
 .welcome h2 {
-  font-family: inherit;
-  font-size: clamp(30px, 3.5vw, 46px);
-  line-height: 1.15;
-  letter-spacing: -1.8px;
-  font-weight: 400;
+  margin-top: 5px;
+  font-size: 18px;
+  font-weight: 600;
   color: var(--apell-text);
 }
-.welcome > p:not(.eyebrow) {
-  color: var(--apell-muted);
-  font-size: 12px;
-  line-height: 1.85;
-  margin: 19px 0 20px;
+.welcome p {
+  max-width: 36ch;
+  font-size: 14px;
+  line-height: 1.5;
 }
 .text-button {
   display: inline-flex;
@@ -365,17 +310,6 @@ p {
 }
 .text-button:enabled:hover {
   color: var(--apell-primary-hover);
-}
-.welcome-import {
-  font-size: 12px;
-}
-.privacy-note {
-  color: var(--apell-muted);
-  font-size: 10px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 40px;
 }
 .dock-label {
   display: flex;
@@ -607,11 +541,6 @@ p {
   font-size: 10px;
   color: var(--apell-muted);
 }
-.inline-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-}
 .empty-transcript {
   text-align: center;
   padding: 27px 10px 32px;
@@ -639,11 +568,6 @@ p {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   color: var(--apell-text);
-}
-.transcript-footnote {
-  margin-top: 20px;
-  font-size: 10px;
-  color: var(--apell-muted);
 }
 .transcript-editor {
   width: 100%;
@@ -702,25 +626,6 @@ p {
   margin-right: auto;
   color: var(--apell-warning);
 }
-.inline-confirm {
-  padding: 17px;
-  border: 1px solid var(--apell-danger-soft);
-  background: var(--apell-danger-soft);
-  border-radius: 10px;
-  margin-top: 20px;
-  font-size: 12px;
-  color: var(--apell-danger);
-}
-.inline-confirm p {
-  font-size: 12px;
-  margin: 7px 0 14px;
-  line-height: 1.6;
-}
-.inline-confirm > div {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 9px;
-}
 .transcribing-panel {
   text-align: center;
   padding: 32px 18px;
@@ -776,6 +681,7 @@ progress::-moz-progress-bar {
     transform: rotate(360deg);
   }
 }
+.action-dialog,
 .model-dialog {
   position: fixed;
   inset: 0;
@@ -787,9 +693,55 @@ progress::-moz-progress-bar {
   color: var(--ink);
   box-shadow: 0 20px 100px var(--apell-shadow);
 }
+.action-dialog::backdrop,
 .model-dialog::backdrop {
   background: var(--apell-scrim);
   backdrop-filter: blur(4px);
+}
+.action-dialog {
+  width: min(380px, calc(100% - 32px));
+  max-height: calc(100% - 32px);
+  padding: 24px;
+  overflow: auto;
+}
+.action-dialog h2 {
+  font-size: 19px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.action-dialog p {
+  margin-top: 10px;
+  font-size: 14px;
+  color: var(--apell-muted);
+  line-height: 1.5;
+}
+.dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 22px;
+}
+.dialog-actions button {
+  min-height: 44px;
+}
+.channel-name-form label {
+  display: grid;
+  gap: 6px;
+  margin-top: 18px;
+  font-size: 13px;
+}
+.channel-name-form input {
+  width: 100%;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--apell-control-line);
+  border-radius: 6px;
+  background: var(--apell-surface);
+  font-size: 16px;
+}
+.channel-name-form [role='alert'] {
+  color: var(--apell-danger);
 }
 .dialog-close {
   position: absolute;
@@ -992,9 +944,6 @@ progress::-moz-progress-bar {
     flex-direction: column;
     gap: 5px;
   }
-  .message-bar .inline-actions {
-    margin-left: auto;
-  }
 }
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -1003,20 +952,6 @@ progress::-moz-progress-bar {
     animation: none !important;
     transition: none !important;
   }
-}
-.welcome-feature-row {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 14px 22px;
-  color: var(--apell-muted);
-  font-size: 11px;
-  margin-top: 4px;
-}
-.welcome-feature-row > span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
 }
 .document-detail {
   background: var(--apell-canvas);
@@ -1157,40 +1092,6 @@ progress::-moz-progress-bar {
   min-width: 42px;
   min-height: 42px;
 }
-.new-channel-form {
-  margin: 0 18px 19px;
-  padding: 13px;
-  background: var(--apell-subtle);
-  border: 1px solid var(--apell-line);
-  border-radius: 9px;
-}
-.new-channel-form label {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  font-size: 11px;
-  color: var(--apell-muted);
-}
-.new-channel-form input,
-.channel-rename input {
-  width: 100%;
-  min-width: 0;
-  font-size: 12px;
-  padding: 10px;
-  border: 1px solid var(--apell-control-line);
-  border-radius: 6px;
-  background: var(--apell-surface);
-  color: var(--apell-text);
-}
-.new-channel-form > div {
-  display: flex;
-  justify-content: flex-end;
-  gap: 13px;
-  margin-top: 11px;
-}
-.new-channel-form .text-button {
-  font-size: 11px;
-}
 @media (max-width: 1050px) {
   .dock-label div > span {
     max-width: 300px;
@@ -1264,4 +1165,21 @@ progress::-moz-progress-bar {
     margin-top: 3px;
     max-width: none;
   }
+}
+
+.speech-provider {
+  margin-top: 20px;
+}
+.speech-provider select {
+  width: 100%;
+}
+.speech-target,
+.speech-apply {
+  margin-top: 16px;
+  width: 100%;
+}
+.speech-error {
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--apell-danger);
 }

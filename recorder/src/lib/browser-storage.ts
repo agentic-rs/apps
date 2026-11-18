@@ -4,11 +4,12 @@ import {
   parseCaptureDraft,
   parseChannel,
   parseRecording,
+  parseTextNote,
 } from './recordings';
 import { recoverLibrary } from './storage';
 import type { AudioAsset, Recording, RecordingStore } from './types';
 
-type StoreName = 'recordings' | 'audio' | 'channels' | 'captures';
+type StoreName = 'recordings' | 'audio' | 'channels' | 'captures' | 'text_notes';
 type StoreMap = Record<StoreName, IDBObjectStore>;
 interface SavedAudio {
   schema_version: 1;
@@ -27,13 +28,17 @@ function requestValue<T>(request: IDBRequest<T>): Promise<T> {
 function openDatabase(factory: IDBFactory, name: string): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     let settled = false;
-    const request = factory.open(name, 2);
+    const request = factory.open(name, 3);
     request.onupgradeneeded = () => {
       const database = request.result;
       // Additive migration: existing recordings and audio keep their keys/bytes.
-      for (const store of ['recordings', 'audio', 'channels', 'captures'] as const) {
+      for (const store of ['recordings', 'audio', 'channels', 'captures', 'text_notes'] as const) {
         if (!database.objectStoreNames.contains(store)) {
-          database.createObjectStore(store, store === 'audio' ? undefined : { keyPath: 'id' });
+          const table = database.createObjectStore(
+            store,
+            store === 'audio' ? undefined : { keyPath: 'id' },
+          );
+          if (store === 'text_notes') table.createIndex('channel_id', 'channel_id');
         }
       }
     };
@@ -189,27 +194,48 @@ export function createBrowserStorage(
         await requestValue(stores.channels.put(parseChannel(channel)));
       }),
     removeChannel: (id) =>
-      transaction(['channels', 'recordings', 'captures', 'audio'], 'readwrite', async (stores) => {
-        if (!isValidId(id)) throw new Error('Invalid channel identity.');
-        const [recordings, captures] = await Promise.all([
-          requestValue<unknown[]>(stores.recordings.getAll()),
-          requestValue<unknown[]>(stores.captures.getAll()),
-        ]);
-        if (recordings.map(parseRecording).some((row) => row.channel_id === id)) {
-          throw new Error(
-            'Delete or move this channel’s clips and finish its capture before removing it.',
-          );
-        }
-        for (const draft of captures
-          .map(parseCaptureDraft)
-          .filter((row) => row.channel_id === id)) {
-          const audio = await requestValue(stores.audio.get(draft.path));
-          if (audio && audioEntry(draft.path, audio).asset.size_bytes > 0) {
-            throw new Error('Finish this channel’s capture before removing it.');
+      transaction(
+        ['channels', 'recordings', 'captures', 'audio', 'text_notes'],
+        'readwrite',
+        async (stores) => {
+          if (!isValidId(id)) throw new Error('Invalid channel identity.');
+          const [recordings, captures, text_count] = await Promise.all([
+            requestValue<unknown[]>(stores.recordings.getAll()),
+            requestValue<unknown[]>(stores.captures.getAll()),
+            requestValue(stores.text_notes.index('channel_id').count(id)),
+          ]);
+          if (text_count || recordings.map(parseRecording).some((row) => row.channel_id === id)) {
+            throw new Error(
+              'Delete or move this channel’s notes and finish its capture before removing it.',
+            );
           }
-          await requestValue(stores.captures.delete(draft.id));
-        }
-        await requestValue(stores.channels.delete(id));
+          for (const draft of captures
+            .map(parseCaptureDraft)
+            .filter((row) => row.channel_id === id)) {
+            const audio = await requestValue(stores.audio.get(draft.path));
+            if (audio && audioEntry(draft.path, audio).asset.size_bytes > 0) {
+              throw new Error('Finish this channel’s capture before removing it.');
+            }
+            await requestValue(stores.captures.delete(draft.id));
+          }
+          await requestValue(stores.channels.delete(id));
+        },
+      ),
+    listTextNotes: () =>
+      transaction(['text_notes'], 'readonly', async (stores) =>
+        (await requestValue<unknown[]>(stores.text_notes.getAll())).map(parseTextNote),
+      ),
+    addTextNote: (value) =>
+      transaction(['text_notes', 'channels'], 'readwrite', async (stores) => {
+        const note = parseTextNote(value);
+        if (!(await requestValue(stores.channels.getKey(note.channel_id))))
+          throw new Error('This channel no longer exists.');
+        await requestValue(stores.text_notes.add(note));
+      }),
+    removeTextNote: (id) =>
+      transaction(['text_notes'], 'readwrite', async (stores) => {
+        if (!isValidId(id)) throw new Error('Invalid text note identity.');
+        await requestValue(stores.text_notes.delete(id));
       }),
     saveCapture: (draft) =>
       transaction(['captures'], 'readwrite', async (stores) => {

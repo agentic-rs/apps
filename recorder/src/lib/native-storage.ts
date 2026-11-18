@@ -4,6 +4,7 @@ import {
   parseCaptureDraft,
   parseChannel,
   parseRecording,
+  parseTextNote,
 } from './recordings';
 import { createSerialQueue, recoverLibrary, storageShard } from './storage';
 import type { AudioAsset, CaptureDraft, Channel, Recording, RecordingStore } from './types';
@@ -16,7 +17,8 @@ type FileEntry = { path: string; size_bytes: number };
 const legacy_root = 'recorder-metadata';
 const metadata_root = 'recorder-metadata-v2';
 const export_root = 'recorder-exports';
-type MetadataKind = 'recordings' | 'channels' | 'captures';
+const max_metadata_bytes = 8 * 1_024 * 1_024;
+type MetadataKind = 'recordings' | 'channels' | 'captures' | 'text_notes';
 
 export function nativeMetadataPath(kind: MetadataKind, id: string): string {
   if (!isValidId(id)) throw new Error('Invalid saved identity.');
@@ -38,7 +40,7 @@ export function createNativeStore(fs: NativeFileSystem): RecordingStore {
       const result = await fs.read(path, { offset, length: 65_536 });
       text += decoder.decode(new Uint8Array(result.bytes), { stream: !result.eof });
       offset += result.bytes.length;
-      if (offset > 8 * 1_024 * 1_024) throw new Error('Recording metadata is too large.');
+      if (offset > max_metadata_bytes) throw new Error('Recording metadata is too large.');
       if (result.eof) return JSON.parse(text);
       if (!result.bytes.length) throw new Error('Could not finish reading recording metadata.');
     }
@@ -78,8 +80,10 @@ export function createNativeStore(fs: NativeFileSystem): RecordingStore {
   };
   const write = async (kind: MetadataKind, value: { id: string }) => {
     const path = nativeMetadataPath(kind, value.id);
+    const bytes = new TextEncoder().encode(JSON.stringify(value));
+    if (bytes.length > max_metadata_bytes) throw new Error('This note is too large to save.');
     await fs.mkdir(path.slice(0, path.lastIndexOf('/')));
-    await fs.write(path, new TextEncoder().encode(JSON.stringify(value)));
+    await fs.write(path, bytes);
   };
   const readMetadata = async <T extends { id: string }>(
     root: string,
@@ -102,6 +106,7 @@ export function createNativeStore(fs: NativeFileSystem): RecordingStore {
     return [...new Map([...legacy, ...current].map((row) => [row.id, row])).values()];
   };
   const readCaptures = () => readMetadata(`${metadata_root}/captures`, parseCaptureDraft);
+  const readTextNotes = () => readMetadata(`${metadata_root}/text_notes`, parseTextNote);
   const clearCapture = (id: string) => removeIfPresent(nativeMetadataPath('captures', id));
   const save = async (value: Recording) => {
     const recording = parseRecording(value);
@@ -174,15 +179,27 @@ export function createNativeStore(fs: NativeFileSystem): RecordingStore {
         );
         if (
           recordings.some((row) => row.channel_id === id) ||
-          captures.some((draft) => paths.has(draft.path))
+          captures.some((draft) => paths.has(draft.path)) ||
+          (await readTextNotes()).some((note) => note.channel_id === id)
         ) {
           throw new Error(
-            'Delete or move this channel’s clips and finish its capture before removing it.',
+            'Delete or move this channel’s notes and finish its capture before removing it.',
           );
         }
         for (const draft of captures) await clearCapture(draft.id);
         await removeIfPresent(nativeMetadataPath('channels', id));
       }),
+    listTextNotes: () => serial(readTextNotes),
+    addTextNote: (value) =>
+      serial(async () => {
+        const note = parseTextNote(value);
+        if (!(await exists(nativeMetadataPath('channels', note.channel_id))))
+          throw new Error('This channel no longer exists.');
+        if (await exists(nativeMetadataPath('text_notes', note.id)))
+          throw new Error('This text note already exists.');
+        await write('text_notes', note);
+      }),
+    removeTextNote: (id) => serial(() => removeIfPresent(nativeMetadataPath('text_notes', id))),
     saveCapture: (draft) => serial(() => write('captures', parseCaptureDraft(draft))),
     clearCapture: (id) => serial(() => clearCapture(id)),
   };

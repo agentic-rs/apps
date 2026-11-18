@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
-import type { Recording } from '../lib/types';
+import { ChannelNameDialog } from './ChannelNameDialog';
+import { useEffect, useState } from 'react';
 import type { RecorderController } from '../lib/useRecorder';
-import { formatTime } from '../lib/recordings';
+import { formatTime, noteTime } from '../lib/recordings';
 import { Icon } from './Icon';
 import { transcriptionLabel } from './TranscriptionStatus';
 import recorder_icon from '../../../shared/assets/recorder.svg';
@@ -21,62 +21,25 @@ export function Library({
 }) {
   const [query, setQuery] = useState('');
   const [creating, setCreating] = useState(false);
-  const [channel_name, setChannelName] = useState('');
-  const [previous_count, setPreviousCount] = useState(controller.channels.length);
   const documents = controller.recordings.filter((recording) => recording.mode === 'document');
   const shown_documents = documents.filter((recording) =>
     `${recording.title} ${recording.transcript?.text ?? ''}`
       .toLowerCase()
       .includes(query.toLowerCase()),
   );
-  const summaries = useMemo(() => {
-    const result = new Map<string, { count: number; latest: Recording }>();
-    for (const recording of controller.recordings) {
-      if (recording.mode !== 'clip' || !recording.channel_id) continue;
-      const previous = result.get(recording.channel_id);
-      const latest =
-        !previous ||
-        (recording.started_at ?? recording.created_at) >
-          (previous.latest.started_at ?? previous.latest.created_at)
-          ? recording
-          : previous.latest;
-      result.set(recording.channel_id, { count: (previous?.count ?? 0) + 1, latest });
-    }
-    return result;
-  }, [controller.recordings]);
   const shown_channels = controller.channels
     .filter((channel) => channel.title.toLowerCase().includes(query.toLowerCase()))
     .sort((left, right) => {
-      const a = summaries.get(left.id)?.latest;
-      const b = summaries.get(right.id)?.latest;
-      return (
-        (b?.started_at ?? b?.created_at ?? '').localeCompare(
-          a?.started_at ?? a?.created_at ?? '',
-        ) || left.title.localeCompare(right.title)
-      );
+      const a = controller.channel_notes.get(left.id)?.at(-1);
+      const b = controller.channel_notes.get(right.id)?.at(-1);
+      const a_time = a ? Date.parse(noteTime(a)) : -Infinity;
+      const b_time = b ? Date.parse(noteTime(b)) : -Infinity;
+      return b_time - a_time || left.title.localeCompare(right.title);
     });
   const channel_mode = controller.mode === 'clip';
   useEffect(() => {
-    if (controller.channels.length > previous_count) {
-      setCreating(false);
-      setChannelName('');
-    }
-    setPreviousCount(controller.channels.length);
-  }, [controller.channels.length, previous_count]);
-  useEffect(() => {
     setQuery('');
   }, [controller.mode]);
-  useEffect(() => {
-    onDirtyChange('new-channel', creating && Boolean(channel_name.trim()));
-  }, [creating, channel_name, onDirtyChange]);
-  useEffect(() => () => onDirtyChange('new-channel', false), [onDirtyChange]);
-  const createChannel = () => {
-    if (!controller.busy && channel_name.trim()) void controller.createChannel(channel_name.trim());
-  };
-  const closeCreate = () => {
-    setCreating(false);
-    setChannelName('');
-  };
   return (
     <aside className="library" aria-label={channel_mode ? 'Channels' : 'Documents'}>
       <div className="library-heading">
@@ -91,6 +54,7 @@ export function Library({
           <button
             className="icon-button import-button"
             aria-label="Create channel"
+            aria-haspopup="dialog"
             onClick={() => setCreating(true)}
             disabled={controller.busy || locked}
           >
@@ -112,36 +76,11 @@ export function Library({
         )}
       </div>
       {creating && (
-        <div className="new-channel-form" role="form" aria-label="Create channel">
-          <label>
-            <span>Channel name</span>
-            <input
-              autoFocus
-              value={channel_name}
-              onChange={(event) => setChannelName(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
-                  event.preventDefault();
-                  createChannel();
-                }
-              }}
-              maxLength={100}
-              placeholder="Ideas, daily notes, fieldwork…"
-            />
-          </label>
-          <div>
-            <button className="text-button" type="button" onClick={closeCreate}>
-              Cancel
-            </button>
-            <button
-              className="button button-dark button-small"
-              onClick={createChannel}
-              disabled={controller.busy || !channel_name.trim()}
-            >
-              Create channel
-            </button>
-          </div>
-        </div>
+        <ChannelNameDialog
+          controller={controller}
+          onClose={() => setCreating(false)}
+          onDirtyChange={onDirtyChange}
+        />
       )}
       <label className="search">
         <Icon name="search" size={17} />
@@ -164,9 +103,10 @@ export function Library({
         ) : channel_mode ? (
           shown_channels.length ? (
             shown_channels.map((channel) => {
-              const summary = summaries.get(channel.id);
-              const latest = summary?.latest;
-              const date = latest ? new Date(latest.started_at ?? latest.created_at) : null;
+              const notes = controller.channel_notes.get(channel.id);
+              const count = notes?.length ?? 0;
+              const latest = notes?.at(-1);
+              const date = latest ? new Date(noteTime(latest)) : null;
               return (
                 <button
                   className={`recording-item channel-item ${controller.selected_channel_id === channel.id ? 'selected' : ''}`}
@@ -196,20 +136,22 @@ export function Library({
                     </span>
                     <span className="channel-item-bottomline">
                       <span className="channel-preview">
-                        {latest ? (
+                        {latest && 'text' in latest ? (
+                          <span>{latest.text}</span>
+                        ) : latest ? (
                           <>
                             <Icon name="mic" size={13} />
                             <span>{latest.transcript?.text || transcriptionLabel(latest)}</span>
                           </>
                         ) : (
-                          'No voice notes yet'
+                          'No notes yet'
                         )}
                       </span>
                       <span
                         className="channel-note-count"
-                        aria-label={`${summary?.count ?? 0} voice notes`}
+                        aria-label={`${count} ${count === 1 ? 'note' : 'notes'}`}
                       >
-                        {summary?.count ?? 0} {summary?.count === 1 ? 'note' : 'notes'}
+                        {count} {count === 1 ? 'note' : 'notes'}
                       </span>
                     </span>
                   </span>
@@ -223,7 +165,7 @@ export function Library({
               <p>
                 {query
                   ? 'Try a different channel name.'
-                  : 'Create a channel to keep your voice notes together.'}
+                  : 'Create a channel for text and voice notes.'}
               </p>
               {!query && !creating && (
                 <button className="text-button" onClick={() => setCreating(true)} disabled={locked}>
@@ -263,11 +205,11 @@ export function Library({
         ) : (
           <div className="library-empty">
             <Icon name={query ? 'search' : 'text'} size={30} />
-            <h3>{query ? 'Nothing found' : 'Room for a longer story'}</h3>
+            <h3>{query ? 'No matching documents' : 'No documents yet'}</h3>
             <p>
               {query
                 ? 'Try a title or a word from a document.'
-                : 'Record or import an interview or meeting. Its transcript becomes an editable document.'}
+                : 'Record or import audio to create a document.'}
             </p>
           </div>
         )}

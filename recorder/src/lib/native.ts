@@ -1,6 +1,7 @@
 import { createNativeStore, nativeExportPath } from './native-storage';
 import { listNativeFiles } from './native-files';
-import { fs, hostCall } from '@apell/sdk';
+import { config, fs, hostCall, llm } from '@apell/sdk';
+import { readSpeechSettings } from './speech';
 import { fileName, transcriptText } from './recordings';
 import type {
   AudioAsset,
@@ -59,11 +60,41 @@ export function createNativePlatform(): RecorderPlatform {
     },
     status: () => hostCall<AudioStatus>('audio.status'),
     speechStatus: () => hostCall<SpeechStatus>('speech.status'),
+    speechSettings: {
+      async read() {
+        const entry = await config.get('transcription');
+        return readSpeechSettings(entry.found ? entry.value : null);
+      },
+      save: (settings) => config.set('transcription', { ...settings }),
+      async chooseApi(current) {
+        const selection = await llm.chooseModel(
+          current
+            ? {
+                current: { connection_id: current.connection_id, model_id: current.model_id },
+              }
+            : {},
+        );
+        if (!selection) return null;
+        if (!['openai', 'custom'].includes(selection.provider_id))
+          throw new Error(
+            'Choose an OpenAI or OpenAI-compatible connection with an audio transcription model.',
+          );
+        return {
+          provider: 'api',
+          connection_id: selection.connection_id,
+          model_id: selection.model_id,
+        };
+      },
+    },
     async downloadModel() {
       await hostCall('speech.download_model');
     },
-    transcribe: (path, language) =>
-      hostCall<Transcript>('speech.transcribe', language ? { path, language } : { path }),
+    transcribe: (path, language, settings) =>
+      hostCall<Transcript>('speech.transcribe', {
+        path,
+        ...(language ? { language } : {}),
+        ...settings,
+      }),
     async cancelSpeech() {
       await hostCall('speech.cancel');
     },

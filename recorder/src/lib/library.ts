@@ -1,5 +1,13 @@
-import { createChannel } from './recordings';
-import type { Channel, RecorderPlatform, Recording, SpeechStatus } from './types';
+import { createChannel, createTextNote } from './recordings';
+import { default_speech, speechReady } from './speech';
+import type {
+  Channel,
+  RecorderPlatform,
+  Recording,
+  SpeechSettings,
+  SpeechStatus,
+  TextNote,
+} from './types';
 
 export function errorMessage(error: unknown): string {
   if (error instanceof DOMException && error.name === 'NotAllowedError')
@@ -17,21 +25,25 @@ export interface RecordingEditFields {
 export interface LibrarySnapshot {
   recordings: Recording[];
   channels: Channel[];
+  text_notes: TextNote[];
   pending_recording: Recording | null;
   speech: SpeechStatus;
+  speech_settings: SpeechSettings;
+  download_error: string;
   job: string | null;
   error: string;
-  notice: string;
 }
 
 export const empty_library: LibrarySnapshot = {
   recordings: [],
   channels: [],
+  text_notes: [],
   pending_recording: null,
+  speech_settings: default_speech,
+  download_error: '',
   speech: { model_ready: false, model_size_bytes: 0, busy: false, progress: 0, stage: 'idle' },
   job: null,
   error: '',
-  notice: '',
 };
 
 /** Serializes metadata writes and owns the durable, single-worker speech queue. */
@@ -39,11 +51,13 @@ export class RecorderLibrary {
   private snapshot: LibrarySnapshot = { ...empty_library };
   private listeners = new Set<() => void>();
   private pending = new Map<string, Recording>();
+  private failed_saves = new Set<string>();
   private deleting = new Set<string>();
   private writes: Promise<unknown> = Promise.resolve();
   private disposed = false;
   private ready = false;
   private pumping = false;
+  private cancelling_download: Promise<void> | null = null;
 
   constructor(readonly platform: RecorderPlatform) {}
 
@@ -58,8 +72,7 @@ export class RecorderLibrary {
     if (!this.disposed) this.listeners.forEach((listener) => listener());
   }
 
-  setError = (error: string) => this.publish({ error, notice: '' });
-  setNotice = (notice: string) => this.publish({ notice, error: '' });
+  setError = (error: string) => this.publish({ error });
 
   private transaction<T>(operation: () => Promise<T>): Promise<T> {
     const result = this.writes.then(operation, operation);
@@ -85,12 +98,18 @@ export class RecorderLibrary {
     // Make generated text and finalized audio visible even when storage is full.
     this.pending.set(recording.id, recording);
     this.replace(recording);
-    this.publish({ pending_recording: this.pending.values().next().value ?? null });
     try {
       await this.transaction(() => this.platform.store.save(recording));
-      if (this.pending.get(recording.id) === recording) this.pending.delete(recording.id);
+      if (this.pending.get(recording.id) === recording) {
+        this.pending.delete(recording.id);
+        this.failed_saves.delete(recording.id);
+      }
+    } catch (error) {
+      if (this.pending.get(recording.id) === recording) this.failed_saves.add(recording.id);
+      throw error;
     } finally {
-      this.publish({ pending_recording: this.pending.values().next().value ?? null });
+      const failed_id = this.failed_saves.values().next().value;
+      this.publish({ pending_recording: failed_id ? (this.pending.get(failed_id) ?? null) : null });
     }
   }
 
@@ -98,24 +117,26 @@ export class RecorderLibrary {
     this.ready = false;
     const recordings = await this.platform.store.list();
     const channels = await this.platform.store.listChannels();
-    // A recovered clip can outlive its channel metadata; preserve its placement.
-    for (const recording of recordings) {
-      if (
-        recording.mode !== 'clip' ||
-        !recording.channel_id ||
-        channels.some((channel) => channel.id === recording.channel_id)
-      )
-        continue;
-      const channel = { ...createChannel('Recovered channel'), id: recording.channel_id };
+    const text_notes = await this.platform.store.listTextNotes();
+    // A note can outlive its channel metadata. Preserve its original placement.
+    const existing_channels = new Set(channels.map((channel) => channel.id));
+    for (const { channel_id } of [...recordings, ...text_notes]) {
+      if (!channel_id || existing_channels.has(channel_id)) continue;
+      const channel = { ...createChannel('Recovered channel'), id: channel_id };
       await this.platform.store.saveChannel(channel);
       channels.push(channel);
+      existing_channels.add(channel_id);
     }
     if (!channels.length) {
       const channel = createChannel('Notes');
       await this.platform.store.saveChannel(channel);
       channels.push(channel);
     }
-    this.publish({ recordings, channels, speech: await this.platform.speechStatus() });
+    const [speech, speech_settings] = await Promise.all([
+      this.platform.speechStatus(),
+      this.platform.speechSettings?.read() ?? default_speech,
+    ]);
+    this.publish({ recordings, channels, text_notes, speech, speech_settings });
     // An interrupted native job cannot still own this new attached view.
     for (const recording of recordings) {
       if (recording.transcription_state === 'running') {
@@ -135,11 +156,16 @@ export class RecorderLibrary {
     this.schedule();
   }
 
+  async setSpeechSettings(settings: SpeechSettings) {
+    if (!this.platform.speechSettings)
+      throw new Error('Transcription settings are available in Apell.');
+    await this.platform.speechSettings.save(settings);
+    this.publish({ speech_settings: settings });
+    this.schedule();
+  }
+
   async add(recording: Recording) {
     await this.persist(recording);
-    this.setNotice(
-      recording.mode === 'clip' ? 'Clip saved on this device.' : 'Document saved on this device.',
-    );
     this.schedule();
   }
 
@@ -166,14 +192,13 @@ export class RecorderLibrary {
       this.persist(updated),
       cancelling ? this.platform.cancelSpeech() : Promise.resolve(),
     ]);
-    this.setNotice('Changes saved.');
   }
 
   async retrySave() {
-    for (const recording of [...this.pending.values()]) {
-      if (!this.deleting.has(recording.id)) await this.persist(recording);
+    for (const id of [...this.failed_saves]) {
+      const recording = this.pending.get(id);
+      if (recording && !this.deleting.has(id)) await this.persist(recording);
     }
-    this.setNotice('Changes saved.');
     this.schedule();
   }
 
@@ -188,7 +213,6 @@ export class RecorderLibrary {
       await this.cancel(id);
       await this.transaction(() => this.platform.store.remove(recording));
       this.publish({ recordings: this.snapshot.recordings.filter((item) => item.id !== id) });
-      this.setNotice('Recording deleted.');
     } finally {
       this.deleting.delete(id);
     }
@@ -201,16 +225,32 @@ export class RecorderLibrary {
     return channel;
   }
 
+  async addTextNote(channel_id: string, text: string) {
+    const note = createTextNote(channel_id, text);
+    await this.transaction(() => this.platform.store.addTextNote(note));
+    this.publish({ text_notes: [...this.snapshot.text_notes, note] });
+  }
+
+  async removeTextNote(id: string) {
+    await this.transaction(() => this.platform.store.removeTextNote(id));
+    this.publish({ text_notes: this.snapshot.text_notes.filter((note) => note.id !== id) });
+  }
+
   async renameChannel(channel: Channel, title: string) {
     const updated = { ...channel, title: title.trim(), updated_at: new Date().toISOString() };
     await this.transaction(() => this.platform.store.saveChannel(updated));
     this.publish({
       channels: this.snapshot.channels.map((item) => (item.id === channel.id ? updated : item)),
     });
+    return updated;
   }
 
   async removeChannel(id: string) {
-    if (this.snapshot.recordings.some((recording) => recording.channel_id === id))
+    if (
+      [...this.snapshot.recordings, ...this.snapshot.text_notes].some(
+        (note) => note.channel_id === id,
+      )
+    )
       throw new Error('Only empty channels can be deleted.');
     await this.transaction(() => this.platform.store.removeChannel(id));
     this.publish({ channels: this.snapshot.channels.filter((channel) => channel.id !== id) });
@@ -248,21 +288,34 @@ export class RecorderLibrary {
   }
 
   async downloadModel() {
-    if (this.snapshot.job || this.snapshot.speech.busy)
-      throw new Error('Wait for the current speech operation to finish.');
-    this.publish({ job: 'download', error: '', notice: '' });
+    if (this.snapshot.job || this.snapshot.speech.busy) return;
+    this.publish({ job: 'download', download_error: '' });
     try {
       await this.platform.downloadModel();
-      this.setNotice('The model is ready. Queued clips will transcribe on this device.');
+      this.publish({ download_error: '' });
+    } catch (error) {
+      if (!this.cancelling_download) this.publish({ download_error: errorMessage(error) });
     } finally {
       try {
         this.updateSpeech(await this.platform.speechStatus());
       } catch {
         /* Retain last status. */
       }
+      // Keep the worker reserved until a pending cancel settles, so it cannot
+      // cancel a second download or the next queued transcription.
+      if (this.cancelling_download) await this.cancelling_download;
+      this.cancelling_download = null;
       this.publish({ job: null });
       this.schedule();
     }
+  }
+
+  cancelModelDownload() {
+    if (this.snapshot.job !== 'download' || this.cancelling_download) return;
+    this.cancelling_download = this.platform.cancelSpeech().catch((error) => {
+      this.publish({ download_error: errorMessage(error) });
+      this.cancelling_download = null;
+    });
   }
 
   private schedule() {
@@ -277,7 +330,7 @@ export class RecorderLibrary {
       this.snapshot.job ||
       this.pending.size ||
       !this.platform.native ||
-      !this.snapshot.speech.model_ready ||
+      !speechReady(this.snapshot.speech_settings, this.snapshot.speech) ||
       this.snapshot.speech.busy
     )
       return;
@@ -292,6 +345,7 @@ export class RecorderLibrary {
     if (!recording) return;
     this.pumping = true;
     this.publish({ job: recording.id });
+    const settings = this.snapshot.speech_settings;
     const revision = recording.transcription_revision;
     try {
       await this.persist({
@@ -303,6 +357,7 @@ export class RecorderLibrary {
       const transcript = await this.platform.transcribe(
         recording.path,
         recording.transcription_language ?? undefined,
+        settings,
       );
       const latest = this.isCurrent(recording.id, revision);
       if (this.disposed || !latest) return;

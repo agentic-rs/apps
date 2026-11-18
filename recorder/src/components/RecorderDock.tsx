@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef } from 'react';
 import type { RecorderController } from '../lib/useRecorder';
 import { formatTime } from '../lib/recordings';
 import { Icon } from './Icon';
@@ -17,6 +18,15 @@ export function RecorderDock({
   const channel = controller.channels.find((entry) => entry.id === channel_id);
   const missing_channel = channel_mode && !channel;
   const destination = channel_mode ? (channel?.title ?? 'a channel') : 'a new document';
+  const compose = channel_mode && channel && !active;
+  const text = channel ? (controller.text_drafts.get(channel.id) ?? '') : '';
+  const field = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const input = field.current;
+    if (!input) return;
+    input.style.height = 'auto';
+    input.style.height = `${input.scrollHeight + 2}px`;
+  }, [text, compose]);
   const label = (
     <div className={`dock-label ${channel_mode ? 'composer-copy' : ''}`}>
       {(!channel_mode || active) && (
@@ -28,22 +38,18 @@ export function RecorderDock({
             ? paused
               ? 'Recording paused'
               : 'Recording…'
-            : missing_channel
+            : channel_mode
               ? 'Choose a channel'
-              : channel_mode
-                ? `Voice note to ${destination}`
-                : 'Space for the whole conversation'}
+              : 'New document'}
         </strong>
         <span>
           {active
             ? `Saving to ${channel_mode ? '# ' : ''}${destination} · Keep Apell open`
-            : missing_channel
-              ? 'Open a channel to record'
+            : channel_mode
+              ? 'Open a channel to add a note'
               : !controller.platform?.native
                 ? 'Transcription in Apell'
-                : channel_mode
-                  ? 'Transcribes automatically'
-                  : 'Save locally, then transcribe when ready'}
+                : 'Save locally, then transcribe when ready'}
         </span>
       </div>
     </div>
@@ -62,6 +68,7 @@ export function RecorderDock({
   const record_button = (
     <button
       className={`record-button ${channel_mode ? 'composer-record' : ''}`}
+      type="button"
       aria-label={
         controller.busy ? 'Please wait…' : channel_mode ? 'Record note' : 'Record document'
       }
@@ -76,10 +83,56 @@ export function RecorderDock({
   return (
     <section
       className={`recording-dock ${channel_mode ? 'channel-composer' : 'document-composer'} ${active ? 'is-recording' : ''}`}
-      aria-label="Recording controls"
+      aria-label={channel_mode ? 'Channel composer' : 'Recording controls'}
     >
       {channel_mode && !active && import_button}
-      {label}
+      {compose ? (
+        <form
+          className="channel-text-composer"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!locked && text.trim()) void controller.sendTextNote(channel.id);
+          }}
+        >
+          <textarea
+            ref={field}
+            aria-label={`Text note to ${channel.title}`}
+            placeholder="Write a note…"
+            rows={1}
+            value={text}
+            enterKeyHint="send"
+            readOnly={locked}
+            onChange={(event) => controller.setTextDraft(channel.id, event.target.value)}
+            onKeyDown={(event) => {
+              if (
+                event.key === 'Enter' &&
+                !event.shiftKey &&
+                !event.nativeEvent.isComposing &&
+                event.nativeEvent.keyCode !== 229
+              ) {
+                event.preventDefault();
+                event.currentTarget.form?.requestSubmit();
+              }
+            }}
+          />
+          {text.trim() ? (
+            <button
+              className="icon-button composer-send"
+              type="submit"
+              aria-label="Send text note"
+              title="Send text note"
+              disabled={locked}
+              onMouseDown={(event) => event.preventDefault()}
+            >
+              <Icon name="send" size={23} />
+            </button>
+          ) : (
+            record_button
+          )}
+        </form>
+      ) : (
+        label
+      )}
       {active ? (
         <div className="active-controls">
           <span className="recording-clock" aria-label="Recorded duration">
@@ -102,7 +155,7 @@ export function RecorderDock({
             {controller.busy ? 'Saving…' : channel_mode ? 'Save note' : 'Save document'}
           </button>
         </div>
-      ) : channel_mode ? (
+      ) : compose ? null : channel_mode ? (
         record_button
       ) : (
         <div className="dock-actions">

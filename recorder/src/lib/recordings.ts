@@ -1,4 +1,11 @@
-import type { AudioAsset, CaptureDraft, Channel, Recording, RecordingMode } from './types';
+import type {
+  AudioAsset,
+  CaptureDraft,
+  Channel,
+  Recording,
+  RecordingMode,
+  TextNote,
+} from './types';
 
 export function createId(
   source: Pick<Crypto, 'getRandomValues'> & Partial<Pick<Crypto, 'randomUUID'>> = crypto,
@@ -162,6 +169,58 @@ export function parseChannel(value: unknown): Channel {
     throw new Error('Invalid channel metadata.');
   }
   return { ...channel } as unknown as Channel;
+}
+
+export function createTextNote(channel_id: string, text: string): TextNote {
+  return parseTextNote({
+    schema_version: 1,
+    id: createId(),
+    channel_id,
+    created_at: new Date().toISOString(),
+    text: text.trim(),
+  });
+}
+
+export function parseTextNote(value: unknown): TextNote {
+  const note = object(value);
+  if (
+    note.schema_version !== 1 ||
+    !isValidId(note.id) ||
+    !isValidId(note.channel_id) ||
+    !timestamp(note.created_at) ||
+    typeof note.text !== 'string' ||
+    !note.text.trim()
+  )
+    throw new Error('Invalid channel text note.');
+  return {
+    schema_version: 1,
+    id: note.id,
+    channel_id: note.channel_id,
+    created_at: note.created_at,
+    text: note.text,
+  };
+}
+
+export type ChannelNote = Recording | TextNote;
+
+export function noteTime(note: ChannelNote): string {
+  return ('started_at' in note && note.started_at) || note.created_at;
+}
+
+export function groupChannelNotes(recordings: Recording[], text_notes: TextNote[]) {
+  const channels = new Map<string, ChannelNote[]>();
+  for (const note of [...recordings, ...text_notes]) {
+    if (!note.channel_id) continue;
+    const notes = channels.get(note.channel_id);
+    if (notes) notes.push(note);
+    else channels.set(note.channel_id, [note]);
+  }
+  for (const notes of channels.values()) {
+    notes.sort(
+      (a, b) => Date.parse(noteTime(a)) - Date.parse(noteTime(b)) || a.id.localeCompare(b.id),
+    );
+  }
+  return channels;
 }
 
 export function parseCaptureDraft(value: unknown): CaptureDraft {
