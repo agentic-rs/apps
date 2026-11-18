@@ -56,6 +56,12 @@ This builds `artifacts/travel.apel`, `artifacts/travel.sha256`, and `artifacts/i
 
 The applet requests `fs`, `camera`, `photos`, `location`, `http`, and `llm`. Map tiles use the HTTP bridge. AI titles use the model connection configured in Apell. Camera, photo library, and location use the host’s existing iOS/Android APIs and permission prompts. Cancelling a sensor prompt leaves the draft intact. Desktop native sensor support depends on the host; manual coordinates and the browser preview remain available. No Apell host modifications are required.
 
+### Update the iOS simulator
+
+From the repository root, run `bun run --cwd travel sim:update` after a Fieldnotes change. It builds the applet, boots **Apell iPhone 16 Pro**, and verifies the installed package against the local SHA-256. A changed package relaunches the installed Apell debug shell and preserves saved journals. An identical package leaves the running session alone.
+
+For initial shell setup, run `apell dev --target 'Apell iPhone 16 Pro'` from the Apell checkout. Set `APELL_SIMULATOR` to target a different simulator name or UDID.
+
 ## Editing and storage
 
 - Trips have a name, optional date range, and description. Check-ins have a visit date/time, saved UTC offset, notes, and up to 20 photos of up to 32 MiB each.
