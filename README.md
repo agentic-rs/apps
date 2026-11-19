@@ -45,6 +45,7 @@ Package icons are optional assets and add no manifest fields. Compatible hosts d
 [Publish official apps](.github/workflows/publish-apps.yml) publishes Recorder,
 Learning, and Fieldnotes through Apell's GitHub OIDC authentication. It runs only
 when manually dispatched from `main`; pushing a commit does not publish a release.
+Select `build_only` to verify and retain the packages without publishing them.
 
 Before the first run, use a current Apell CLI with Store account commands to
 register the packages and configure their GitHub Actions connections. Replace the
@@ -82,12 +83,14 @@ connection with `apell package oidc show recorder` (repeat for the other IDs).
 Set the repository variable `APELL_STORE_URL` to the same canonical HTTPS origin.
 No publishing secret or operator token is needed.
 
-The workflow pins Bun 1.3.13, Rust 1.99.0, and Apell revision
-`7517beab013e8db7364392e091ab17beb0cabccd`. Its build job installs frozen lockfiles,
-tests all apps, and type-checks and packs each app before any publication. Only the
-separate publishing jobs receive `id-token: write`; they use `--auth github-oidc`
-with no token fallback. Each `official-apps-<attempt>` run artifact retains the
-exact packages, icons, listing metadata, manifests, checksums, and CLI for 30 days.
+The workflow uses Apell's `setup` and `publish` actions at `actions-v1.0.0`.
+The build job pins Bun 1.3.13 and checks out the applet SDK separately at revision
+`7517beab013e8db7364392e091ab17beb0cabccd` to preserve existing package bytes.
+It installs frozen lockfiles, tests all apps, and type-checks and packs each app.
+Only the publishing jobs receive `id-token: write`. The `publish` action uses
+GitHub OIDC with no token fallback. Each `official-apps-<attempt>` run artifact
+retains the exact packages, icons, listing metadata, manifests, and checksums for
+30 days.
 Publishing jobs download the artifact ID returned by their prerequisite build.
 Re-running all jobs creates a separate artifact without replacing the earlier
 attempt's files. Each job's summary records the app version and package SHA-256.
