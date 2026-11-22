@@ -138,11 +138,30 @@ export function parseTrip(value: unknown): Trip {
           text(city, 'City name', text_limits.city_name, true).trim(),
         );
   if (cities?.length === 0) throw new Error('Choose a starting city.');
+  const city_arrival_dates =
+    row.city_arrival_dates === undefined
+      ? undefined
+      : rows(row.city_arrival_dates, 'City arrival dates', (value) => date(value, 'City arrival'));
+  if (city_arrival_dates) {
+    if (!cities || city_arrival_dates.length !== cities.length)
+      throw new Error('The arrival dates must match the trip’s cities.');
+    if (city_arrival_dates[0] !== '') throw new Error('The starting city has no transfer date.');
+    let previous = start_date;
+    for (const arrival of city_arrival_dates) {
+      if (!arrival) continue;
+      if ((start_date && arrival < start_date) || (end_date && arrival > end_date))
+        throw new Error('Choose an arrival date within the trip dates.');
+      if (arrival < previous)
+        throw new Error('City arrival dates must follow the order of the route.');
+      previous = arrival;
+    }
+  }
   return {
     id: id(row.id, 'Trip'),
     title: text(row.title, 'Trip title', text_limits.trip_title, true).trim(),
     description: text(row.description, 'Trip description', text_limits.trip_description),
     ...(cities !== undefined && { cities }),
+    ...(city_arrival_dates?.some(Boolean) && { city_arrival_dates }),
     start_date,
     end_date,
     ...(packing_items !== undefined && { packing_items }),

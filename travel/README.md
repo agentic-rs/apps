@@ -11,7 +11,11 @@ The mobile interaction reference is QYER’s 穷游行程助手. Its day-map rou
 3. Use a stop’s arrows to change the visit order. Edit its date to move it to the end of another day’s plan. The stop order also determines the numbering on the day’s map.
 4. Select **Check in** at a stop to attach an entry and photos, or **New check-in** to record an unplanned visit. The entry keeps its own local date even when the plan changes.
 
-If your plans expand, tap **Add a city** in the itinerary and choose the next city. It joins the same trip, alongside your existing plans and journal. In **Edit trip**, tap a city to replace it or use its arrow to move it earlier in the route.
+Open **Overview** to see the cities and planned stops for each day. Tap a day to open it. **Add day** extends the itinerary by one calendar day and opens that day.
+
+When your plans expand, tap **Add a city**, pick the destination and choose the day you travel. On the transfer day, the itinerary shows both cities, such as **Tokyo → Kyoto**. The following days show **Kyoto** until the next transfer. On a trip with no dates or entries, scheduling a later transfer keeps the day you were planning as Day 1. If the transfer falls after an existing end date, the app shows the new end date before you save.
+
+Use **Choose date later** to keep a destination without assigning it to a day. **Edit trip** lets you set or clear its travel date later. Moving a city earlier swaps destinations between the scheduled dates. Stops, check-ins and photos stay on their respective days.
 
 The **Journal** tab brings together all the trip’s entries and lets you search by title, place, area, or notes. Use **Trips** to switch trips.
 
@@ -31,7 +35,7 @@ Before saving, enter any missing times and UTC offsets, or uncheck **Include** t
 
 The map opens on **Day route**. Numbered pins show the selected day’s planned stops. A dashed line connects consecutive stops with coordinates in itinerary order. Gaps indicate missing positions. The line represents the planned sequence and provides no turn-by-turn directions. Select a pin to open a stop.
 
-Tap the map button beside **Add stop**, then **Optimize route**. Choose a starting stop and a finishing stop to preview the suggested order and its straight-line distance. Each stop needs coordinates. **Apply order** updates the day’s itinerary and pins together. Scheduled times and journal links stay attached to their stops.
+Tap the map button beside **Add stop** to see the day's numbered route. Open **Stop list** to edit or reorder stops while viewing the map. For a suggested order, tap **Optimize route**, choose a starting stop and a finishing stop, then compare the straight-line distances. Each stop needs coordinates for optimization. **Apply order** updates the day’s itinerary and pins together. Scheduled times and journal links stay attached to their stops.
 
 The map uses locally bundled Leaflet and online OpenStreetMap tiles. **Actual visits** shows recorded event coordinates for the selected day. **Named places** shows the reference positions of places in those entries. Counted pins group check-ins at exactly the same position, including different places. Open a pin to choose a visit. Check-ins without the selected kind of coordinates remain accessible in a separate list. Pins near the date line fit together correctly.
 
@@ -78,7 +82,7 @@ For initial shell setup, run `apell dev --target 'Apell iPhone 16 Pro'` from the
 
 ## Editing and storage
 
-- Journals from schemas 1 through 3 open with their trips, stops, visits, photos and toolbox data intact. The next save writes schema 4, which stores each trip’s cities in visit order. Existing trips can gain a starting city through **Edit trip**.
+- Journals from schemas 1 through 4 open with their trips, cities, stops, visits, photos and toolbox data intact. The next save writes schema 5, which records optional travel dates for city changes. Earlier multi-city trips keep their route order and can gain dates through **Edit trip**.
 - Trips have a name, cities, an optional date range, and a description. Check-ins have a visit date/time, saved UTC offset, notes, and up to 20 photos of up to 32 MiB each.
 - Visit times preserve the recorded local time even after the device changes time zones. Select the time zone in effect during a past visit, including any daylight-saving adjustment.
 - Supported imports are JPEG, PNG, GIF, WebP, HEIC, HEIF, and AVIF. Originals are retained. Preview support depends on the browser/device codec; unsupported images display a clear fallback. Photos load near the viewport and release their object URLs offscreen.

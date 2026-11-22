@@ -1,0 +1,118 @@
+.trip-overview {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  width: min(100%, 720px);
+  margin-inline: auto;
+}
+.overview-heading {
+  padding: 20px clamp(16px, 4vw, 32px) 15px;
+}
+.overview-heading h3 {
+  margin: 0;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: clamp(1.4rem, 5vw, 1.8rem);
+  line-height: 1.15;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.overview-heading p {
+  margin: 5px 0 0;
+  color: var(--apell-muted);
+  font-size: 0.82rem;
+}
+.overview-days {
+  flex: 1;
+  min-height: 0;
+  list-style: none;
+  padding: 3px clamp(12px, 3vw, 24px) 16px;
+  margin: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.overview-day {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 8px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--apell-line);
+  text-align: start;
+}
+.overview-day[aria-current] {
+  background: var(--apell-subtle);
+  box-shadow: inset 3px 0 0 var(--apell-primary);
+  border-radius: 9px;
+  border-bottom-color: transparent;
+}
+.overview-day svg,
+.overview-day-date time,
+.overview-day-plan > span {
+  color: var(--apell-muted);
+}
+.overview-day-date,
+.overview-day-plan {
+  display: grid;
+  gap: 4px;
+}
+.overview-day-date {
+  width: 4.7rem;
+  padding-inline-start: 5px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.overview-day-date strong {
+  font-size: 0.86rem;
+}
+.overview-day[aria-current] .overview-day-date strong {
+  color: var(--apell-primary);
+}
+.overview-day-date time,
+.overview-day-plan > span {
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+.overview-day-plan strong {
+  font-size: 1rem;
+  line-height: 1.3;
+  font-weight: 625;
+}
+.overview-day-plan > * {
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.overview-pages {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-inline: clamp(12px, 3vw, 24px);
+  padding-bottom: 4px;
+}
+.overview-pages input {
+  width: auto;
+  min-width: 0;
+  min-height: 44px;
+  font-variant-numeric: tabular-nums;
+}
+.overview-footer {
+  flex-direction: column;
+  align-items: center;
+}
+.overview-footer > * {
+  width: min(100%, 640px);
+}
+.overview-footer .form-error {
+  margin: 0;
+}

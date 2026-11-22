@@ -1,5 +1,11 @@
 import { useMemo } from 'react';
-import { daysBetween, formatTripDates, isCalendarDate, offsetDay } from '../lib/dates';
+import {
+  daysBetween,
+  formatTripDates,
+  isCalendarDate,
+  itineraryDayLabel,
+  offsetDay,
+} from '../lib/dates';
 import { Icon } from './Icon';
 import type { Trip } from '../lib/types';
 
@@ -16,12 +22,14 @@ export function TripDays({
   last,
   day,
   onSelect,
+  onOverview,
 }: {
   trip: Trip;
   first: string;
   last: string;
   day: string;
   onSelect(day: string): void;
+  onOverview(): void;
 }) {
   const dates = useMemo(() => {
     const from = day < first ? day : first;
@@ -35,7 +43,13 @@ export function TripDays({
   return (
     <section className="trip-days" aria-label="Trip days">
       <div className="day-controls">
-        <span>{formatTripDates(trip.start_date, trip.end_date)}</span>
+        <button className="open-trip-overview" aria-label="Trip overview" onClick={onOverview}>
+          <Icon name="timeline" size={17} />
+          Overview
+        </button>
+        <span className="trip-dates-caption">
+          {formatTripDates(trip.start_date, trip.end_date)}
+        </span>
         <label className="date-jump">
           <span className="sr-only">Choose date</span>
           <input
@@ -58,13 +72,7 @@ export function TripDays({
           <Icon name="back" size={17} />
         </button>
         {dates.map((date) => {
-          const index = daysBetween(trip.start_date || first, date) + 1;
-          const heading =
-            index < 1
-              ? 'Before trip'
-              : trip.end_date && date > trip.end_date
-                ? 'After trip'
-                : `Day ${index}`;
+          const heading = itineraryDayLabel(date, first, trip);
           const label = short_date.format(new Date(date + 'T00:00:00Z'));
           return (
             <button

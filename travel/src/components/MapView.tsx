@@ -28,7 +28,6 @@ import {
 import { createTileSource } from '../lib/map-tiles';
 import { formatCoordinates, formatEntryCount, visitTitle } from '../lib/model';
 import {
-  stop_kind_labels,
   type CheckIn,
   type Coordinates,
   type Place,
@@ -37,6 +36,8 @@ import {
 } from '../lib/types';
 import { Icon } from './Icon';
 import { Photo } from './Photo';
+import { MapStopButton, MapStopList } from './MapStopList';
+import type { MoveStop } from './StopOrderButtons';
 
 type TileSource = ReturnType<typeof createTileSource>;
 type TileState = { controller: AbortController; object_url: string; failed: boolean };
@@ -197,13 +198,14 @@ function fitPins(map: LeafletMap, points: MapPoint[]) {
   );
 }
 
-export function MapView({
+export default function MapView({
   stops,
   visits,
   places,
   platform,
   onOpenVisit,
   onOpenStop,
+  onMoveStop,
   onOptimize,
   active,
 }: {
@@ -213,6 +215,7 @@ export function MapView({
   platform: TravelPlatform;
   onOpenVisit(id: string): void;
   onOpenStop(id: string): void;
+  onMoveStop: MoveStop;
   onOptimize(): void;
   active: boolean;
 }) {
@@ -585,22 +588,12 @@ export function MapView({
             </header>
             <div className="map-selected-visits">
               {selected_stops.map((stop) => (
-                <button
-                  type="button"
-                  className="map-stop-row"
+                <MapStopButton
                   key={stop.id}
-                  onClick={() => onOpenStop(stop.id)}
-                >
-                  <span className="map-stop-number">{numbers.get(stop.id)}</span>
-                  <span className="map-stop-copy">
-                    <strong>{stop.title}</strong>
-                    <small>
-                      {stop.time && `${stop.time} · `}
-                      {stop_kind_labels[stop.kind]}
-                    </small>
-                  </span>
-                  <Icon name="arrow" size={16} />
-                </button>
+                  stop={stop}
+                  number={numbers.get(stop.id)!}
+                  onOpen={onOpenStop}
+                />
               ))}
               {selected_visits.map((visit) => {
                 const place =
@@ -640,14 +633,14 @@ export function MapView({
           </section>
         )}
       </section>
-      {mode === 'stops' && stops.length >= 2 && (
-        <div className="route-action-bar">
-          <button onClick={onOptimize}>
-            <Icon name="route" size={19} />
-            Optimize route
-            <Icon name="next" size={16} />
-          </button>
-        </div>
+      {mode === 'stops' && stops.length > 0 && (
+        <MapStopList
+          key={stops[0].day}
+          stops={stops}
+          onOpenStop={onOpenStop}
+          onMoveStop={onMoveStop}
+          onOptimize={onOptimize}
+        />
       )}
     </div>
   );

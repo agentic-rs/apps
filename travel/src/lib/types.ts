@@ -16,6 +16,8 @@ export interface Trip {
   title: string;
   description: string;
   cities?: string[];
+  /** Calendar date of transfer into each route city. The starting city and open dates use ''. */
+  city_arrival_dates?: string[];
   start_date: string;
   end_date: string;
   created_at: string;
@@ -82,7 +84,7 @@ export interface CheckIn {
   updated_at: string;
 }
 
-export const journal_schema_version = 4;
+export const journal_schema_version = 5;
 
 export interface Journal {
   schema_version: typeof journal_schema_version;

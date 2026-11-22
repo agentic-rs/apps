@@ -1,12 +1,12 @@
-import { useState } from 'react';
 import { formatVisitDate, formatVisitTime, toVisitInput } from '../lib/dates';
-import { visitTitle } from '../lib/model';
+import { formatEntryCount, visitTitle } from '../lib/model';
 import { distanceKm, formatDistance } from '../lib/distance';
 import { stop_kind_labels } from '../lib/types';
 import type { CheckIn, PhotoAsset, Place, PlannedStop, TravelPlatform, Trip } from '../lib/types';
 import { Icon } from './Icon';
 import { VisitCard } from './VisitCard';
 import { Photo } from './Photo';
+import { StopOrderButtons, useStopOrder, type MoveStop } from './StopOrderButtons';
 import '../itinerary.css';
 
 const day_heading = new Intl.DateTimeFormat('en-GB', {
@@ -18,6 +18,7 @@ const day_heading = new Intl.DateTimeFormat('en-GB', {
 
 interface ItineraryDayProps {
   day: string;
+  day_cities: string;
   trip: Trip;
   stops: PlannedStop[];
   visits: CheckIn[];
@@ -27,7 +28,7 @@ interface ItineraryDayProps {
   onAddStop(): void;
   onOpenMap(): void;
   onEditStop(stop: PlannedStop): void;
-  onMoveStop(stop: PlannedStop, direction: -1 | 1): Promise<void>;
+  onMoveStop: MoveStop;
   onCheckIn(stop?: PlannedStop): void;
   onPhotoEvents(): void;
   onOpenVisit(id: string): void;
@@ -36,6 +37,7 @@ interface ItineraryDayProps {
 
 export function ItineraryDay({
   day,
+  day_cities,
   trip,
   stops,
   visits,
@@ -51,27 +53,14 @@ export function ItineraryDay({
   onOpenVisit,
   onPhoto,
 }: ItineraryDayProps) {
-  const [moving, setMoving] = useState(false);
-  const [move_error, setMoveError] = useState('');
+  const { moving, move_error, reorder } = useStopOrder(onMoveStop);
+  const day_label = day_heading.format(new Date(day + 'T00:00:00Z'));
   const by_place = new Map(places.map((place) => [place.id, place]));
   const by_stop = new Map(stops.map((stop) => [stop.id, [] as CheckIn[]]));
   for (const visit of trip_visits) {
     if (visit.stop_id) by_stop.get(visit.stop_id)?.push(visit);
   }
   const journal_entries = visits.filter((visit) => !visit.stop_id || !by_stop.has(visit.stop_id));
-
-  async function reorder(stop: PlannedStop, direction: -1 | 1) {
-    if (moving) return;
-    setMoving(true);
-    setMoveError('');
-    try {
-      await onMoveStop(stop, direction);
-    } catch (reason) {
-      setMoveError(reason instanceof Error ? reason.message : 'Could not change the stop order.');
-    } finally {
-      setMoving(false);
-    }
-  }
 
   function renderVisit(visit: CheckIn, stop?: PlannedStop) {
     const place = visit.place_id ? by_place.get(visit.place_id) : undefined;
@@ -122,28 +111,37 @@ export function ItineraryDay({
   return (
     <section className="itinerary-day" aria-label="Day itinerary">
       <header className="itinerary-day-heading">
-        <div>
+        {day_cities ? (
+          <>
+            <time className="day-location-date" dateTime={day}>
+              {day_label}
+            </time>
+            <h2>{day_cities}</h2>
+          </>
+        ) : (
           <h2>
-            <time dateTime={day}>{day_heading.format(new Date(day + 'T00:00:00Z'))}</time>
+            <time dateTime={day}>{day_label}</time>
           </h2>
+        )}
+        <div className="day-plan-tools">
           <p>
-            {stops.length} planned {stops.length === 1 ? 'stop' : 'stops'}
+            {stops.length} {stops.length === 1 ? 'stop' : 'stops'}
             {' · '}
-            {visits.length} journal {visits.length === 1 ? 'entry' : 'entries'}
+            {formatEntryCount(visits.length)}
           </p>
-        </div>
-        <div className="day-actions">
-          <button
-            type="button"
-            className="icon-button"
-            onClick={onOpenMap}
-            aria-label="Open day map"
-          >
-            <Icon name="map" size={20} />
-          </button>
-          <button type="button" className="primary" onClick={onAddStop}>
-            <Icon name="plus" size={17} /> Add stop
-          </button>
+          <div className="day-actions">
+            <button
+              type="button"
+              className="icon-button"
+              onClick={onOpenMap}
+              aria-label="Open day map"
+            >
+              <Icon name="map" size={20} />
+            </button>
+            <button type="button" className="primary" onClick={onAddStop}>
+              <Icon name="plus" size={17} /> Add stop
+            </button>
+          </div>
         </div>
       </header>
       {move_error && (
@@ -187,28 +185,13 @@ export function ItineraryDay({
                     >
                       <Icon name="pin" size={15} /> Check in
                     </button>
-                    {stops.length > 1 && (
-                      <div className="itinerary-reorder">
-                        <button
-                          type="button"
-                          className="icon-button"
-                          disabled={moving || index === 0}
-                          aria-label={`Move ${stop.title} earlier`}
-                          onClick={() => void reorder(stop, -1)}
-                        >
-                          <Icon name="arrow" size={16} style={{ transform: 'rotate(-90deg)' }} />
-                        </button>
-                        <button
-                          type="button"
-                          className="icon-button"
-                          disabled={moving || index === stops.length - 1}
-                          aria-label={`Move ${stop.title} later`}
-                          onClick={() => void reorder(stop, 1)}
-                        >
-                          <Icon name="arrow" size={16} style={{ transform: 'rotate(90deg)' }} />
-                        </button>
-                      </div>
-                    )}
+                    <StopOrderButtons
+                      stop={stop}
+                      index={index}
+                      count={stops.length}
+                      moving={moving}
+                      onMove={reorder}
+                    />
                   </div>
                   {linked.length > 0 && (
                     <div

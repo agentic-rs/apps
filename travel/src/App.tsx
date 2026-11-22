@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { lazy, Suspense, useMemo, useState } from 'react';
 import { useJournal } from './lib/useJournal';
-import { currentOffsetMinutes, toVisitInput } from './lib/dates';
+import { currentOffsetMinutes, offsetDay, toVisitInput } from './lib/dates';
 import {
   addPhotoEvents,
   moveStop,
@@ -17,26 +17,29 @@ import { Icon } from './components/Icon';
 import { Dialog } from './components/Dialog';
 import { TripForm } from './components/TripForm';
 import { NewTrip } from './components/NewTrip';
-import { CityPicker } from './components/CityPicker';
+import { AddTripCity } from './components/AddTripCity';
 import { cityKey, tripCitySummary } from './lib/cities';
+import { citiesOnDay } from './lib/city-days';
 import { StopForm } from './components/StopForm';
 import { CheckInForm } from './components/CheckInForm';
 import { Photo } from './components/Photo';
 import { PhotoEventsForm } from './components/PhotoEventsForm';
 import { TimelineView } from './components/TimelineView';
-import { MapView } from './components/MapView';
 import { TripLibrary } from './components/TripLibrary';
 import { TripToolbox } from './components/TripToolbox';
 import { RoutePlanner } from './components/RoutePlanner';
 import { applyDayRoute } from './lib/route-planner';
 import { TripDays } from './components/TripDays';
+import { TripOverview } from './components/TripOverview';
 import { ItineraryDay } from './components/ItineraryDay';
 import { VisitCard } from './components/VisitCard';
 import fieldnotes_icon from '../../shared/assets/fieldnotes.svg';
 
+const MapView = lazy(() => import('./components/MapView'));
+
 type View = 'Itinerary' | 'Map' | 'Journal' | 'Toolbox';
 type Editor =
-  | { kind: 'new_trip' | 'edit_trip' | 'add_city' }
+  | { kind: 'new_trip' | 'edit_trip' | 'add_city' | 'overview' }
   | { kind: 'stop'; stop?: PlannedStop }
   | { kind: 'route' }
   | { kind: 'visit'; visit?: CheckIn; stop?: PlannedStop }
@@ -88,12 +91,19 @@ export function App() {
     [stops, visits],
   );
   const today = localToday();
-  const bounds = [trip?.start_date, trip?.end_date, entry_days[0], entry_days.at(-1)]
+  const bounds = [
+    trip?.start_date,
+    trip?.end_date,
+    entry_days[0],
+    entry_days.at(-1),
+    ...(trip?.city_arrival_dates ?? []),
+  ]
     .filter((date): date is string => Boolean(date))
     .sort();
   const first = bounds[0] ?? today;
   const last = bounds.at(-1) ?? today;
   const day = chosen_day || (first <= today && today <= last ? today : first);
+  const day_cities = trip && view === 'Itinerary' ? citiesOnDay(trip, day).join(' → ') : '';
   const day_stops = useMemo(() => stops.filter((stop) => stop.day === day), [stops, day]);
   const day_visits = useMemo(
     () => visits.filter((visit) => recordedDay(visit) === day),
@@ -120,6 +130,16 @@ export function App() {
       if (!current) throw new Error('This trip has been removed.');
       return upsertTrip(snapshot, { ...update(current), updated_at: new Date().toISOString() });
     });
+  }
+
+  function reorderStop(stop: PlannedStop, direction: -1 | 1) {
+    return persist((snapshot) => moveStop(snapshot, stop.id, direction));
+  }
+
+  function openItineraryDay(date: string) {
+    setChosenDay(date);
+    setView('Itinerary');
+    setEditor(null);
   }
 
   function confirmRemoval(target: Removal) {
@@ -191,7 +211,7 @@ export function App() {
             {trip ? (
               <div className="trip-header-copy">
                 <h1>{trip.title}</h1>
-                {route_summary && <p>{route_summary}</p>}
+                {route_summary && route_summary !== day_cities && <p>{route_summary}</p>}
               </div>
             ) : (
               <h1>Fieldnotes</h1>
@@ -264,11 +284,19 @@ export function App() {
           </div>
         ) : (
           <div className="daily-workspace">
-            <TripDays trip={trip} first={first} last={last} day={day} onSelect={setChosenDay} />
+            <TripDays
+              trip={trip}
+              first={first}
+              last={last}
+              day={day}
+              onSelect={setChosenDay}
+              onOverview={() => setEditor({ kind: 'overview' })}
+            />
             {view === 'Itinerary' ? (
               <div className="daily-scroll" key={day}>
                 <ItineraryDay
                   day={day}
+                  day_cities={day_cities}
                   trip={trip}
                   stops={day_stops}
                   visits={day_visits}
@@ -278,9 +306,7 @@ export function App() {
                   onAddStop={() => setEditor({ kind: 'stop' })}
                   onOpenMap={() => setView('Map')}
                   onEditStop={(stop) => setEditor({ kind: 'stop', stop })}
-                  onMoveStop={(stop, direction) =>
-                    persist((snapshot) => moveStop(snapshot, stop.id, direction))
-                  }
+                  onMoveStop={reorderStop}
                   onCheckIn={visit_editor}
                   onPhotoEvents={show_photos}
                   onOpenVisit={setDetailId}
@@ -289,19 +315,28 @@ export function App() {
               </div>
             ) : (
               <div className="map-panel">
-                <MapView
-                  stops={day_stops}
-                  visits={day_visits}
-                  places={journal.places}
-                  platform={platform}
-                  active
-                  onOptimize={() => setEditor({ kind: 'route' })}
-                  onOpenVisit={setDetailId}
-                  onOpenStop={(id) => {
-                    const stop = stops.find((item) => item.id === id);
-                    if (stop) setEditor({ kind: 'stop', stop });
-                  }}
-                />
+                <Suspense
+                  fallback={
+                    <p className="map-loading" role="status">
+                      Opening map…
+                    </p>
+                  }
+                >
+                  <MapView
+                    stops={day_stops}
+                    visits={day_visits}
+                    places={journal.places}
+                    platform={platform}
+                    active
+                    onMoveStop={reorderStop}
+                    onOptimize={() => setEditor({ kind: 'route' })}
+                    onOpenVisit={setDetailId}
+                    onOpenStop={(id) => {
+                      const stop = stops.find((item) => item.id === id);
+                      if (stop) setEditor({ kind: 'stop', stop });
+                    }}
+                  />
+                </Suspense>
               </div>
             )}
           </div>
@@ -386,19 +421,54 @@ export function App() {
         />
       )}
       {editor?.kind === 'add_city' && trip && (
-        <CityPicker
-          title="Add a city"
-          excluded_cities={trip.cities?.slice(-1)}
-          onDismiss={() => setEditor(null)}
-          onSelect={async (city) => {
+        <AddTripCity
+          trip={trip}
+          day={day}
+          first_open_day={!bounds.length ? day : undefined}
+          onCancel={() => setEditor(null)}
+          onSave={async (city, arrival_date) => {
             await updateTrip(trip.id, (current) => {
               const cities = current.cities ?? [];
               if (cityKey(cities.at(-1) ?? '') === cityKey(city)) {
                 throw new Error('This city is already last on your route.');
               }
-              return { ...current, cities: [...cities, city] };
+              const dates = current.city_arrival_dates ?? cities.map(() => '');
+              return {
+                ...current,
+                cities: [...cities, city],
+                city_arrival_dates: [...dates, arrival_date],
+                start_date:
+                  !current.start_date && !bounds.length && arrival_date > day
+                    ? day
+                    : current.start_date,
+                end_date:
+                  current.end_date && arrival_date > current.end_date
+                    ? arrival_date
+                    : current.end_date,
+              };
             });
+            if (arrival_date) setChosenDay(arrival_date);
             setEditor(null);
+          }}
+        />
+      )}
+      {editor?.kind === 'overview' && trip && (
+        <TripOverview
+          trip={trip}
+          day={day}
+          first={first}
+          last={last}
+          stops={stops}
+          onSelect={openItineraryDay}
+          onDismiss={() => setEditor(null)}
+          onAddDay={async () => {
+            const next = offsetDay(last > day ? last : day, 1);
+            await updateTrip(trip.id, (current) => ({
+              ...current,
+              start_date: current.start_date || (first < day ? first : day),
+              end_date: next,
+            }));
+            openItineraryDay(next);
           }}
         />
       )}

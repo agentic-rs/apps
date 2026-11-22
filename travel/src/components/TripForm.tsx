@@ -4,7 +4,7 @@ import { text_limits } from '../lib/model';
 import { Dialog, DiscardPrompt } from './Dialog';
 import { EditorForm } from './EditorForm';
 import { CityPicker } from './CityPicker';
-import { TripCities } from './TripCities';
+import { TripCities, type CityLegDraft } from './TripCities';
 import '../trip-form.css';
 
 export function TripForm({
@@ -18,7 +18,13 @@ export function TripForm({
   onCancel(): void;
   onDelete?(): void;
 }) {
-  const [cities, setCities] = useState<string[]>(trip.cities ?? []);
+  const [legs, setLegs] = useState<CityLegDraft[]>(() =>
+    (trip.cities ?? []).map((city, index) => ({
+      city,
+      arrival_date: trip.city_arrival_dates?.[index] ?? '',
+    })),
+  );
+  const cities = legs.map((leg) => leg.city);
   const [city_index, setCityIndex] = useState<number | null>(null);
   const [title, setTitle] = useState(trip.title);
   const [description, setDescription] = useState(trip.description);
@@ -29,7 +35,11 @@ export function TripForm({
   const [discard, setDiscard] = useState(false);
   const dirty =
     cities.length !== (trip.cities?.length ?? 0) ||
-    cities.some((city, index) => city !== trip.cities?.[index]) ||
+    legs.some(
+      (leg, index) =>
+        leg.city !== trip.cities?.[index] ||
+        leg.arrival_date !== (trip.city_arrival_dates?.[index] ?? ''),
+    ) ||
     title !== trip.title ||
     description !== trip.description ||
     start_date !== trip.start_date ||
@@ -43,7 +53,10 @@ export function TripForm({
       await onSave({
         id: trip.id,
         title: title.trim(),
-        ...(cities.length > 0 && { cities }),
+        ...(cities.length > 0 && {
+          cities,
+          city_arrival_dates: legs.map((leg) => leg.arrival_date),
+        }),
         description: description.trim(),
         start_date,
         end_date,
@@ -67,9 +80,9 @@ export function TripForm({
       }
       excluded_cities={cities.filter((_, i) => Math.abs(city_index - i) === 1)}
       onSelect={(city) => {
-        const next = [...cities];
-        next[city_index] = city;
-        setCities(next);
+        const next = [...legs];
+        next[city_index] = { city, arrival_date: legs[city_index]?.arrival_date ?? '' };
+        setLegs(next);
         setCityIndex(null);
       }}
       onDismiss={() => setCityIndex(null)}
@@ -87,7 +100,13 @@ export function TripForm({
           {(save) => (
             <>
               <fieldset disabled={busy} className="form-body">
-                <TripCities cities={cities} onPick={setCityIndex} onChange={setCities} />
+                <TripCities
+                  legs={legs}
+                  start_date={start_date}
+                  end_date={end_date}
+                  onPick={setCityIndex}
+                  onChange={setLegs}
+                />
                 <label>
                   Trip name
                   <input

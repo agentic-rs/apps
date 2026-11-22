@@ -5,11 +5,23 @@
 }
 
 .itinerary-day-heading {
+  margin-bottom: 15px;
+}
+
+.day-location-date {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--apell-muted);
+  font-size: 0.82rem;
+  font-weight: 550;
+}
+
+.day-plan-tools {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 20px;
+  margin-top: 7px;
 }
 
 .itinerary-day-heading h2,
@@ -23,9 +35,13 @@
 }
 
 .itinerary-day-heading p {
-  margin: 6px 0 0;
+  margin: 0;
   color: var(--apell-muted);
   font-size: 0.78rem;
+}
+
+.itinerary-day-heading h2 {
+  font-size: clamp(1.55rem, 6vw, 2rem);
 }
 
 .itinerary-day-heading .primary {

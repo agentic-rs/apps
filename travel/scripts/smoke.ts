@@ -289,6 +289,11 @@ try {
   const single_city_journal = await readJournal();
   await button('Add a city').click();
   await chooseCity(add_city, 'Kyoto', 'Kyoto, Japan');
+  const travel_day = page.getByRole('dialog', { name: 'Travel day', exact: true });
+  assert.equal(await travel_day.getByLabel('Travel date').inputValue(), '2026-05-01');
+  assert.deepEqual(await readJournal(), single_city_journal);
+  await travel_day.getByLabel('Travel date').fill('2026-05-02');
+  await travel_day.getByRole('button', { name: 'Add city', exact: true }).click();
   await waitClosed();
   const expanded_journal = await readJournal();
   assert.equal(expanded_journal.trips.length, 1);
@@ -296,11 +301,39 @@ try {
     ...single_city_journal.trips[0],
     id: initial_trips[0].id,
     cities: ['Tokyo', 'Kyoto'],
+    city_arrival_dates: ['', '2026-05-02'],
     updated_at: expanded_journal.trips[0].updated_at,
   });
   assert.deepEqual(expanded_journal.stops, single_city_journal.stops);
-  await page.getByText('Tokyo → Kyoto', { exact: true }).waitFor();
+  const day_title = page
+    .getByRole('region', { name: 'Day itinerary' })
+    .getByRole('heading', { level: 2 });
+  assert.equal(await day_title.innerText(), 'Tokyo → Kyoto');
   await page.screenshot({ path: resolve(output, 'mobile-multi-city.png') });
+  await page.screenshot({ path: resolve(output, 'mobile-transfer-day.png') });
+  const overview = page.getByRole('dialog', { name: 'Trip overview', exact: true });
+  const overviewDay = (date: string) =>
+    overview.getByRole('button', { name: `Open itinerary for ${date}`, exact: true });
+  await button('Trip overview').click();
+  await overviewDay('2026-05-01').getByText('Tokyo', { exact: true }).waitFor();
+  await overviewDay('2026-05-01').getByText('Lookout', { exact: true }).waitFor();
+  await overviewDay('2026-05-02').getByText('Tokyo → Kyoto', { exact: true }).waitFor();
+  await overviewDay('2026-05-03').getByText('Kyoto', { exact: true }).waitFor();
+  await page.screenshot({ path: resolve(output, 'mobile-trip-overview.png') });
+  await page.setViewportSize({ width: 320, height: 568 });
+  await assertFullScreenEditor(overview);
+  await page.screenshot({ path: resolve(output, 'narrow-trip-overview.png') });
+  await overviewDay('2026-05-03').click();
+  await waitClosed();
+  assert.equal(await day_title.innerText(), 'Kyoto');
+  await button('Trip overview').click();
+  await overview.getByRole('button', { name: 'Add day', exact: true }).click();
+  await waitClosed();
+  assert.equal(await page.getByLabel('Choose itinerary date').inputValue(), '2026-05-05');
+  await page.reload();
+  await openTrip();
+  assert.equal((await readJournal()).trips[0].end_date, '2026-05-05');
+  assert.equal(await day_title.innerText(), 'Tokyo');
   await page.setViewportSize({ width: 1440, height: 1000 });
   await addStop('Old harbour', '10.12', '20.54');
   await button('Move Old harbour earlier').click();
@@ -456,12 +489,23 @@ try {
   await button('Remove city Kyoto').click();
   await button('Add city').click();
   await chooseCity(add_city, 'Kyoto', 'Kyoto, Japan');
+  await page.getByLabel('Travel date for Tokyo', { exact: true }).fill('2026-05-03');
+  await page.getByLabel('Travel date for Kyoto', { exact: true }).fill('2026-05-04');
   await button('Move Kyoto earlier').click();
+  assert.equal(
+    await page.getByLabel('Travel date for Kyoto', { exact: true }).inputValue(),
+    '2026-05-03',
+  );
+  await button('Clear travel date for Tokyo').click();
   await button('Save trip').click();
   await waitClosed();
   assert.deepEqual(
     (await readJournal()).trips.find((trip) => trip.title === 'Coastal days')?.cities,
     ['Tokyo', 'Kyoto', 'Tokyo'],
+  );
+  assert.deepEqual(
+    (await readJournal()).trips.find((trip) => trip.title === 'Coastal days')?.city_arrival_dates,
+    ['', '2026-05-03', ''],
   );
   await goTo('Journal');
   await page.locator('.timeline-list .visit-card').nth(2).waitFor();
@@ -825,6 +869,16 @@ try {
   const optimizer = page.getByRole('button', { name: /optimize.*route/i });
   const route_sheet = page.getByRole('dialog', { name: 'Optimize day route' });
   await goTo('Map');
+  const map_order_toggle = button('Stop list');
+  if ((await map_order_toggle.getAttribute('aria-expanded')) === 'false')
+    await map_order_toggle.click();
+  const map_order = page.getByRole('list', { name: 'Day route stops', exact: true });
+  await map_order.getByRole('button', { name: 'Edit Tea garden', exact: true }).waitFor();
+  await map_order.getByRole('button', { name: 'Move Tea garden earlier', exact: true }).click();
+  await button('Stop 3, Pavilion').waitFor();
+  await map_order.getByRole('button', { name: 'Move Tea garden later', exact: true }).click();
+  await button('Stop 2, Pavilion').waitFor();
+  await page.screenshot({ path: resolve(output, 'mobile-map-stop-list.png') });
   await optimizer.click();
   await route_sheet.getByRole('listitem').filter({ hasText: 'Tea garden' }).waitFor();
   assert.equal(await route_sheet.getByRole('button', { name: 'Apply order' }).count(), 0);
@@ -945,6 +999,43 @@ try {
   await page.getByRole('main').getByRole('button', { name: 'Toolbox', exact: true }).click();
   await button('Open expenses').click();
   assert.equal(await expenses.locator('.expense-totals').count(), 0);
+
+  await button('Trips').click();
+  await button('New trip').click();
+  await chooseCity(first_city, 'Paris', 'Paris, France');
+  await waitClosed();
+  await chooseDay('2031-03-10');
+  await button('Add a city').click();
+  await chooseCity(add_city, 'London', 'London, United Kingdom');
+  await travel_day.getByLabel('Travel date').fill('2031-03-12');
+  await travel_day.getByText('Day 1 in Paris starts on 10 Mar 2031.').waitFor();
+  await travel_day.getByRole('button', { name: 'Add city', exact: true }).click();
+  await waitClosed();
+  const open_ended_trip = (await readJournal()).trips.find((trip) => trip.title === 'Paris trip')!;
+  assert.equal(open_ended_trip.start_date, '2031-03-10');
+  assert.equal(open_ended_trip.end_date, '');
+  await button('Trip overview').click();
+  await overviewDay('2031-03-10').getByText('Paris', { exact: true }).waitFor();
+  await overviewDay('2031-03-12').getByText('Paris → London', { exact: true }).waitFor();
+  await overviewDay('2031-03-10').click();
+  await waitClosed();
+  await button('Edit trip').click();
+  await page.getByLabel('End date').fill('2031-03-13');
+  await button('Save trip').click();
+  await waitClosed();
+  await button('Add a city').click();
+  await chooseCity(add_city, 'Rome', 'Rome, Italy');
+  await travel_day.getByLabel('Travel date').fill('2031-03-16');
+  await travel_day.getByText('Your trip will extend to 16 Mar 2031.').waitFor();
+  await travel_day.getByRole('button', { name: 'Add city', exact: true }).click();
+  await waitClosed();
+  await page.reload();
+  await button('Open trip Paris trip').click();
+  const extended_trip = (await readJournal()).trips.find((trip) => trip.id === open_ended_trip.id)!;
+  assert.equal(extended_trip.end_date, '2031-03-16');
+  assert.deepEqual(extended_trip.city_arrival_dates, ['', '2031-03-12', '2031-03-16']);
+  await chooseDay('2031-03-16');
+  assert.equal(await day_title.innerText(), 'London → Rome');
   assert.deepEqual(errors, []);
   assert.deepEqual(
     unexpected_requests,

@@ -151,6 +151,10 @@ button.new-trip-row {
   flex: 1;
   min-height: 0;
 }
+.map-loading {
+  padding: 16px;
+  color: var(--apell-muted);
+}
 .trip-days {
   padding: 5px clamp(10px, 3vw, 24px) 9px;
   background: var(--apell-surface);
@@ -161,6 +165,26 @@ button.new-trip-row {
   min-height: 34px;
   color: var(--apell-muted);
   font-size: 0.76rem;
+}
+.open-trip-overview {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  padding-inline: 6px;
+  color: var(--apell-primary);
+  font-weight: 600;
+}
+.trip-dates-caption {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 480px) {
+  .trip-dates-caption {
+    display: none;
+  }
 }
 .day-controls .date-jump {
   position: relative;

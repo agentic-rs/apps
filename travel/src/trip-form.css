@@ -25,7 +25,7 @@
   border: 1px solid var(--apell-line);
   border-radius: 12px;
 }
-.trip-city-editor li {
+.trip-city-row {
   display: flex;
   align-items: center;
   padding-inline: 4px;
@@ -73,6 +73,65 @@
 .city-leg-name strong {
   font-size: 0.98rem;
   font-weight: 600;
+}
+.city-leg-schedule {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 0 12px 8px;
+}
+.city-leg-schedule label {
+  display: flex;
+  flex-wrap: wrap;
+  flex-direction: row;
+  align-items: center;
+  gap: 3px 8px;
+  margin: 0;
+  color: var(--apell-muted);
+  font-size: 0.78rem;
+}
+.city-leg-schedule input {
+  max-width: 100%;
+  width: auto;
+  min-height: 44px;
+}
+.city-date-link {
+  padding: 0 6px;
+  border: 0;
+  background: transparent;
+  color: var(--apell-primary);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.city-date-note,
+.city-date-conflict {
+  margin: 8px 0 0;
+  font-size: 0.8rem;
+  color: var(--apell-muted);
+}
+.city-date-conflict {
+  width: 100%;
+  margin: 0;
+  color: var(--apell-danger);
+}
+.travel-city-pair {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+.travel-day-body .travel-city-pair {
+  margin: 0 0 22px;
+  font-size: 1.12rem;
+}
+.travel-city-pair span,
+.travel-city-pair svg {
+  color: var(--apell-muted);
+}
+.travel-day-body > label {
+  margin-bottom: 3px;
 }
 .city-leg > svg,
 .trip-city-editor .icon-button {

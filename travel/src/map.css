@@ -547,21 +547,66 @@
   flex: 1;
   height: auto;
 }
-.route-action-bar {
-  flex: none;
+.map-stop-list-pane {
+  display: flex;
+  flex-direction: column;
+  flex: 0 1 auto;
+  min-height: 44px;
+  max-height: min(38%, 260px);
   background: var(--apell-surface);
   border-top: 1px solid var(--apell-line);
 }
+.route-action-bar {
+  display: flex;
+  flex: none;
+}
 .route-action-bar button {
   display: flex;
+  flex: 1;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 6px 14px;
-  width: 100%;
+  gap: 6px;
+  min-height: 44px;
+  padding: 6px 8px;
   color: var(--apell-primary);
   border: 0;
   background: transparent;
   font-size: 0.87rem;
   font-weight: 600;
+}
+.route-action-bar button + button {
+  border-inline-start: 1px solid var(--apell-line);
+}
+.map-stop-count {
+  font-size: 0.79rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--apell-muted);
+}
+.map-stop-list-scroll {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border-top: 1px solid var(--apell-line);
+}
+.map-stop-list {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.map-stop-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-inline: 14px 8px;
+}
+.map-stop-list li + li {
+  border-top: 1px solid var(--apell-line);
+}
+.map-stop-list .map-stop-row {
+  min-width: 0;
+  flex: 1;
+}
+.map-stop-list .itinerary-reorder {
+  flex: none;
+  margin: 0;
 }

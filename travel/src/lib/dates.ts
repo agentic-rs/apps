@@ -1,3 +1,5 @@
+import type { Trip } from './types';
+
 const minute_ms = 60_000;
 const day_ms = 24 * 60 * minute_ms;
 
@@ -22,6 +24,17 @@ function calendarDayMillis(day: string): number {
 
 export function daysBetween(start: string, end: string): number {
   return (calendarDayMillis(end) - calendarDayMillis(start)) / day_ms;
+}
+
+export function itineraryDayLabel(
+  day: string,
+  first: string,
+  trip: Pick<Trip, 'start_date' | 'end_date'>,
+): string {
+  const start = trip.start_date || first;
+  if (day < start) return 'Before trip';
+  if (trip.end_date && day > trip.end_date) return 'After trip';
+  return `Day ${daysBetween(start, day) + 1}`;
 }
 
 export function offsetDay(day: string, offset: number): string {

@@ -350,16 +350,36 @@ try {
   await add_city.waitFor({ state: 'hidden' });
   assert.deepEqual(journal(), single_city_journal);
   await frame.getByRole('button', { name: 'Add a city', exact: true }).click();
-  fail_next_write = true;
   await add_city.getByRole('searchbox', { name: 'Search cities' }).fill('Kyoto');
   await add_city.getByRole('button', { name: 'Kyoto, Japan', exact: true }).click();
-  await add_city.getByRole('alert').filter({ hasText: 'Simulated storage failure' }).waitFor();
+  const travel_day = frame.getByRole('dialog', { name: 'Travel day', exact: true });
+  const confirm_city = travel_day.getByRole('button', { name: 'Add city', exact: true });
+  await travel_day.getByRole('button', { name: 'Choose date later', exact: true }).click();
+  assert.equal(await travel_day.getByLabel('Travel date').inputValue(), '');
+  await travel_day.getByRole('button', { name: 'Back', exact: true }).click();
+  await add_city.getByRole('button', { name: 'Kyoto, Japan', exact: true }).click();
   assert.deepEqual(journal(), single_city_journal);
-  await add_city.getByRole('button', { name: 'Try again', exact: true }).click();
+  await travel_day.getByLabel('Travel date').fill('2026-05-13');
+  fail_next_write = true;
+  await confirm_city.click();
+  await travel_day.getByRole('alert').filter({ hasText: 'Simulated storage failure' }).waitFor();
+  assert.deepEqual(journal(), single_city_journal);
+  await confirm_city.click();
   await frame.getByRole('dialog').waitFor({ state: 'hidden' });
   assert.equal(journal().trips.length, 1);
   assert.equal(journal().trips[0].id, trip_id);
   assert.deepEqual(journal().trips[0].cities, ['Tokyo', 'Kyoto']);
+  assert.deepEqual(journal().trips[0].city_arrival_dates, ['', '2026-05-13']);
+  const overview = frame.getByRole('dialog', { name: 'Trip overview', exact: true });
+  await frame.getByRole('button', { name: 'Trip overview', exact: true }).click();
+  await overview
+    .getByRole('button', { name: 'Open itinerary for 2026-05-13', exact: true })
+    .getByText('Tokyo → Kyoto', { exact: true })
+    .waitFor();
+  await overview
+    .getByRole('button', { name: 'Open itinerary for 2026-05-12', exact: true })
+    .click();
+  await overview.waitFor({ state: 'detached' });
   const mainView = (name: string) =>
     frame
       .getByRole('navigation', { name: 'Main views' })
@@ -473,6 +493,18 @@ try {
   const optimize = frame.getByRole('button', { name: 'Optimize route', exact: true });
   const day_map = frame.getByRole('button', { name: 'Open day map', exact: true });
   await day_map.click();
+  const map_order_toggle = frame.getByRole('button', { name: 'Stop list', exact: true });
+  if ((await map_order_toggle.getAttribute('aria-expanded')) === 'false')
+    await map_order_toggle.click();
+  const map_order = frame.getByRole('list', { name: 'Day route stops', exact: true });
+  await map_order
+    .getByRole('button', { name: 'Move Lookout terrace earlier', exact: true })
+    .click();
+  await frame.getByRole('button', { name: 'Stop 1, Lookout terrace', exact: true }).waitFor();
+  assert.deepEqual(journal().check_ins, saved.check_ins);
+  await map_order.getByRole('button', { name: 'Move Lookout terrace later', exact: true }).click();
+  await frame.getByRole('button', { name: 'Stop 1, Lakeside park', exact: true }).waitFor();
+  assert.deepEqual(journal(), saved);
   await optimize.click();
   await optimizer.getByLabel('Start stop').selectOption(second.id);
   assert.equal(await optimizer.getByLabel('Finish stop').inputValue(), first.id);
