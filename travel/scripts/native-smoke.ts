@@ -316,15 +316,30 @@ try {
   );
   assert.equal(http_urls.length, 0, 'The trip library must not request map tiles.');
   await frame.getByRole('button', { name: 'New trip', exact: true }).click();
+  const first_city = frame.getByRole('dialog', { name: 'Choose your first city', exact: true });
+  await first_city.waitFor();
+  assert.equal(await frame.getByLabel('Trip name').count(), 0);
+  await first_city.getByRole('searchbox', { name: 'Search cities' }).fill('Tokyo');
+  await first_city.getByRole('button', { name: 'Tokyo, Japan', exact: true }).click();
+  assert.equal(await frame.getByLabel('Trip name').inputValue(), 'Tokyo trip');
   await frame.getByLabel('Trip name').fill('Native bridge journey');
   await frame.getByLabel('Start date').fill('2026-05-12');
   await frame.getByLabel('End date').fill('2026-05-13');
   await frame.getByRole('button', { name: 'Create trip', exact: true }).click();
   await frame.getByRole('dialog').waitFor({ state: 'hidden' });
   assert.equal(journal().trips.length, 1);
+  assert.deepEqual(journal().trips[0].cities, ['Tokyo']);
 
   const trip_title = journal().trips[0].title;
   await frame.getByRole('heading', { name: trip_title, exact: true }).waitFor();
+  await frame.getByRole('button', { name: 'Edit trip', exact: true }).click();
+  await frame.getByRole('button', { name: 'Add city', exact: true }).click();
+  const add_city = frame.getByRole('dialog', { name: 'Add a city', exact: true });
+  await add_city.getByRole('searchbox', { name: 'Search cities' }).fill('Kyoto');
+  await add_city.getByRole('button', { name: 'Kyoto, Japan', exact: true }).click();
+  await frame.getByRole('button', { name: 'Save trip', exact: true }).click();
+  await frame.getByRole('dialog').waitFor({ state: 'hidden' });
+  assert.deepEqual(journal().trips[0].cities, ['Tokyo', 'Kyoto']);
   const mainView = (name: string) =>
     frame
       .getByRole('navigation', { name: 'Main views' })
@@ -498,7 +513,9 @@ try {
   });
 
   await native_frame.goto(`http://127.0.0.1:${server.port}/index.html`);
-  await frame.getByRole('button', { name: `Open trip ${trip_title}`, exact: true }).click();
+  const reopen_trip = frame.getByRole('button', { name: `Open trip ${trip_title}`, exact: true });
+  await reopen_trip.getByText('Tokyo → Kyoto', { exact: true }).waitFor();
+  await reopen_trip.click();
   await frame.getByRole('button', { name: 'Edit Lookout terrace', exact: true }).waitFor();
   await day_map.click();
   await frame.getByRole('button', { name: 'Stop 1, Lookout terrace', exact: true }).waitFor();
@@ -824,6 +841,7 @@ try {
         verified: [
           'production CSP and SDK handshake',
           'opaque-origin UUID fallback',
+          'first-city selection, adding another city and reopening the ordered trip',
           'native image import and camera',
           'foreground location cancellation',
           'two distinct positions',

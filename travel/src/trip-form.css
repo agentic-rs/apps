@@ -1,0 +1,87 @@
+.trip-header-copy {
+  min-width: 0;
+}
+.trip-header-copy p {
+  margin: 3px 0 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--apell-muted);
+  font-size: 0.75rem;
+  line-height: 1.25;
+}
+.trip-city-editor {
+  margin-bottom: 22px;
+}
+.trip-city-editor h3 {
+  margin: 0 0 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.trip-city-editor ol {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+  border: 1px solid var(--apell-line);
+  border-radius: 12px;
+}
+.trip-city-editor li {
+  display: flex;
+  align-items: center;
+  padding-inline: 4px;
+}
+.trip-city-editor li + li {
+  border-top: 1px solid var(--apell-line);
+}
+.city-leg,
+.add-trip-city {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  background: transparent;
+  text-align: start;
+}
+.city-leg {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 8px;
+}
+.city-leg-marker {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  color: var(--apell-badge-text);
+  background: var(--apell-badge);
+  border-radius: 50%;
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+.city-leg-name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.city-leg-name small {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--apell-muted);
+  font-size: 0.72rem;
+}
+.city-leg-name strong {
+  font-size: 0.98rem;
+  font-weight: 600;
+}
+.city-leg > svg,
+.trip-city-editor .icon-button {
+  color: var(--apell-muted);
+}
+.add-trip-city {
+  padding-inline: 7px 14px;
+  margin-top: 2px;
+  color: var(--apell-primary);
+  font-size: 0.9rem;
+  font-weight: 600;
+}

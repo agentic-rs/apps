@@ -150,6 +150,12 @@ try {
     );
   const waitClosed = () => page.locator('dialog').first().waitFor({ state: 'detached' });
   const button = (name: string) => page.getByRole('button', { name, exact: true });
+  const first_city = page.getByRole('dialog', { name: 'Choose your first city', exact: true });
+  const add_city = page.getByRole('dialog', { name: 'Add a city', exact: true });
+  async function chooseCity(picker: Locator, query: string, option: string) {
+    await picker.getByRole('searchbox', { name: 'Search cities' }).fill(query);
+    await picker.getByRole('button', { name: option, exact: true }).click();
+  }
   const goTo = async (view: 'Itinerary' | 'Journal' | 'Map' | 'Toolbox') => {
     await page
       .getByRole('navigation', { name: 'Main views' })
@@ -236,14 +242,23 @@ try {
   assert.equal(tile_requests, 0, 'Opening the trip library must not fetch map tiles.');
   await page.screenshot({ path: resolve(output, 'desktop-empty.png'), fullPage: true });
   await page.getByRole('button', { name: 'New trip', exact: true }).click();
+  await first_city.waitFor();
+  assert.equal(await page.getByLabel('Trip name').count(), 0);
+  await chooseCity(first_city, 'Tokyo', 'Tokyo, Japan');
+  assert.equal(await page.getByLabel('Trip name').inputValue(), 'Tokyo trip');
   await page.getByLabel('Trip name').fill('Coastal days');
   await page.getByLabel('Start date').fill('2026-05-01');
   await page.getByLabel('End date').fill('2026-05-04');
   await page
     .getByLabel('Description')
     .fill('A few quiet days, new streets, and the long way home.');
+  await button('Add city').click();
+  await chooseCity(add_city, 'Kyoto', 'Kyoto, Japan');
+  assert.equal(await page.getByLabel('Trip name').inputValue(), 'Coastal days');
+  assert.equal(await page.getByLabel('Start date').inputValue(), '2026-05-01');
   await page.locator('dialog').getByRole('button', { name: 'Create trip', exact: true }).click();
   await waitClosed();
+  assert.deepEqual((await readJournal()).trips[0].cities, ['Tokyo', 'Kyoto']);
   const second_tab = await context.newPage();
   await second_tab.goto(page.url());
   await second_tab.getByRole('button', { name: 'Open trip Coastal days' }).click();
@@ -390,13 +405,29 @@ try {
   await waitClosed();
   await page.getByRole('button', { name: 'Trips', exact: true }).click();
   await page.getByRole('button', { name: 'New trip', exact: true }).click();
+  await chooseCity(first_city, 'Saltwind Bay', 'Use Saltwind Bay');
+  assert.equal(await page.getByLabel('Trip name').inputValue(), 'Saltwind Bay trip');
   await page.getByLabel('Trip name').fill('City wander');
   await page.getByRole('button', { name: 'Create trip', exact: true }).click();
   await waitClosed();
   assert.equal(await page.locator('.itinerary-stops li').count(), 0);
   assert.equal(await page.locator('.visit-card').count(), 0);
   await page.reload();
+  await button('Open trip City wander').getByText('Saltwind Bay', { exact: true }).waitFor();
   await openTrip();
+  await button('Edit trip').click();
+  await button('Add city').click();
+  await chooseCity(add_city, 'Tokyo', 'Tokyo, Japan');
+  await button('Remove city Kyoto').click();
+  await button('Add city').click();
+  await chooseCity(add_city, 'Kyoto', 'Kyoto, Japan');
+  await button('Move Kyoto earlier').click();
+  await button('Save trip').click();
+  await waitClosed();
+  assert.deepEqual(
+    (await readJournal()).trips.find((trip) => trip.title === 'Coastal days')?.cities,
+    ['Tokyo', 'Kyoto', 'Tokyo'],
+  );
   await goTo('Journal');
   await page.locator('.timeline-list .visit-card').nth(2).waitFor();
   assert.equal(await page.locator('.timeline-list .visit-card').count(), 3);
@@ -404,7 +435,14 @@ try {
   for (const height of [844, 500]) {
     await page.setViewportSize({ width: 390, height });
     await button('New trip').click();
+    await assertFullScreenEditor(first_city);
+    if (height === 844) {
+      await page.screenshot({ path: resolve(output, 'mobile-first-city.png') });
+    }
+    await chooseCity(first_city, 'Tokyo', 'Tokyo, Japan');
     const editor = page.getByRole('dialog', { name: 'New trip', exact: true });
+    await editor.getByRole('button', { name: 'Add city', exact: true }).click();
+    await chooseCity(add_city, 'Kyoto', 'Kyoto, Japan');
     await assertFullScreenEditor(editor);
     await page.screenshot({ path: resolve(output, `trip-form-${height}.png`) });
     await editor.getByLabel('Trip name').fill('Unsaved travel idea');
@@ -884,7 +922,7 @@ try {
     'Smoke tests must never use unmocked external services.',
   );
   console.log(
-    'Firefox smoke passed: trips, route previews and retries, packing lists, multi-currency expenses, linked check-ins, photo events, offline maps and mobile layouts.',
+    'Firefox smoke passed: city-first and multi-city trips, route previews and retries, packing lists, multi-currency expenses, linked check-ins, photo events, offline maps and mobile layouts.',
   );
 } finally {
   await browser.close();

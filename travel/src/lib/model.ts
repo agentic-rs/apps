@@ -1,6 +1,6 @@
 import { isCalendarDate, isUtcTimestamp, toVisitInput, validateOffset } from './dates';
 import { parseExpenses } from './expenses';
-import { stop_kinds } from './types';
+import { journal_schema_version, stop_kinds } from './types';
 import type {
   CheckIn,
   Coordinates,
@@ -18,6 +18,7 @@ export const max_photos_per_check_in = 20;
 export const text_limits = {
   trip_title: 200,
   trip_description: 10_000,
+  city_name: 120,
   packing_title: 200,
   stop_title: 200,
   stop_notes: 20_000,
@@ -130,10 +131,18 @@ export function parseTrip(value: unknown): Trip {
       ? undefined
       : rows(row.packing_items, 'Packing items', parsePackingItem);
   if (packing_items) unique(packing_items, (item) => item.id, 'Packing items');
+  const cities =
+    row.cities === undefined
+      ? undefined
+      : rows(row.cities, 'Trip cities', (city) =>
+          text(city, 'City name', text_limits.city_name, true).trim(),
+        );
+  if (cities?.length === 0) throw new Error('Choose a starting city.');
   return {
     id: id(row.id, 'Trip'),
     title: text(row.title, 'Trip title', text_limits.trip_title, true).trim(),
     description: text(row.description, 'Trip description', text_limits.trip_description),
+    ...(cities !== undefined && { cities }),
     start_date,
     end_date,
     ...(packing_items !== undefined && { packing_items }),
@@ -269,12 +278,23 @@ export function parseCheckIn(value: unknown): CheckIn {
 }
 
 export function emptyJournal(): Journal {
-  return { schema_version: 3, trips: [], stops: [], places: [], check_ins: [] };
+  return {
+    schema_version: journal_schema_version,
+    trips: [],
+    stops: [],
+    places: [],
+    check_ins: [],
+  };
 }
 
 export function parseJournal(value: unknown): Journal {
   const row = record(value, 'Journal');
-  if (row.schema_version !== 1 && row.schema_version !== 2 && row.schema_version !== 3)
+  if (
+    typeof row.schema_version !== 'number' ||
+    !Number.isInteger(row.schema_version) ||
+    row.schema_version < 1 ||
+    row.schema_version > journal_schema_version
+  )
     throw new Error('This journal version is not supported.');
   const trips = rows(row.trips, 'Trips', parseTrip);
   const stops =
@@ -303,7 +323,7 @@ export function parseJournal(value: unknown): Journal {
   const photos = check_ins.flatMap((check_in) => check_in.photos);
   unique(photos, (photo) => photo.id, 'Journal photos');
   unique(photos, (photo) => photo.path, 'Journal photo storage');
-  return { schema_version: 3, trips, stops, places, check_ins };
+  return { schema_version: journal_schema_version, trips, stops, places, check_ins };
 }
 
 function upsert<T extends { id: string }>(values: T[], value: T): T[] {
@@ -313,9 +333,11 @@ function upsert<T extends { id: string }>(values: T[], value: T): T[] {
 }
 
 export function upsertTrip(journal: Journal, value: Trip): Journal {
-  // Metadata editors may omit the checklist. Apply their edits to the latest saved trip.
+  // Editors may omit fields outside their scope. Merge with the latest saved trip.
   const existing = journal.trips.find((trip) => trip.id === value.id);
-  const trip = parseTrip({ ...existing, ...value });
+  const cities = value.cities === undefined ? existing?.cities : value.cities;
+  if (!existing && !cities) throw new Error('Choose a starting city.');
+  const trip = parseTrip({ ...existing, ...value, cities });
   return parseJournal({ ...journal, trips: upsert(journal.trips, trip) });
 }
 

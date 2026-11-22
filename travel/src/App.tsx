@@ -176,7 +176,14 @@ export function App() {
           )}
           <div className="view-title">
             {!trip && <img className="brand-symbol" src={fieldnotes_icon} alt="" />}
-            <h1>{trip?.title ?? 'Fieldnotes'}</h1>
+            {trip ? (
+              <div className="trip-header-copy">
+                <h1>{trip.title}</h1>
+                {trip.cities && <p>{trip.cities.join(' → ')}</p>}
+              </div>
+            ) : (
+              <h1>Fieldnotes</h1>
+            )}
           </div>
           {trip && (
             <button

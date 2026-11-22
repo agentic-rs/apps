@@ -23,7 +23,7 @@ import {
 import type { CheckIn, Journal, PhotoAsset, Place, PlannedStop, Trip } from '../src/lib/types';
 
 const now = '2026-05-12T14:20:00.000Z';
-const trip: Trip = {
+const legacy_trip: Trip = {
   id: 'trip-1',
   title: 'A spring weekend',
   description: '',
@@ -32,6 +32,7 @@ const trip: Trip = {
   created_at: now,
   updated_at: now,
 };
+const trip: Trip = { ...legacy_trip, cities: ['Shanghai'] };
 const place: Place = {
   id: 'place-1',
   name: 'Lakeside park',
@@ -207,7 +208,8 @@ describe('journal data integrity', () => {
 
   test('validates schema and missing fields before reading or saving', () => {
     expect(() => parseJournal(null)).toThrow();
-    expect(() => parseJournal({ ...emptyJournal(), schema_version: 4 })).toThrow('version');
+    for (const schema_version of [0, 1.5, 5, '4'])
+      expect(() => parseJournal({ ...emptyJournal(), schema_version })).toThrow('version');
     expect(() => parseJournal({ ...emptyJournal(), trips: {} })).toThrow('list');
     expect(() => parseJournal({ schema_version: 1 })).toThrow();
     expect(() => parseCheckIn({ ...check_in, actual_location: undefined })).toThrow();
@@ -304,6 +306,43 @@ describe('journal data integrity', () => {
   });
 });
 
+describe('trip cities', () => {
+  test('opens an older trip without inferring cities from its title, places, or stops', () => {
+    const original = { ...upsertStop(populated(), stop), trips: [legacy_trip] };
+    const saved = parseJournal({ ...original, schema_version: 3 });
+    expect(saved.trips[0].cities).toBeUndefined();
+    expect(saved).toEqual({ ...original, schema_version: 4 });
+    expect(
+      upsertTrip(saved, { ...legacy_trip, title: 'Next year' }).trips[0].cities,
+    ).toBeUndefined();
+    const edited = upsertTrip(saved, { ...trip, cities: ['上海', '杭州'] });
+    expect(edited).toEqual({
+      ...saved,
+      trips: [{ ...trip, cities: ['上海', '杭州'] }],
+    });
+  });
+
+  test('retains city order and return visits through metadata edits and a storage round trip', () => {
+    const saved = upsertTrip(populated(), { ...trip, cities: ['  Kyoto ', 'Osaka', 'Kyoto'] });
+    const renamed = upsertTrip(saved, { ...legacy_trip, title: 'Autumn in Japan' });
+    expect(parseJournal(JSON.parse(JSON.stringify(renamed))).trips[0]).toEqual({
+      ...trip,
+      title: 'Autumn in Japan',
+      cities: ['Kyoto', 'Osaka', 'Kyoto'],
+    });
+    const changed = upsertTrip(renamed, { ...renamed.trips[0], cities: ['Nara', 'Kyoto'] });
+    expect(changed.trips[0].cities).toEqual(['Nara', 'Kyoto']);
+    expect(renamed.trips[0].cities).toEqual(['Kyoto', 'Osaka', 'Kyoto']);
+  });
+
+  test('requires a starting city for new trips and validates each city name', () => {
+    expect(() => upsertTrip(emptyJournal(), legacy_trip)).toThrow('starting city');
+    expect(() => parseTrip({ ...trip, cities: [] })).toThrow('starting city');
+    for (const cities of ['Nara', null, [3], ['Nara', '  '], ['x'.repeat(121)]])
+      expect(() => parseTrip({ ...trip, cities })).toThrow();
+  });
+});
+
 describe('planned stops', () => {
   test('migrates schema 1 visits, photo events, exact coordinates and original photo references', () => {
     const old_event: CheckIn = {
@@ -316,12 +355,12 @@ describe('planned stops', () => {
     };
     const old = {
       schema_version: 1,
-      trips: [trip],
+      trips: [legacy_trip],
       places: [place],
       check_ins: [check_in, old_event],
     };
     const migrated = parseJournal(old);
-    expect(migrated).toEqual({ ...old, schema_version: 3, stops: [] });
+    expect(migrated).toEqual({ ...old, schema_version: 4, stops: [] });
     expect(parseJournal(JSON.parse(JSON.stringify(migrated)))).toEqual(migrated);
     expect(() => parseJournal({ ...old, places: [] })).toThrow('missing place');
     expect(() => parseJournal({ ...migrated, stops: undefined })).toThrow('list');
@@ -431,7 +470,10 @@ describe('photos and display', () => {
 
 describe('trip packing lists', () => {
   test('migrates a saved itinerary with a starter list unique to each trip', () => {
-    const original = upsertTrip(upsertStop(populated(), stop), { ...trip, id: 'other-trip' });
+    const original = {
+      ...upsertStop(populated(), stop),
+      trips: [legacy_trip, { ...legacy_trip, id: 'other-trip' }],
+    };
     const journal = parseJournal({ ...original, schema_version: 2 });
     expect(journal).toEqual(original);
     const items = packingItems(journal.trips[0]);
@@ -443,7 +485,7 @@ describe('trip packing lists', () => {
     expect(packingItems(saved.trips[1])).toEqual(items);
     expect(saved.check_ins).toEqual(original.check_ins);
     expect(saved.stops).toEqual(original.stops);
-    expect(saved.schema_version).toBe(3);
+    expect(saved.schema_version).toBe(4);
     expect(parseJournal(JSON.parse(JSON.stringify(saved)))).toEqual(saved);
   });
 

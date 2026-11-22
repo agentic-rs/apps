@@ -83,6 +83,12 @@ button.new-trip-row {
   color: var(--apell-muted);
   font-size: 0.78rem;
 }
+.trip-cover .trip-cities {
+  color: var(--apell-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .trip-cover > svg {
   position: absolute;
   right: 14px;

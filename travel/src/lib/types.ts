@@ -15,6 +15,7 @@ export interface Trip {
   id: string;
   title: string;
   description: string;
+  cities?: string[];
   start_date: string;
   end_date: string;
   created_at: string;
@@ -81,8 +82,10 @@ export interface CheckIn {
   updated_at: string;
 }
 
+export const journal_schema_version = 4;
+
 export interface Journal {
-  schema_version: 3;
+  schema_version: typeof journal_schema_version;
   trips: Trip[];
   stops: PlannedStop[];
   places: Place[];

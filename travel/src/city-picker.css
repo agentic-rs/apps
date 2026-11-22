@@ -1,0 +1,83 @@
+.city-picker {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+  max-width: 640px;
+  margin-inline: auto;
+}
+.city-search {
+  padding: 16px 18px 12px;
+}
+.city-search .search-box input {
+  min-height: 44px;
+  font-size: 1rem;
+}
+.city-directory {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 8px 18px calc(18px + var(--safe-area-bottom));
+}
+.city-directory section + section {
+  margin-top: 24px;
+}
+.city-directory h3 {
+  margin: 0 0 10px;
+  font-size: 1.03rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+.city-list,
+.city-suggestions {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.city-suggestions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.city-option {
+  width: 100%;
+  min-height: 56px;
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  padding: 7px 0;
+  border: 0;
+  background: transparent;
+  text-align: start;
+}
+.city-option svg {
+  color: var(--apell-muted);
+}
+.city-option:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+.city-option-label {
+  display: grid;
+  gap: 2px;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.city-option-label strong {
+  font-size: 0.97rem;
+  font-weight: 580;
+}
+.city-option-label small {
+  font-size: 0.78rem;
+  color: var(--apell-muted);
+}
+.city-suggestions .city-option {
+  border: 1px solid var(--apell-line);
+  border-radius: 12px;
+  padding: 9px 12px;
+  background: var(--apell-subtle);
+}
+.city-list li + li {
+  border-top: 1px solid var(--apell-line);
+}

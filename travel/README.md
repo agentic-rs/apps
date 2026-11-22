@@ -6,12 +6,12 @@ The mobile interaction reference is QYER’s 穷游行程助手. Its day-map rou
 
 ## Plan a trip
 
-1. Select **New trip** and enter a name. Start and end dates are optional.
+1. Select **New trip** and choose your starting city. Search the offline list or enter your own city name. The app suggests a trip name you can edit. Select **Add city** to build a multi-city route, or go straight to **Create trip**. Dates are optional.
 2. Open a day in **Itinerary** and select **Add stop**. Give the stop a name and category. You can also add a local time, notes, and coordinates for its map pin.
 3. Use a stop’s arrows to change the visit order. Edit its date to move it to the end of another day’s plan. The stop order also determines the numbering on the day’s map.
 4. Select **Check in** at a stop to attach an entry and photos, or **New check-in** to record an unplanned visit. The entry keeps its own local date even when the plan changes.
 
-The **Journal** tab brings together all the trip’s entries and lets you search by title, place, area, or notes. Use **Trips** to switch trips and **Edit trip** to manage the current one.
+The **Journal** tab brings together all the trip’s entries and lets you search by title, place, area, or notes. Use **Trips** to switch trips. In **Edit trip**, tap a city to replace it or use its arrow to move it earlier in the route. The first city is the starting city.
 
 A planned stop can have a map position. Check-ins can separately record the actual visit position and a reusable named place with reference coordinates. Checking in at a stop prefills the place name and any reference coordinates. Enter the actual visit location manually or use foreground GPS. **Use current location** measures the device’s present location. All coordinates use WGS84.
 
@@ -76,8 +76,8 @@ For initial shell setup, run `apell dev --target 'Apell iPhone 16 Pro'` from the
 
 ## Editing and storage
 
-- Existing schema-1 and schema-2 journals open with their trips, ordered stops, visits and photos intact. The first successful save writes schema 3, which also stores trip checklists and expenses.
-- Trips have a name, optional date range, and description. Check-ins have a visit date/time, saved UTC offset, notes, and up to 20 photos of up to 32 MiB each.
+- Journals from schemas 1 through 3 open with their trips, stops, visits, photos and toolbox data intact. The next save writes schema 4, which stores each trip’s cities in visit order. Existing trips can gain a starting city through **Edit trip**.
+- Trips have a name, cities, an optional date range, and a description. Check-ins have a visit date/time, saved UTC offset, notes, and up to 20 photos of up to 32 MiB each.
 - Visit times preserve the recorded local time even after the device changes time zones. Select the time zone in effect during a past visit, including any daylight-saving adjustment.
 - Supported imports are JPEG, PNG, GIF, WebP, HEIC, HEIF, and AVIF. Originals are retained. Preview support depends on the browser/device codec; unsupported images display a clear fallback. Photos load near the viewport and release their object URLs offscreen.
 - Drafts stay open after a failed save and can be retried. Closing a form with edits asks before discarding them. Save before closing/reloading the app; unsaved text is not recovered after termination. Closing the native applet during an import can leave unreferenced private photo files.
