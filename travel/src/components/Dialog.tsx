@@ -7,12 +7,14 @@ export function Dialog({
   onDismiss,
   wide = false,
   full_screen = false,
+  dismiss_disabled = false,
 }: {
   title: string;
   children: ReactNode;
   onDismiss(): void;
   wide?: boolean;
   full_screen?: boolean;
+  dismiss_disabled?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const outside_press = useRef(false);
@@ -45,6 +47,7 @@ export function Dialog({
       onClick={(event) => {
         if (
           outside_press.current &&
+          !dismiss_disabled &&
           event.target === event.currentTarget &&
           outside(event.clientX, event.clientY)
         )
@@ -53,12 +56,18 @@ export function Dialog({
       }}
       onCancel={(event) => {
         event.preventDefault();
-        onDismiss();
+        if (!dismiss_disabled) onDismiss();
       }}
     >
       <header className="dialog-header">
         <h2 id={id}>{title}</h2>
-        <button type="button" className="icon-button" aria-label="Close dialog" onClick={onDismiss}>
+        <button
+          type="button"
+          className="icon-button"
+          aria-label="Close dialog"
+          disabled={dismiss_disabled}
+          onClick={onDismiss}
+        >
           <Icon name="close" />
         </button>
       </header>

@@ -16,6 +16,9 @@ import type { CheckIn, PhotoAsset, PlannedStop, Trip } from './lib/types';
 import { Icon } from './components/Icon';
 import { Dialog } from './components/Dialog';
 import { TripForm } from './components/TripForm';
+import { NewTrip } from './components/NewTrip';
+import { CityPicker } from './components/CityPicker';
+import { cityKey, tripCitySummary } from './lib/cities';
 import { StopForm } from './components/StopForm';
 import { CheckInForm } from './components/CheckInForm';
 import { Photo } from './components/Photo';
@@ -33,7 +36,7 @@ import fieldnotes_icon from '../../shared/assets/fieldnotes.svg';
 
 type View = 'Itinerary' | 'Map' | 'Journal' | 'Toolbox';
 type Editor =
-  | { kind: 'trip'; trip?: Trip }
+  | { kind: 'new_trip' | 'edit_trip' | 'add_city' }
   | { kind: 'stop'; stop?: PlannedStop }
   | { kind: 'route' }
   | { kind: 'visit'; visit?: CheckIn; stop?: PlannedStop }
@@ -68,6 +71,7 @@ export function App() {
   const [delete_error, setDeleteError] = useState('');
 
   const trip = journal.trips.find((item) => item.id === trip_id);
+  const route_summary = trip && tripCitySummary(trip);
   const stops = useMemo(
     () => journal.stops.filter((stop) => stop.trip_id === trip_id),
     [journal.stops, trip_id],
@@ -108,6 +112,14 @@ export function App() {
     setSearch('');
     setNotice('');
     setDetailId('');
+  }
+
+  function updateTrip(id: string, update: (current: Trip) => Trip) {
+    return persist((snapshot) => {
+      const current = snapshot.trips.find((item) => item.id === id);
+      if (!current) throw new Error('This trip has been removed.');
+      return upsertTrip(snapshot, { ...update(current), updated_at: new Date().toISOString() });
+    });
   }
 
   function confirmRemoval(target: Removal) {
@@ -179,17 +191,23 @@ export function App() {
             {trip ? (
               <div className="trip-header-copy">
                 <h1>{trip.title}</h1>
-                {trip.cities && <p>{trip.cities.join(' → ')}</p>}
+                {route_summary && <p>{route_summary}</p>}
               </div>
             ) : (
               <h1>Fieldnotes</h1>
             )}
           </div>
+          {trip && view === 'Itinerary' && (
+            <button className="trip-add-city" onClick={() => setEditor({ kind: 'add_city' })}>
+              <Icon name="plus" size={15} />
+              Add a city
+            </button>
+          )}
           {trip && (
             <button
               className="icon-button"
               aria-label="Edit trip"
-              onClick={() => setEditor({ kind: 'trip', trip })}
+              onClick={() => setEditor({ kind: 'edit_trip' })}
             >
               <Icon name="edit" size={19} />
             </button>
@@ -211,25 +229,12 @@ export function App() {
               journal={journal}
               platform={platform}
               onOpen={(value) => openTrip(value.id)}
-              onCreate={() => setEditor({ kind: 'trip' })}
+              onCreate={() => setEditor({ kind: 'new_trip' })}
             />
           </div>
         ) : view === 'Toolbox' ? (
           <div className="timeline-panel">
-            <TripToolbox
-              trip={trip}
-              day={day}
-              onChange={(update) =>
-                persist((snapshot) => {
-                  const current = snapshot.trips.find((item) => item.id === trip.id);
-                  if (!current) throw new Error('This trip has been removed.');
-                  return upsertTrip(snapshot, {
-                    ...update(current),
-                    updated_at: new Date().toISOString(),
-                  });
-                })
-              }
-            />
+            <TripToolbox trip={trip} day={day} onChange={(update) => updateTrip(trip.id, update)} />
           </div>
         ) : view === 'Journal' ? (
           <div className="timeline-panel">
@@ -359,16 +364,40 @@ export function App() {
           </footer>
         </Dialog>
       )}
-      {editor?.kind === 'trip' && (
-        <TripForm
-          trip={editor.trip}
+      {editor?.kind === 'new_trip' && (
+        <NewTrip
           onCancel={() => setEditor(null)}
-          onDelete={
-            editor.trip ? () => confirmRemoval({ kind: 'trip', trip: editor.trip! }) : undefined
-          }
           onSave={async (value) => {
             await persist((snapshot) => upsertTrip(snapshot, value));
-            if (!editor.trip) openTrip(value.id);
+            openTrip(value.id);
+            setEditor(null);
+          }}
+        />
+      )}
+      {editor?.kind === 'edit_trip' && trip && (
+        <TripForm
+          trip={trip}
+          onCancel={() => setEditor(null)}
+          onDelete={() => confirmRemoval({ kind: 'trip', trip })}
+          onSave={async (value) => {
+            await updateTrip(trip.id, (current) => ({ ...current, ...value }));
+            setEditor(null);
+          }}
+        />
+      )}
+      {editor?.kind === 'add_city' && trip && (
+        <CityPicker
+          title="Add a city"
+          excluded_cities={trip.cities?.slice(-1)}
+          onDismiss={() => setEditor(null)}
+          onSelect={async (city) => {
+            await updateTrip(trip.id, (current) => {
+              const cities = current.cities ?? [];
+              if (cityKey(cities.at(-1) ?? '') === cityKey(city)) {
+                throw new Error('This city is already last on your route.');
+              }
+              return { ...current, cities: [...cities, city] };
+            });
             setEditor(null);
           }}
         />

@@ -1,7 +1,20 @@
+import type { Trip } from './types';
+
 export interface CatalogCity {
   name: string;
   region: string;
   aliases: string[];
+}
+
+export function titleForCity(city: string): string {
+  return `${city} trip`;
+}
+
+export function tripCitySummary({ title, cities }: Trip): string | undefined {
+  if (cities?.length === 1 && (title === cities[0] || title === titleForCity(cities[0]))) {
+    return undefined;
+  }
+  return cities?.join(' → ');
 }
 
 function city(name: string, region: string, ...aliases: string[]): CatalogCity {

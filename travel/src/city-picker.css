@@ -10,6 +10,23 @@
 .city-search {
   padding: 16px 18px 12px;
 }
+.city-save-status,
+.city-save-error {
+  margin: 0 18px 12px;
+  font-size: 0.87rem;
+}
+.city-save-status {
+  color: var(--apell-muted);
+}
+.city-save-error {
+  padding: 12px;
+  color: var(--apell-danger);
+  background: var(--apell-danger-soft);
+  border-radius: 10px;
+}
+.city-save-error p {
+  margin-bottom: 8px;
+}
 .city-search .search-box input {
   min-height: 44px;
   font-size: 1rem;

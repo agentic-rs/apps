@@ -17,7 +17,7 @@ export function TripCities({
 
   return (
     <section className="trip-city-editor" aria-label="Trip cities">
-      <h3>Cities</h3>
+      <h3>{cities.length > 1 ? 'Cities' : 'City'}</h3>
       {cities.length > 0 && (
         <ol>
           {cities.map((city, index) => (
@@ -26,14 +26,14 @@ export function TripCities({
                 type="button"
                 className="city-leg"
                 aria-label={`Change city ${city}`}
-                aria-description={index === 0 ? 'Starting city' : `City ${index + 1}`}
+                aria-description={cities.length > 1 ? `City ${index + 1}` : undefined}
                 onClick={() => onPick(index)}
               >
                 <span className="city-leg-marker" aria-hidden="true">
                   {index === 0 ? <Icon name="pin" size={16} /> : index + 1}
                 </span>
                 <span className="city-leg-name">
-                  {index === 0 && <small>Starting city</small>}
+                  {index === 0 && cities.length > 1 && <small>Starting city</small>}
                   <strong>{city}</strong>
                 </span>
                 <Icon name="next" size={14} />

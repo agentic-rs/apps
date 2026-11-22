@@ -6,12 +6,14 @@ The mobile interaction reference is QYER’s 穷游行程助手. Its day-map rou
 
 ## Plan a trip
 
-1. Select **New trip** and choose your starting city. Search the offline list or enter your own city name. The app suggests a trip name you can edit. Select **Add city** to build a multi-city route, or go straight to **Create trip**. Dates are optional.
+1. Select **New trip** and tap a city in the offline picker, or enter your own city name. Fieldnotes saves a one-city trip and opens its itinerary. Use **Edit trip** whenever you want to rename it or set dates.
 2. Open a day in **Itinerary** and select **Add stop**. Give the stop a name and category. You can also add a local time, notes, and coordinates for its map pin.
 3. Use a stop’s arrows to change the visit order. Edit its date to move it to the end of another day’s plan. The stop order also determines the numbering on the day’s map.
 4. Select **Check in** at a stop to attach an entry and photos, or **New check-in** to record an unplanned visit. The entry keeps its own local date even when the plan changes.
 
-The **Journal** tab brings together all the trip’s entries and lets you search by title, place, area, or notes. Use **Trips** to switch trips. In **Edit trip**, tap a city to replace it or use its arrow to move it earlier in the route. The first city is the starting city.
+If your plans expand, tap **Add a city** in the itinerary and choose the next city. It joins the same trip, alongside your existing plans and journal. In **Edit trip**, tap a city to replace it or use its arrow to move it earlier in the route.
+
+The **Journal** tab brings together all the trip’s entries and lets you search by title, place, area, or notes. Use **Trips** to switch trips.
 
 A planned stop can have a map position. Check-ins can separately record the actual visit position and a reusable named place with reference coordinates. Checking in at a stop prefills the place name and any reference coordinates. Enter the actual visit location manually or use foreground GPS. **Use current location** measures the device’s present location. All coordinates use WGS84.
 

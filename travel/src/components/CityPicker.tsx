@@ -14,12 +14,15 @@ import '../city-picker.css';
 interface CityPickerProps {
   title: string;
   excluded_cities?: string[];
-  onSelect(city: string): void;
+  onSelect(city: string): void | Promise<void>;
   onDismiss(): void;
 }
 
 export function CityPicker({ title, excluded_cities = [], onSelect, onDismiss }: CityPickerProps) {
   const [query, setQuery] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<{ city: string; message: string } | null>(null);
+  const selecting = useRef(false);
   const list = useRef<HTMLDivElement>(null);
   const { matches, custom_name } = searchCities(query);
   const searching = Boolean(cityKey(query));
@@ -29,6 +32,24 @@ export function CityPicker({ title, excluded_cities = [], onSelect, onDismiss }:
     list.current?.scrollTo(0, 0);
   }, [query]);
 
+  async function selectCity(city: string) {
+    if (selecting.current) return;
+    selecting.current = true;
+    setBusy(true);
+    setFailure(null);
+    try {
+      await onSelect(city);
+    } catch (reason) {
+      setFailure({
+        city,
+        message: reason instanceof Error ? reason.message : 'Could not save the trip.',
+      });
+    } finally {
+      selecting.current = false;
+      setBusy(false);
+    }
+  }
+
   function option(name: string, region: string, accessible_name: string, custom = false) {
     const unavailable = excluded.has(cityKey(name));
     return (
@@ -37,8 +58,8 @@ export function CityPicker({ title, excluded_cities = [], onSelect, onDismiss }:
           type="button"
           className="city-option"
           aria-label={unavailable ? `${accessible_name}, already selected` : accessible_name}
-          disabled={unavailable}
-          onClick={() => onSelect(name)}
+          disabled={unavailable || busy}
+          onClick={() => void selectCity(name)}
         >
           {custom && <Icon name="plus" size={19} />}
           <span className="city-option-label">
@@ -56,7 +77,7 @@ export function CityPicker({ title, excluded_cities = [], onSelect, onDismiss }:
   }
 
   return (
-    <Dialog title={title} full_screen onDismiss={onDismiss}>
+    <Dialog title={title} full_screen dismiss_disabled={busy} onDismiss={onDismiss}>
       <div className="city-picker">
         <div role="search" className="city-search">
           <label className="search-box">
@@ -69,7 +90,11 @@ export function CityPicker({ title, excluded_cities = [], onSelect, onDismiss }:
               enterKeyHint="search"
               maxLength={text_limits.city_name}
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              disabled={busy}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setFailure(null);
+              }}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
                   event.preventDefault();
@@ -79,6 +104,19 @@ export function CityPicker({ title, excluded_cities = [], onSelect, onDismiss }:
             />
           </label>
         </div>
+        {busy && (
+          <p className="city-save-status" role="status">
+            Saving trip…
+          </p>
+        )}
+        {failure && (
+          <div className="city-save-error" role="alert">
+            <p>{failure.message}</p>
+            <button className="secondary" onClick={() => void selectCity(failure.city)}>
+              Try again
+            </button>
+          </div>
+        )}
         <div className="city-directory" ref={list}>
           {searching ? (
             <section>

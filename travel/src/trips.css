@@ -111,6 +111,22 @@ button.new-trip-row {
   font-size: 0.83rem;
   font-weight: 600;
 }
+.trip-add-city {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  gap: 4px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--apell-primary);
+  font-size: 0.81rem;
+  font-weight: 550;
+}
+.trip-add-city:active {
+  background: var(--apell-primary-soft);
+}
 .trip-back + .view-title {
   border-inline-start: 1px solid var(--apell-line);
   padding-inline-start: 12px;

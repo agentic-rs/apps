@@ -1,5 +1,6 @@
 import type { CheckIn, Journal, TravelPlatform, Trip } from '../lib/types';
 import { formatTripDates } from '../lib/dates';
+import { tripCitySummary } from '../lib/cities';
 import { Icon } from './Icon';
 import { Photo } from './Photo';
 
@@ -45,7 +46,7 @@ export function TripLibrary({
           </span>
           <span>
             <strong>New trip</strong>
-            <small>Choose your starting city.</small>
+            <small>Choose a city to open its itinerary.</small>
           </span>
           <Icon name="next" size={18} />
         </button>
@@ -54,7 +55,7 @@ export function TripLibrary({
           {trips.map((trip) => {
             const { stops, entries } = counts.get(trip.id)!;
             const cover = covers.get(trip.id)?.photos[0];
-            const route = trip.cities?.join(' → ');
+            const route = tripCitySummary(trip);
             return (
               <li key={trip.id} className="trip-library-row">
                 <div className="trip-thumb" aria-hidden="true">

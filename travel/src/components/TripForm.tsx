@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import type { Trip } from '../lib/types';
 import { text_limits } from '../lib/model';
-import { createId } from '../lib/identity';
 import { Dialog, DiscardPrompt } from './Dialog';
 import { EditorForm } from './EditorForm';
 import { CityPicker } from './CityPicker';
@@ -14,44 +13,42 @@ export function TripForm({
   onCancel,
   onDelete,
 }: {
-  trip?: Trip;
+  trip: Trip;
   onSave(trip: Trip): Promise<void>;
   onCancel(): void;
   onDelete?(): void;
 }) {
-  const [cities, setCities] = useState<string[]>(trip?.cities ?? []);
-  const [city_index, setCityIndex] = useState<number | null>(trip ? null : 0);
-  const [entered_title, setTitle] = useState<string | undefined>(trip?.title);
-  const title = entered_title ?? (cities.length ? `${cities[0]} trip` : '');
-  const [description, setDescription] = useState(trip?.description ?? '');
-  const [start_date, setStartDate] = useState(trip?.start_date ?? '');
-  const [end_date, setEndDate] = useState(trip?.end_date ?? '');
+  const [cities, setCities] = useState<string[]>(trip.cities ?? []);
+  const [city_index, setCityIndex] = useState<number | null>(null);
+  const [title, setTitle] = useState(trip.title);
+  const [description, setDescription] = useState(trip.description);
+  const [start_date, setStartDate] = useState(trip.start_date);
+  const [end_date, setEndDate] = useState(trip.end_date);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [discard, setDiscard] = useState(false);
   const dirty =
-    cities.length !== (trip?.cities?.length ?? 0) ||
-    cities.some((city, index) => city !== trip?.cities?.[index]) ||
-    title !== (trip?.title ?? '') ||
-    description !== (trip?.description ?? '') ||
-    start_date !== (trip?.start_date ?? '') ||
-    end_date !== (trip?.end_date ?? '');
+    cities.length !== (trip.cities?.length ?? 0) ||
+    cities.some((city, index) => city !== trip.cities?.[index]) ||
+    title !== trip.title ||
+    description !== trip.description ||
+    start_date !== trip.start_date ||
+    end_date !== trip.end_date;
   async function submit() {
-    if (busy || !title.trim() || (!trip && !cities.length)) return;
+    if (busy || !title.trim()) return;
     setDiscard(false);
     setBusy(true);
     setError('');
-    const now = new Date().toISOString();
     try {
       await onSave({
-        id: trip?.id ?? createId(),
+        id: trip.id,
         title: title.trim(),
         ...(cities.length > 0 && { cities }),
         description: description.trim(),
         start_date,
         end_date,
-        created_at: trip?.created_at ?? now,
-        updated_at: now,
+        created_at: trip.created_at,
+        updated_at: new Date().toISOString(),
       });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not save this trip.');
@@ -63,7 +60,7 @@ export function TripForm({
     <CityPicker
       title={
         cities.length === 0
-          ? 'Choose your first city'
+          ? 'Choose a city'
           : city_index === cities.length
             ? 'Add a city'
             : 'Change city'
@@ -75,21 +72,16 @@ export function TripForm({
         setCities(next);
         setCityIndex(null);
       }}
-      onDismiss={() => {
-        if (!trip && !cities.length) onCancel();
-        else setCityIndex(null);
-      }}
+      onDismiss={() => setCityIndex(null)}
     />
   );
-  if (!trip && !cities.length) return city_picker;
   return (
     <>
       <Dialog
-        title={trip ? 'Edit trip' : 'New trip'}
+        title="Edit trip"
         full_screen
-        onDismiss={() => {
-          if (!busy) dirty ? setDiscard(true) : onCancel();
-        }}
+        dismiss_disabled={busy}
+        onDismiss={() => (dirty ? setDiscard(true) : onCancel())}
       >
         <EditorForm onSave={submit}>
           {(save) => (
@@ -169,7 +161,7 @@ export function TripForm({
                   onClick={save}
                   disabled={busy || !title.trim()}
                 >
-                  {busy ? 'Saving…' : trip ? 'Save trip' : 'Create trip'}
+                  {busy ? 'Saving…' : 'Save trip'}
                 </button>
               </footer>
             </>

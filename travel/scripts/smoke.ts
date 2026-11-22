@@ -150,7 +150,7 @@ try {
     );
   const waitClosed = () => page.locator('dialog').first().waitFor({ state: 'detached' });
   const button = (name: string) => page.getByRole('button', { name, exact: true });
-  const first_city = page.getByRole('dialog', { name: 'Choose your first city', exact: true });
+  const first_city = page.getByRole('dialog', { name: 'Choose a city', exact: true });
   const add_city = page.getByRole('dialog', { name: 'Add a city', exact: true });
   async function chooseCity(picker: Locator, query: string, option: string) {
     await picker.getByRole('searchbox', { name: 'Search cities' }).fill(query);
@@ -241,10 +241,32 @@ try {
   await page.getByRole('heading', { name: 'Fieldnotes', exact: true }).waitFor();
   assert.equal(tile_requests, 0, 'Opening the trip library must not fetch map tiles.');
   await page.screenshot({ path: resolve(output, 'desktop-empty.png'), fullPage: true });
-  await page.getByRole('button', { name: 'New trip', exact: true }).click();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await button('New trip').click();
+  await assertFullScreenEditor(first_city);
+  await page.screenshot({ path: resolve(output, 'mobile-first-city.png') });
+  await first_city.getByRole('button', { name: 'Close dialog' }).click();
+  await waitClosed();
+  assert.equal((await readJournal())?.trips.length ?? 0, 0);
+  await button('New trip').click();
   await first_city.waitFor();
   assert.equal(await page.getByLabel('Trip name').count(), 0);
+  await page.evaluate(() => {
+    (window as unknown as { fail_next_save: boolean }).fail_next_save = true;
+  });
   await chooseCity(first_city, 'Tokyo', 'Tokyo, Japan');
+  await first_city.getByRole('alert').filter({ hasText: 'Test storage is full' }).waitFor();
+  assert.equal((await readJournal())?.trips.length ?? 0, 0);
+  await first_city.getByRole('button', { name: 'Try again', exact: true }).click();
+  await waitClosed();
+  await page.getByRole('heading', { name: 'Tokyo trip', exact: true }).waitFor();
+  await button('Add stop').waitFor();
+  await assertMobileLayout();
+  const initial_trips = (await readJournal()).trips;
+  assert.equal(initial_trips.length, 1);
+  assert.deepEqual(initial_trips[0].cities, ['Tokyo']);
+  await page.screenshot({ path: resolve(output, 'mobile-single-city.png') });
+  await button('Edit trip').click();
   assert.equal(await page.getByLabel('Trip name').inputValue(), 'Tokyo trip');
   await page.getByLabel('Trip name').fill('Coastal days');
   await page.getByLabel('Start date').fill('2026-05-01');
@@ -252,13 +274,8 @@ try {
   await page
     .getByLabel('Description')
     .fill('A few quiet days, new streets, and the long way home.');
-  await button('Add city').click();
-  await chooseCity(add_city, 'Kyoto', 'Kyoto, Japan');
-  assert.equal(await page.getByLabel('Trip name').inputValue(), 'Coastal days');
-  assert.equal(await page.getByLabel('Start date').inputValue(), '2026-05-01');
-  await page.locator('dialog').getByRole('button', { name: 'Create trip', exact: true }).click();
+  await button('Save trip').click();
   await waitClosed();
-  assert.deepEqual((await readJournal()).trips[0].cities, ['Tokyo', 'Kyoto']);
   const second_tab = await context.newPage();
   await second_tab.goto(page.url());
   await second_tab.getByRole('button', { name: 'Open trip Coastal days' }).click();
@@ -269,6 +286,22 @@ try {
   await second_tab.getByRole('alert').filter({ hasText: 'changed in another window' }).waitFor();
   assert.equal((await readJournal()).stops.length, 1);
   await second_tab.close();
+  const single_city_journal = await readJournal();
+  await button('Add a city').click();
+  await chooseCity(add_city, 'Kyoto', 'Kyoto, Japan');
+  await waitClosed();
+  const expanded_journal = await readJournal();
+  assert.equal(expanded_journal.trips.length, 1);
+  assert.deepEqual(expanded_journal.trips[0], {
+    ...single_city_journal.trips[0],
+    id: initial_trips[0].id,
+    cities: ['Tokyo', 'Kyoto'],
+    updated_at: expanded_journal.trips[0].updated_at,
+  });
+  assert.deepEqual(expanded_journal.stops, single_city_journal.stops);
+  await page.getByText('Tokyo → Kyoto', { exact: true }).waitFor();
+  await page.screenshot({ path: resolve(output, 'mobile-multi-city.png') });
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await addStop('Old harbour', '10.12', '20.54');
   await button('Move Old harbour earlier').click();
   await page.waitForFunction(
@@ -406,9 +439,11 @@ try {
   await page.getByRole('button', { name: 'Trips', exact: true }).click();
   await page.getByRole('button', { name: 'New trip', exact: true }).click();
   await chooseCity(first_city, 'Saltwind Bay', 'Use Saltwind Bay');
-  assert.equal(await page.getByLabel('Trip name').inputValue(), 'Saltwind Bay trip');
+  await waitClosed();
+  await page.getByRole('heading', { name: 'Saltwind Bay trip', exact: true }).waitFor();
+  await button('Edit trip').click();
   await page.getByLabel('Trip name').fill('City wander');
-  await page.getByRole('button', { name: 'Create trip', exact: true }).click();
+  await button('Save trip').click();
   await waitClosed();
   assert.equal(await page.locator('.itinerary-stops li').count(), 0);
   assert.equal(await page.locator('.visit-card').count(), 0);
@@ -436,13 +471,10 @@ try {
     await page.setViewportSize({ width: 390, height });
     await button('New trip').click();
     await assertFullScreenEditor(first_city);
-    if (height === 844) {
-      await page.screenshot({ path: resolve(output, 'mobile-first-city.png') });
-    }
-    await chooseCity(first_city, 'Tokyo', 'Tokyo, Japan');
-    const editor = page.getByRole('dialog', { name: 'New trip', exact: true });
-    await editor.getByRole('button', { name: 'Add city', exact: true }).click();
-    await chooseCity(add_city, 'Kyoto', 'Kyoto, Japan');
+    await first_city.getByRole('button', { name: 'Close dialog' }).click();
+    await openTrip();
+    await button('Edit trip').click();
+    const editor = page.getByRole('dialog', { name: 'Edit trip', exact: true });
     await assertFullScreenEditor(editor);
     await page.screenshot({ path: resolve(output, `trip-form-${height}.png`) });
     await editor.getByLabel('Trip name').fill('Unsaved travel idea');
@@ -453,11 +485,9 @@ try {
     await editor.getByRole('button', { name: 'Cancel', exact: true }).click();
     await editor.getByRole('button', { name: 'Discard changes', exact: true }).click();
     await waitClosed();
-    assert.equal(
-      (await readJournal()).trips.length,
-      2,
-      'Discarding a full-screen editor must not create a trip.',
-    );
+    await page.getByRole('heading', { name: 'Coastal days', exact: true }).waitFor();
+    await button('Trips').click();
+    assert.equal((await readJournal()).trips.length, 2);
   }
   await page.setViewportSize({ width: 390, height: 844 });
   await openTrip();
@@ -922,7 +952,7 @@ try {
     'Smoke tests must never use unmocked external services.',
   );
   console.log(
-    'Firefox smoke passed: city-first and multi-city trips, route previews and retries, packing lists, multi-currency expenses, linked check-ins, photo events, offline maps and mobile layouts.',
+    'Firefox smoke passed: single-city trips, save retry and multi-city expansion, route previews, packing lists, multi-currency expenses, linked check-ins, photo events, offline maps and mobile layouts.',
   );
 } finally {
   await browser.close();
