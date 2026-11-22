@@ -148,6 +148,14 @@ describe('native journal storage', () => {
       camera: { capture: async () => null },
       photos: { pick: async () => photo },
       location: { current: async () => location_value },
+      llm: {
+        config: async () => {
+          throw new Error('Unexpected model lookup');
+        },
+        generate: async () => {
+          throw new Error('Unexpected title request');
+        },
+      },
     });
     expect(await platform.capturePhoto()).toBeNull();
     expect(await platform.currentLocation()).toBeNull();

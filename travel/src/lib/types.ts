@@ -5,7 +5,7 @@ export interface Coordinates {
 
 export interface VisitLocation extends Coordinates {
   accuracy_m: number | null;
-  source: 'device' | 'manual';
+  source: 'device' | 'manual' | 'photo';
   captured_at: string | null;
 }
 
@@ -38,7 +38,8 @@ export interface PhotoAsset {
 export interface CheckIn {
   id: string;
   trip_id: string;
-  place_id: string;
+  place_id: string | null;
+  title?: string;
   visited_at: string;
   utc_offset_minutes: number;
   actual_location: VisitLocation | null;
@@ -55,6 +56,12 @@ export interface Journal {
   check_ins: CheckIn[];
 }
 
+export interface EventTitleInput {
+  local_time: string;
+  utc_offset_minutes: number | null;
+  location: Coordinates | null;
+}
+
 export interface TravelPlatform {
   native: boolean;
   load(): Promise<Journal>;
@@ -64,4 +71,5 @@ export interface TravelPlatform {
   readPhoto(photo: PhotoAsset): Promise<Blob>;
   removePhoto(photo: PhotoAsset): Promise<void>;
   currentLocation(): Promise<VisitLocation | null>;
+  generateEventTitle(input: EventTitleInput, signal: AbortSignal): Promise<string>;
 }

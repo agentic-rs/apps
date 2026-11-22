@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  addPhotoEvents,
   emptyJournal,
   formatCoordinates,
   max_photo_bytes,
@@ -12,6 +13,7 @@ import {
   removeTrip,
   saveCheckIn,
   upsertTrip,
+  visitTitle,
 } from '../src/lib/model';
 import type { CheckIn, Journal, PhotoAsset, Place, Trip } from '../src/lib/types';
 
@@ -115,6 +117,56 @@ describe('journal data integrity', () => {
     expect(() => saveCheckIn(emptyJournal(), check_in, place)).toThrow('missing trip');
     expect(() => parseJournal({ ...populated(), places: [] })).toThrow('missing place');
     expect(() => saveCheckIn(populated(), check_in, { ...place, id: 'place-2' })).toThrow('linked');
+  });
+
+  test('old visits retain their place heading and photo events persist without a named place', () => {
+    expect(parseCheckIn(check_in)).toEqual(check_in);
+    expect(visitTitle(check_in, place)).toBe(place.name);
+    const draft = {
+      ...check_in,
+      place_id: null,
+      title: '  A morning by the lake  ',
+      actual_location: { ...check_in.actual_location!, source: 'photo' as const },
+    };
+    const saved = saveCheckIn(upsertTrip(emptyJournal(), trip), draft, null);
+    expect(saved.places).toEqual([]);
+    const [event] = parseJournal(JSON.parse(JSON.stringify(saved))).check_ins;
+    expect(event).toEqual({ ...draft, title: draft.title.trim() });
+    expect(visitTitle(event)).toBe('A morning by the lake');
+    const linked = saveCheckIn(saved, { ...event, place_id: place.id }, place);
+    expect(visitTitle(linked.check_ins[0], linked.places[0])).toBe(event.title!);
+    expect(linked.places[0].name).toBe(place.name);
+    expect(() => parseCheckIn({ ...event, title: '   ' })).toThrow('title');
+    expect(() => parseCheckIn({ ...event, title: 'x'.repeat(201) })).toThrow('title');
+    expect(() => saveCheckIn(saved, { ...event, place_id: place.id }, null)).toThrow('linked');
+  });
+
+  test('a batch of photo events is appended atomically with unique identities and photo ownership', () => {
+    const journal = populated();
+    const event: CheckIn = {
+      ...check_in,
+      id: 'event-1',
+      title: 'Afternoon stop',
+      place_id: null,
+      photos: [{ ...photo, id: 'image-2', path: 'images/image-2.png' }],
+    };
+    const other: CheckIn = {
+      ...event,
+      id: 'event-2',
+      photos: [{ ...photo, id: 'image-3', path: 'images/image-3.png' }],
+    };
+    const next = addPhotoEvents(journal, [event, other]);
+    expect(next.check_ins).toEqual([check_in, event, other]);
+    expect(next.places).toEqual(journal.places);
+    expect(() => addPhotoEvents(journal, [event, event])).toThrow('duplicate');
+    expect(() => addPhotoEvents(next, [event])).toThrow('duplicate');
+    expect(() => addPhotoEvents(journal, [event, { ...other, photos: [photo] }])).toThrow(
+      'duplicate',
+    );
+    expect(() => addPhotoEvents(journal, [event, { ...other, trip_id: 'missing' }])).toThrow(
+      'missing trip',
+    );
+    expect(journal.check_ins).toEqual([check_in]);
   });
 
   test('rejects duplicate entity and image ownership identities', () => {

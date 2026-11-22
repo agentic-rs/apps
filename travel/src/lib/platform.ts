@@ -1,4 +1,5 @@
 import { createBrowserStorage } from './browser-storage';
+import { generateEventTitle, type TitleModel } from './event-title';
 import { max_photo_bytes } from './model';
 import { createId } from './identity';
 import { assertPhotoPath, createNativeStorage, type NativeFileSystem } from './native-storage';
@@ -6,6 +7,7 @@ import type { PhotoAsset, TravelPlatform, VisitLocation } from './types';
 
 type NativeHost = Pick<typeof import('@apell/sdk'), 'camera' | 'photos' | 'location'> & {
   fs: NativeFileSystem;
+  llm: TitleModel;
 };
 const image_extensions: Record<string, string> = {
   'image/jpeg': 'jpg',
@@ -57,6 +59,9 @@ export function createBrowserPlatform(): TravelPlatform {
   const storage = createBrowserStorage();
   return {
     native: false,
+    async generateEventTitle() {
+      throw new Error('Open Fieldnotes in Apell to generate a title, or enter one here.');
+    },
     load: storage.load,
     save: storage.save,
     async importPhoto(file) {
@@ -78,7 +83,7 @@ export function createBrowserPlatform(): TravelPlatform {
         mime_type,
         size_bytes: file.size,
       };
-      await storage.savePhoto(photo, file.slice(0, file.size, mime_type));
+      storage.stagePhoto(photo, file.slice(0, file.size, mime_type));
       return photo;
     },
     async capturePhoto() {
@@ -141,6 +146,7 @@ export function createNativePlatform(host: NativeHost): TravelPlatform {
   }
   return {
     native: true,
+    generateEventTitle: (input, signal) => generateEventTitle(host.llm, input, signal),
     load: storage.load,
     save: storage.save,
     importPhoto: async () => imageAsset(await host.photos.pick()),

@@ -5,6 +5,12 @@ type StoreName = 'journal' | 'photos';
 type Stores = Record<StoreName, IDBObjectStore>;
 const snapshot_key = 'current';
 
+function validateBlob(photo: PhotoAsset, blob: Blob): void {
+  if (!blob.size || blob.size !== photo.size_bytes || blob.type !== photo.mime_type) {
+    throw new Error('The selected photo does not match its metadata.');
+  }
+}
+
 function requestValue<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
@@ -42,6 +48,8 @@ export function createBrowserStorage(
   factory: IDBFactory = indexedDB,
   name = 'apell-travel-journal',
 ) {
+  // Draft files remain File-backed Blob handles owned by this platform instance.
+  const draft_photos = new Map<string, Blob>();
   let loaded = false;
   let last_snapshot: string | undefined;
   let pending: Promise<unknown> = Promise.resolve();
@@ -117,23 +125,45 @@ export function createBrowserStorage(
       const journal = parseJournal(value);
       return serial(async () => {
         if (!loaded) throw new Error('Open the saved journal successfully before saving changes.');
-        await transaction(['journal'], 'readwrite', async (stores) => {
-          const current = await requestValue<unknown>(stores.journal.get(snapshot_key));
-          if (JSON.stringify(current) !== last_snapshot) {
-            throw new Error(
-              'This journal changed in another window. Reload before saving to preserve those changes.',
-            );
+        const retained = new Map<string, Blob>();
+        for (const entry of journal.check_ins) {
+          for (const photo of entry.photos) {
+            const blob = draft_photos.get(photo.path);
+            if (blob) {
+              validateBlob(photo, blob);
+              retained.set(photo.path, blob);
+            }
           }
-          await requestValue(stores.journal.put(journal, snapshot_key));
-        });
+        }
+        await transaction(
+          retained.size ? ['journal', 'photos'] : ['journal'],
+          'readwrite',
+          async (stores) => {
+            const current = await requestValue<unknown>(stores.journal.get(snapshot_key));
+            if (JSON.stringify(current) !== last_snapshot) {
+              throw new Error(
+                'This journal changed in another window. Reload before saving to preserve those changes.',
+              );
+            }
+            for (const [path, blob] of retained) {
+              await requestValue(stores.photos.add(blob, path));
+            }
+            await requestValue(stores.journal.put(journal, snapshot_key));
+          },
+        );
         last_snapshot = JSON.stringify(journal);
+        for (const path of retained.keys()) draft_photos.delete(path);
       });
+    },
+    stagePhoto: (value: PhotoAsset, blob: Blob) => {
+      const photo = parsePhotoAsset(value);
+      validateBlob(photo, blob);
+      if (draft_photos.has(photo.path)) throw new Error('This draft photo is already staged.');
+      draft_photos.set(photo.path, blob);
     },
     savePhoto: async (value: PhotoAsset, blob: Blob) => {
       const photo = parsePhotoAsset(value);
-      if (!blob.size || blob.size !== photo.size_bytes || blob.type !== photo.mime_type) {
-        throw new Error('The selected photo does not match its metadata.');
-      }
+      validateBlob(photo, blob);
       await transaction(['photos'], 'readwrite', async (stores) => {
         // add() prevents an accidental identity collision from replacing an existing photo.
         await requestValue(stores.photos.add(blob, photo.path));
@@ -141,9 +171,11 @@ export function createBrowserStorage(
     },
     readPhoto: async (asset: PhotoAsset): Promise<Blob> => {
       const photo = parsePhotoAsset(asset);
-      const value = await transaction(['photos'], 'readonly', (stores) =>
-        requestValue<unknown>(stores.photos.get(photo.path)),
-      );
+      const value =
+        draft_photos.get(photo.path) ??
+        (await transaction(['photos'], 'readonly', (stores) =>
+          requestValue<unknown>(stores.photos.get(photo.path)),
+        ));
       if (
         !(value instanceof Blob) ||
         value.size !== photo.size_bytes ||
@@ -155,8 +187,11 @@ export function createBrowserStorage(
     },
     removePhoto: async (asset: PhotoAsset) => {
       const photo = parsePhotoAsset(asset);
-      await transaction(['photos'], 'readwrite', async (stores) => {
-        await requestValue(stores.photos.delete(photo.path));
+      await serial(async () => {
+        if (draft_photos.delete(photo.path)) return;
+        await transaction(['photos'], 'readwrite', async (stores) => {
+          await requestValue(stores.photos.delete(photo.path));
+        });
       });
     },
   };

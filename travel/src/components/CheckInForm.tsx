@@ -1,35 +1,18 @@
 import { useRef, useState } from 'react';
-import type {
-  CheckIn,
-  Coordinates,
-  PhotoAsset,
-  Place,
-  TravelPlatform,
-  Trip,
-  VisitLocation,
-} from '../lib/types';
+import type { CheckIn, PhotoAsset, Place, TravelPlatform, Trip, VisitLocation } from '../lib/types';
 import { currentOffsetMinutes, fromVisitInput, toVisitInput } from '../lib/dates';
-import { text_limits } from '../lib/model';
+import {
+  readCoordinates,
+  max_photos_per_check_in,
+  supported_image_types,
+  text_limits,
+} from '../lib/model';
 import { createId } from '../lib/identity';
 import { Dialog, DiscardPrompt } from './Dialog';
 import { Icon } from './Icon';
-import { Photo } from './Photo';
+import { DraftPhotos } from './DraftPhotos';
 import { EditorForm } from './EditorForm';
-
-function readCoordinates(latitude: string, longitude: string): Coordinates | null {
-  if (!latitude.trim() && !longitude.trim()) return null;
-  if (!latitude.trim() || !longitude.trim())
-    throw new Error('Enter both latitude and longitude, or leave both blank.');
-  const result = { latitude: Number(latitude), longitude: Number(longitude) };
-  if (
-    !Number.isFinite(result.latitude) ||
-    Math.abs(result.latitude) > 90 ||
-    !Number.isFinite(result.longitude) ||
-    Math.abs(result.longitude) > 180
-  )
-    throw new Error('Latitude must be between −90 and 90; longitude between −180 and 180.');
-  return result;
-}
+import { CoordinateInputs, VisitTimeFields } from './VisitFields';
 
 export function CheckInForm({
   trip,
@@ -43,9 +26,11 @@ export function CheckInForm({
   places: Place[];
   check_in?: CheckIn;
   platform: TravelPlatform;
-  onSave(visit: CheckIn, place: Place, unused: PhotoAsset[]): Promise<void>;
+  onSave(visit: CheckIn, place: Place | null, unused: PhotoAsset[]): Promise<void>;
   onCancel(unused: PhotoAsset[]): Promise<void>;
 }) {
+  const editing_event = Boolean(check_in?.title);
+  const [title, setTitle] = useState(check_in?.title ?? '');
   const original_place = places.find((place) => place.id === check_in?.place_id);
   const [place_id, setPlaceId] = useState(original_place?.id ?? '');
   const [name, setName] = useState(original_place?.name ?? '');
@@ -79,9 +64,6 @@ export function CheckInForm({
   const [dirty, setDirty] = useState(false);
   const [discard, setDiscard] = useState(false);
   const selected_place = places.find((place) => place.id === place_id);
-  const offsets = [
-    ...new Set([...Array.from({ length: 113 }, (_, index) => index * 15 - 840), Number(offset)]),
-  ].sort((a, b) => a - b);
 
   function choosePlace(id: string) {
     const place = places.find((row) => row.id === id);
@@ -115,8 +97,8 @@ export function CheckInForm({
     setError('');
     try {
       const inputs: (File | undefined)[] = files ? Array.from(files) : [undefined];
-      if (photos.length + inputs.length > 20)
-        throw new Error('A check-in can hold up to 20 photos.');
+      if (photos.length + inputs.length > max_photos_per_check_in)
+        throw new Error(`An entry can hold up to ${max_photos_per_check_in} photos.`);
       for (const file of inputs) {
         const asset = camera ? await platform.capturePhoto() : await platform.importPhoto(file);
         if (asset) {
@@ -172,21 +154,24 @@ export function CheckInForm({
             captured_at: fix?.captured_at ?? null,
           }
         : null;
-      const place: Place =
+      const place: Place | null =
         selected_place && !edit_place
           ? selected_place
-          : {
-              id: selected_place?.id ?? createId(),
-              name: name.trim(),
-              locality: locality.trim(),
-              position: readCoordinates(place_latitude, place_longitude),
-              created_at: selected_place?.created_at ?? now,
-              updated_at: now,
-            };
+          : editing_event && !name.trim() && !selected_place
+            ? null
+            : {
+                id: selected_place?.id ?? createId(),
+                name: name.trim(),
+                locality: locality.trim(),
+                position: readCoordinates(place_latitude, place_longitude),
+                created_at: selected_place?.created_at ?? now,
+                updated_at: now,
+              };
       const visit: CheckIn = {
         id: check_in?.id ?? createId(),
         trip_id: trip.id,
-        place_id: place.id,
+        place_id: place?.id ?? null,
+        ...(editing_event && { title: title.trim() }),
         visited_at:
           check_in &&
           Number(offset) === check_in.utc_offset_minutes &&
@@ -217,7 +202,11 @@ export function CheckInForm({
   }
 
   return (
-    <Dialog title={check_in ? 'Edit check-in' : 'Keep this moment'} onDismiss={dismiss} full_screen>
+    <Dialog
+      title={editing_event ? 'Edit event' : check_in ? 'Edit check-in' : 'Keep this moment'}
+      onDismiss={dismiss}
+      full_screen
+    >
       <EditorForm onSave={submit} onChange={() => setDirty(true)}>
         {(save) => (
           <>
@@ -225,10 +214,21 @@ export function CheckInForm({
               <p className="muted">
                 In <strong>{trip.title}</strong> <span className="dot">·</span> 打卡
               </p>
+              {editing_event && (
+                <label>
+                  Event title
+                  <input
+                    required
+                    maxLength={text_limits.check_in_title}
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                  />
+                </label>
+              )}
               <section className="form-section">
                 <div className="section-heading">
                   <span className="step">01</span>
-                  <h3>The named place</h3>
+                  <h3>{editing_event ? 'Named place (optional)' : 'The named place'}</h3>
                 </div>
                 {places.length > 0 && (
                   <label>
@@ -261,7 +261,13 @@ export function CheckInForm({
                         Place name
                         <input
                           autoFocus={!check_in}
-                          required
+                          required={
+                            !editing_event ||
+                            !!selected_place ||
+                            !!locality.trim() ||
+                            !!place_latitude ||
+                            !!place_longitude
+                          }
                           maxLength={text_limits.place_name}
                           value={name}
                           onChange={(e) => setName(e.target.value)}
@@ -327,6 +333,7 @@ export function CheckInForm({
                     setFix(null);
                   }}
                 />
+                {fix?.source === 'photo' && <p className="location-status">Location from photo</p>}
                 {fix?.source === 'device' && (
                   <p className="location-status">
                     <Icon name="check" size={14} />
@@ -334,30 +341,14 @@ export function CheckInForm({
                     {fix.accuracy_m !== null ? ` · ±${Math.round(fix.accuracy_m)} m` : ''}
                   </p>
                 )}
-                <div className="form-grid time-fields">
-                  <label>
-                    Visit date & time
-                    <input
-                      required
-                      type="datetime-local"
-                      value={visited}
-                      onChange={(e) => setVisited(e.target.value)}
-                    />
-                  </label>
-                  <label>
-                    Visit time zone
-                    <select value={offset} onChange={(e) => setOffset(e.target.value)}>
-                      {offsets.map((value) => (
-                        <option key={value} value={value}>
-                          UTC{value >= 0 ? '+' : '−'}
-                          {String(Math.floor(Math.abs(value) / 60)).padStart(2, '0')}:
-                          {String(Math.abs(value) % 60).padStart(2, '0')}
-                        </option>
-                      ))}
-                    </select>
-                    <span className="field-help">The local time zone during your visit.</span>
-                  </label>
-                </div>
+                <VisitTimeFields
+                  prefix="Visit"
+                  local_time={visited}
+                  offset={offset}
+                  offset_help="The local time zone during your visit."
+                  onTime={setVisited}
+                  onOffset={setOffset}
+                />
               </section>
               <section className="form-section">
                 <div className="section-heading">
@@ -376,13 +367,16 @@ export function CheckInForm({
                 </label>
                 <div className="photo-tools">
                   <span>
-                    Photos <span className="optional">{photos.length}/20 · up to 32 MiB each</span>
+                    Photos{' '}
+                    <span className="optional">
+                      {photos.length}/{max_photos_per_check_in} · up to 32 MiB each
+                    </span>
                   </span>
                   <div className="button-row">
                     <button
                       type="button"
                       className="secondary"
-                      disabled={photos.length >= 20}
+                      disabled={photos.length >= max_photos_per_check_in}
                       onClick={() =>
                         platform.native ? void importPhotos() : upload.current?.click()
                       }
@@ -393,7 +387,7 @@ export function CheckInForm({
                     <button
                       type="button"
                       className="icon-button"
-                      disabled={photos.length >= 20}
+                      disabled={photos.length >= max_photos_per_check_in}
                       aria-label="Take a photo"
                       onClick={() =>
                         platform.native
@@ -409,7 +403,7 @@ export function CheckInForm({
                   ref={upload}
                   className="hidden-input"
                   type="file"
-                  accept="image/jpeg,image/png,image/gif,image/webp,image/heic,image/heif,image/avif"
+                  accept={supported_image_types.join(',')}
                   multiple
                   onChange={(e) => {
                     if (e.target.files?.length) void importPhotos(e.target.files);
@@ -426,30 +420,14 @@ export function CheckInForm({
                   }}
                 />
                 {photos.length > 0 && (
-                  <div className="draft-photos">
-                    {photos.map((photo, index) => (
-                      <div key={photo.id}>
-                        <Photo
-                          photo={photo}
-                          platform={platform}
-                          alt={`Attached photo ${index + 1}`}
-                        />
-                        <button
-                          type="button"
-                          className="remove-photo"
-                          aria-label={`Remove photo ${index + 1}`}
-                          onClick={() => {
-                            setPhotos((previous) =>
-                              previous.filter((item) => item.id !== photo.id),
-                            );
-                            setDirty(true);
-                          }}
-                        >
-                          <Icon name="close" size={15} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+                  <DraftPhotos
+                    photos={photos}
+                    platform={platform}
+                    onRemove={(id) => {
+                      setPhotos((previous) => previous.filter((item) => item.id !== id));
+                      setDirty(true);
+                    }}
+                  />
                 )}
               </section>
             </fieldset>
@@ -473,9 +451,12 @@ export function CheckInForm({
                 type="button"
                 className="primary"
                 onClick={save}
-                disabled={busy || ((!selected_place || edit_place) && !name.trim())}
+                disabled={
+                  busy ||
+                  (editing_event ? !title.trim() : (!selected_place || edit_place) && !name.trim())
+                }
               >
-                {busy ? 'Working…' : 'Save check-in'}
+                {busy ? 'Working…' : editing_event ? 'Save event' : 'Save check-in'}
                 <Icon name="check" size={17} />
               </button>
             </footer>
@@ -483,48 +464,5 @@ export function CheckInForm({
         )}
       </EditorForm>
     </Dialog>
-  );
-}
-
-function CoordinateInputs({
-  prefix,
-  latitude,
-  longitude,
-  onLatitude,
-  onLongitude,
-}: {
-  prefix: string;
-  latitude: string;
-  longitude: string;
-  onLatitude(value: string): void;
-  onLongitude(value: string): void;
-}) {
-  return (
-    <div className="form-grid">
-      <label>
-        {prefix} latitude
-        <input
-          type="number"
-          step="any"
-          min={-90}
-          max={90}
-          value={latitude}
-          onChange={(e) => onLatitude(e.target.value)}
-          placeholder="—"
-        />
-      </label>
-      <label>
-        {prefix} longitude
-        <input
-          type="number"
-          step="any"
-          min={-180}
-          max={180}
-          value={longitude}
-          onChange={(e) => onLongitude(e.target.value)}
-          placeholder="—"
-        />
-      </label>
-    </div>
   );
 }

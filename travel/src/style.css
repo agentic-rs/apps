@@ -1140,3 +1140,41 @@ summary {
     scroll-behavior: auto !important;
   }
 }
+
+.creation-options .trip-option {
+  justify-content: flex-start;
+}
+.event-photos {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  margin-bottom: 16px;
+}
+.event-photos .photo-frame {
+  flex: 0 0 84px;
+  width: 84px;
+  height: 72px;
+}
+.photo-events-form .selection-count,
+.import-title-help {
+  margin-top: 16px;
+}
+.generation-status {
+  align-self: center;
+  color: var(--apell-muted);
+  font-size: 13px;
+}
+.event-review-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.event-review-header h3,
+.event-review-header label {
+  margin: 0;
+}
+.event-review-header label {
+  min-height: 44px;
+}

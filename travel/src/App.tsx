@@ -1,12 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPlatform } from './lib/platform';
-import { emptyJournal, removeCheckIn, removeTrip, saveCheckIn, upsertTrip } from './lib/model';
+import {
+  addPhotoEvents,
+  visitTitle,
+  emptyJournal,
+  removeCheckIn,
+  removeTrip,
+  saveCheckIn,
+  upsertTrip,
+} from './lib/model';
 import type { CheckIn, Journal, PhotoAsset, TravelPlatform, Trip } from './lib/types';
 import { Icon } from './components/Icon';
 import { Dialog } from './components/Dialog';
 import { TripForm } from './components/TripForm';
 import { CheckInForm } from './components/CheckInForm';
 import { Photo } from './components/Photo';
+import { PhotoEventsForm } from './components/PhotoEventsForm';
 import { TimelineView } from './components/TimelineView';
 import { MapView } from './components/MapView';
 import { TripsDialog } from './components/TripsDialog';
@@ -14,8 +23,10 @@ import { TripFilter } from './components/TripFilter';
 import { VisitCard } from './components/VisitCard';
 import fieldnotes_icon from '../../shared/assets/fieldnotes.svg';
 
+type Creation = 'visit' | 'photo_events';
 type Editor =
-  | { kind: 'trip'; trip?: Trip; then_check_in?: boolean }
+  | { kind: 'trip'; trip?: Trip; next?: Creation }
+  | { kind: 'photo_events'; trip: Trip }
   | { kind: 'visit'; trip: Trip; visit?: CheckIn }
   | null;
 type Removal = { kind: 'trip'; trip: Trip } | { kind: 'visit'; visit: CheckIn } | null;
@@ -35,9 +46,10 @@ export function App() {
   const [search, setSearch] = useState('');
   const [editor, setEditor] = useState<Editor>(null);
   const [trip_dialog, setTripDialog] = useState<{
-    mode: 'manage' | 'check_in';
+    mode: 'manage' | Creation;
     anchor: HTMLElement;
   } | null>(null);
+  const [creation_menu, setCreationMenu] = useState(false);
   const add_button = useRef<HTMLButtonElement>(null);
   const [detail_id, setDetailId] = useState<string | null>(null);
   const [removal, setRemoval] = useState<Removal>(null);
@@ -87,12 +99,13 @@ export function App() {
     if (next === 'map') setMapOpened(true);
     setView(next);
   }
-  function startCheckIn() {
+  function startEntry(kind: Creation) {
+    setCreationMenu(false);
     setDetailId(null);
     const trip = selected_trip ?? (journal.trips.length === 1 ? journal.trips[0] : undefined);
-    if (trip) setEditor({ kind: 'visit', trip });
-    else if (!journal.trips.length) setEditor({ kind: 'trip', then_check_in: true });
-    else if (add_button.current) setTripDialog({ mode: 'check_in', anchor: add_button.current });
+    if (trip) setEditor({ kind, trip });
+    else if (!journal.trips.length) setEditor({ kind: 'trip', next: kind });
+    else if (add_button.current) setTripDialog({ mode: kind, anchor: add_button.current });
   }
   async function persist(next: Journal) {
     await platform!.save(next);
@@ -191,7 +204,9 @@ export function App() {
             search={search}
             has_trips={journal.trips.length > 0}
             onSearch={setSearch}
-            onCreate={() => (journal.trips.length ? startCheckIn() : setEditor({ kind: 'trip' }))}
+            onCreate={() =>
+              journal.trips.length ? startEntry('visit') : setEditor({ kind: 'trip' })
+            }
             onOpenVisit={setDetailId}
             onPhoto={(asset, caption) => setOpenPhoto({ asset, caption })}
           />
@@ -228,29 +243,47 @@ export function App() {
         <button
           ref={add_button}
           className="add-check-in"
-          aria-label="New check-in"
-          onClick={startCheckIn}
+          aria-label="Add to journal"
+          aria-haspopup="dialog"
+          aria-expanded={creation_menu}
+          onClick={() => setCreationMenu(true)}
         >
           <Icon name="plus" size={27} />
         </button>
       </footer>
+      {creation_menu && add_button.current && (
+        <Dialog
+          title="Add to journal"
+          anchor={add_button.current}
+          onDismiss={() => setCreationMenu(false)}
+        >
+          <div className="trip-options creation-options">
+            <button className="trip-option" onClick={() => startEntry('visit')}>
+              <Icon name="pin" size={18} /> New check-in
+            </button>
+            <button className="trip-option" onClick={() => startEntry('photo_events')}>
+              <Icon name="photo" size={18} /> Events from photos
+            </button>
+          </div>
+        </Dialog>
+      )}
       {trip_dialog && (
         <TripsDialog
           trips={journal.trips}
           visits={journal.check_ins}
-          choosing={trip_dialog.mode === 'check_in'}
+          choosing={trip_dialog.mode !== 'manage'}
           anchor={trip_dialog.anchor}
           onClose={() => setTripDialog(null)}
           onSelect={(trip) => {
-            const choosing = trip_dialog.mode === 'check_in';
+            const mode = trip_dialog.mode;
             setTripDialog(null);
-            if (choosing) setEditor({ kind: 'visit', trip });
+            if (mode !== 'manage') setEditor({ kind: mode, trip });
             else setSelectedTripId(trip.id);
           }}
           onCreate={() => {
-            const choosing = trip_dialog.mode === 'check_in';
+            const mode = trip_dialog.mode;
             setTripDialog(null);
-            setEditor({ kind: 'trip', then_check_in: choosing });
+            setEditor({ kind: 'trip', next: mode === 'manage' ? undefined : mode });
           }}
           onEdit={(trip) => {
             setTripDialog(null);
@@ -263,8 +296,12 @@ export function App() {
           }}
         />
       )}
-      {detail_visit && detail_place && detail_trip && !editor && !removal && !open_photo && (
-        <Dialog title="Check-in" onDismiss={() => setDetailId(null)} wide>
+      {detail_visit && detail_trip && !editor && !removal && !open_photo && (
+        <Dialog
+          title={detail_visit.title ? 'Event' : 'Check-in'}
+          onDismiss={() => setDetailId(null)}
+          wide
+        >
           <VisitCard
             visit={detail_visit}
             place={detail_place}
@@ -272,7 +309,9 @@ export function App() {
             platform={platform}
             detail
             onOpen={() => {}}
-            onPhoto={(asset) => setOpenPhoto({ asset, caption: detail_place.name })}
+            onPhoto={(asset) =>
+              setOpenPhoto({ asset, caption: visitTitle(detail_visit, detail_place) })
+            }
           />
           <footer className="dialog-footer detail-actions">
             <button
@@ -283,14 +322,14 @@ export function App() {
               }}
             >
               <Icon name="trash" size={17} />
-              Delete check-in
+              {detail_visit.title ? 'Delete event' : 'Delete check-in'}
             </button>
             <button
               className="primary"
               onClick={() => setEditor({ kind: 'visit', trip: detail_trip, visit: detail_visit })}
             >
               <Icon name="edit" size={17} />
-              Edit check-in
+              {detail_visit.title ? 'Edit event' : 'Edit check-in'}
             </button>
           </footer>
         </Dialog>
@@ -302,7 +341,28 @@ export function App() {
           onSave={async (trip) => {
             await persist(upsertTrip(journal, trip));
             setSelectedTripId(trip.id);
-            setEditor(editor.then_check_in ? { kind: 'visit', trip } : null);
+            setEditor(editor.next ? { kind: editor.next, trip } : null);
+          }}
+        />
+      )}
+      {editor?.kind === 'photo_events' && (
+        <PhotoEventsForm
+          trip={editor.trip}
+          platform={platform}
+          onCancel={async (photos) => {
+            await cleanPhotos(photos);
+            setEditor(null);
+          }}
+          onSave={async (events, unused) => {
+            await persist(addPhotoEvents(journal, events));
+            setSelectedTripId(editor.trip.id);
+            setSearch('');
+            switchView('timeline');
+            setNotice(
+              `Saved ${events.length} ${events.length === 1 ? 'event' : 'events'} to ${editor.trip.title}.`,
+            );
+            setEditor(null);
+            await cleanPhotos(unused);
           }}
         />
       )}
@@ -325,7 +385,13 @@ export function App() {
       )}
       {removal && (
         <Dialog
-          title={removal.kind === 'trip' ? 'Delete this trip?' : 'Delete this check-in?'}
+          title={
+            removal.kind === 'trip'
+              ? 'Delete this trip?'
+              : removal.visit.title
+                ? 'Delete this event?'
+                : 'Delete this check-in?'
+          }
           onDismiss={() => {
             if (!deleting) setRemoval(null);
           }}
@@ -333,8 +399,8 @@ export function App() {
           <div className="form-body">
             <p>
               {removal.kind === 'trip'
-                ? `“${removal.trip.title}” and all of its check-ins and photos will be removed. Saved named places will remain.`
-                : 'This check-in, its notes, and its attached photos will be removed.'}
+                ? `“${removal.trip.title}” and all of its journal entries and photos will be removed. Saved named places will remain.`
+                : `This ${removal.visit.title ? 'event' : 'check-in'}, its notes, and its attached photos will be removed.`}
             </p>
             <p className="muted">This cannot be undone.</p>
             {delete_error && (

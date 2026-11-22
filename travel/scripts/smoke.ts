@@ -1,4 +1,5 @@
 import { firefox, type Locator } from 'playwright-core';
+import sharp from 'sharp';
 import { mkdir } from 'node:fs/promises';
 import { resolve, sep } from 'node:path';
 import assert from 'node:assert/strict';
@@ -283,6 +284,7 @@ try {
     .fill('A few quiet days, new streets, and the long way home.');
   await page.locator('dialog').getByRole('button', { name: 'Create trip', exact: true }).click();
   await waitClosed();
+  await page.getByRole('button', { name: 'Add to journal', exact: true }).click();
   await page.getByRole('button', { name: 'New check-in', exact: true }).click();
   await page.getByLabel('Place name', { exact: true }).fill('Old harbour');
   await page.getByLabel('City or area').fill('Seaside');
@@ -329,6 +331,7 @@ try {
   });
   await page.getByRole('button', { name: 'Save check-in', exact: true }).click();
   await page.getByRole('alert').filter({ hasText: 'Test storage is full' }).waitFor();
+  assert.equal(await readPhotoCount(), 0);
   assert.equal(
     await page.getByLabel('Notes').inputValue(),
     'Salt in the air. A good place to slow down.',
@@ -343,6 +346,7 @@ try {
   assert.equal(journal.places[0].position?.latitude, 10.12);
   assert.equal(journal.check_ins[0].visited_at, '2026-05-01T01:35:00.000Z');
   assert.equal(await readPhotoCount(), 1);
+  await page.getByRole('button', { name: 'Add to journal', exact: true }).click();
   await page.getByRole('button', { name: 'New check-in', exact: true }).click();
   await page.getByLabel('Choose a saved place').selectOption(journal.places[0].id);
   await page.getByLabel('Visit latitude', { exact: true }).fill('10.13');
@@ -388,6 +392,7 @@ try {
   await page.locator('.lightbox img').waitFor();
   await page.getByRole('button', { name: 'Close dialog' }).click();
   await waitClosed();
+  await page.getByRole('button', { name: 'Add to journal', exact: true }).click();
   await page.getByRole('button', { name: 'New check-in', exact: true }).click();
   await page.getByLabel('Place name', { exact: true }).fill('Unknown stop');
   await page.getByLabel('Visit date & time').fill('2026-05-03T11:00');
@@ -447,6 +452,7 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   await assertMobileLayout();
   await page.screenshot({ path: resolve(output, 'mobile-timeline.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Add to journal', exact: true }).click();
   await page.getByRole('button', { name: 'New check-in', exact: true }).click();
   await assertFullScreenEditor(page.getByRole('dialog', { name: 'Keep this moment', exact: true }));
   await page.getByLabel('Choose a saved place').selectOption(place_id);
@@ -526,7 +532,7 @@ try {
   const empty_trip_id = (await readJournal()).trips.find(
     (trip) => trip.title === 'City wander',
   )!.id;
-  await page.getByRole('region', { name: 'Check-ins without coordinates' }).waitFor();
+  await page.getByRole('region', { name: 'Entries without coordinates' }).waitFor();
   await chooseTripFilter(empty_trip_id);
   await page.locator('.map-selection-card').waitFor({ state: 'detached' });
   assert.equal(await page.locator('.journal-map-pin').count(), 0);
@@ -545,7 +551,7 @@ try {
   );
   await page.getByRole('button', { name: '1 without place coordinates' }).click();
   await page
-    .getByRole('region', { name: 'Check-ins without coordinates' })
+    .getByRole('region', { name: 'Entries without coordinates' })
     .getByRole('button', { name: 'View check-in' })
     .click();
   const detail = page.getByRole('dialog', { name: 'Check-in', exact: true });
@@ -555,7 +561,7 @@ try {
   await closeDetail();
   await page.getByRole('button', { name: 'Close map selection' }).click();
   await page.locator('.journal-map-pin').click();
-  await page.getByRole('region', { name: 'Check-ins at selected map pin' }).waitFor();
+  await page.getByRole('region', { name: 'Entries at selected map pin' }).waitFor();
   await chooseTripFilter(empty_trip_id);
   await page.locator('.map-selection-card').waitFor({ state: 'detached' });
   await chooseTripFilter(trip_id);
@@ -573,7 +579,7 @@ try {
   );
   await page.locator('.journal-map-pin').click();
   await page
-    .getByRole('region', { name: 'Check-ins at selected map pin' })
+    .getByRole('region', { name: 'Entries at selected map pin' })
     .getByRole('button', { name: 'View check-in' })
     .first()
     .click();
@@ -593,7 +599,7 @@ try {
   assert.deepEqual(await positions(), [{ latitude: 10.12, longitude: 20.54, visits: 2 }]);
   await page.locator('.journal-map-pin').click();
   await page
-    .getByRole('region', { name: 'Check-ins at selected map pin' })
+    .getByRole('region', { name: 'Entries at selected map pin' })
     .getByRole('button', { name: 'View check-in' })
     .first()
     .click();
@@ -654,6 +660,153 @@ try {
       }),
   );
   assert.equal((await readJournal()).check_ins.length, 2);
+
+  const openPhotoEvents = async () => {
+    await page.getByRole('button', { name: 'Add to journal', exact: true }).click();
+    await page.getByRole('button', { name: 'Events from photos', exact: true }).click();
+    return page.getByRole('dialog', { name: 'Events from photos', exact: true });
+  };
+  async function datedPhoto(name: string, camera_time: string, longitude: number) {
+    const pixels = sharp(Buffer.from(photo, 'base64')).resize({ width: 240 });
+    const buffer = await pixels
+      .withExif({
+        IFD2: { DateTimeOriginal: camera_time, OffsetTimeOriginal: '+02:00' },
+        IFD3: {
+          GPSLatitudeRef: 'N',
+          GPSLatitude: '12/1 0/1 0/1',
+          GPSLongitudeRef: 'E',
+          GPSLongitude: `${longitude}/1 0/1 0/1`,
+        },
+      })
+      .jpeg()
+      .toBuffer();
+    return { name, mimeType: 'image/jpeg', buffer };
+  }
+  const [early, nearby, later] = await Promise.all([
+    datedPhoto('first.jpg', '2026:05:05 08:00:00', 20),
+    datedPhoto('second.jpg', '2026:05:05 08:03:00', 20),
+    datedPhoto('third.jpg', '2026:05:06 13:00:00', 24),
+  ]);
+  const undated = {
+    name: 'undated.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(photo, 'base64'),
+  };
+  const skipped = {
+    name: 'skipped.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(tile_png, 'base64'),
+  };
+  const before_import = await readJournal();
+  const initial_photo_count = await readPhotoCount();
+  const event_import = await openPhotoEvents();
+  await event_import
+    .locator('input[type=file][multiple]')
+    .setInputFiles([later, nearby, early, undated, skipped]);
+  await event_import.getByRole('button', { name: 'Review events', exact: true }).click();
+  const reviews = event_import.getByRole('article');
+  await reviews.nth(3).waitFor();
+  assert.equal(await reviews.count(), 4);
+  const previews = reviews.first().locator('img');
+  await previews.nth(1).waitFor();
+  await previews.evaluateAll((images) =>
+    Promise.all(images.map((image) => (image as HTMLImageElement).decode())),
+  );
+  await page.screenshot({ path: resolve(output, 'photo-event-review.png') });
+  await reviews.last().getByRole('checkbox', { name: 'Include event 4', exact: true }).uncheck();
+  const titles_by_time = new Map([
+    ['2026-05-05T08:00', 'Morning at the first stop'],
+    ['2026-05-06T13:00', 'Afternoon at the second stop'],
+    ['', 'An undated memory'],
+  ]);
+  for (const review of (await reviews.all()).slice(0, 3)) {
+    const time_field = review.getByLabel('Event date & time');
+    const time = await time_field.inputValue();
+    const title = titles_by_time.get(time);
+    assert(title, `Unexpected event time ${time}`);
+    titles_by_time.delete(time);
+    const zone = review.getByLabel('Event time zone');
+    const latitude = review.getByLabel('Event latitude');
+    const longitude = review.getByLabel('Event longitude');
+    if (time) {
+      assert.equal(await zone.inputValue(), '120');
+      assert.equal(Number(await latitude.inputValue()), 12);
+      assert.equal(Number(await longitude.inputValue()), time === '2026-05-05T08:00' ? 20 : 24);
+    } else {
+      assert.equal(await zone.inputValue(), '');
+      assert.equal(await latitude.inputValue(), '');
+      assert.equal(await longitude.inputValue(), '');
+      await time_field.fill('2026-05-07T12:00');
+      await zone.selectOption('0');
+    }
+    await review.getByLabel('Event title').fill(title);
+  }
+  assert.equal(titles_by_time.size, 0);
+  const save_events = event_import.getByRole('button', { name: 'Save 3 events', exact: true });
+  await page.evaluate(() => {
+    (window as unknown as { fail_next_save: boolean }).fail_next_save = true;
+  });
+  await save_events.click();
+  await event_import.getByRole('alert').filter({ hasText: 'Test storage is full' }).waitFor();
+  assert.deepEqual(await readJournal(), before_import);
+  assert.equal(await readPhotoCount(), initial_photo_count);
+  await save_events.click();
+  await waitClosed();
+  const after_import = await readJournal();
+  const events = after_import.check_ins.filter((entry) => entry.title);
+  assert.equal(events.length, 3);
+  const committed_sizes = events.flatMap((event) => event.photos.map((asset) => asset.size_bytes));
+  assert.deepEqual(
+    committed_sizes.sort((a, b) => a - b),
+    [early, nearby, later, undated].map((file) => file.buffer.length).sort((a, b) => a - b),
+  );
+  assert.equal(await readPhotoCount(), initial_photo_count + 4);
+  assert.deepEqual(after_import.places, before_import.places);
+  const morning = events.find((event) => event.title === 'Morning at the first stop')!;
+  assert.equal(morning.photos.length, 2);
+  assert.equal(morning.visited_at, '2026-05-05T06:00:00.000Z');
+  assert.equal(morning.place_id, null);
+  assert.equal(morning.actual_location?.source, 'photo');
+  assert.equal(events.find((event) => event.title === 'An undated memory')?.actual_location, null);
+  const discard_import = await openPhotoEvents();
+  await discard_import.locator('input[type=file][multiple]').setInputFiles([early, later]);
+  await discard_import.getByRole('button', { name: 'Review events', exact: true }).click();
+  await discard_import.getByRole('article').nth(1).waitFor();
+  assert.equal(await readPhotoCount(), initial_photo_count + 4);
+  await discard_import.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await discard_import.getByRole('button', { name: 'Discard changes', exact: true }).click();
+  await waitClosed();
+  assert.equal(await readPhotoCount(), initial_photo_count + 4);
+  assert.deepEqual(await readJournal(), after_import);
+  await page.reload();
+  await page.getByLabel('Search timeline').fill('Morning at the first stop');
+  const morning_card = page.getByRole('button', {
+    name: 'Open event Morning at the first stop',
+    exact: true,
+  });
+  await morning_card.click();
+  const event_detail = page.getByRole('dialog', { name: 'Event', exact: true });
+  await event_detail.getByText('Photo GPS', { exact: true }).waitFor();
+  await event_detail.getByRole('button', { name: 'Edit event', exact: true }).click();
+  await page.getByLabel('Event title').fill('A new title for the morning');
+  await page.getByRole('button', { name: 'Save event', exact: true }).click();
+  await event_detail.getByRole('heading', { name: 'A new title for the morning' }).waitFor();
+  await event_detail.getByRole('button', { name: 'Close dialog' }).click();
+  await page.getByLabel('Search timeline').fill('');
+  await page
+    .getByRole('button', { name: 'Open event A new title for the morning', exact: true })
+    .waitFor();
+  const edited = (await readJournal()).check_ins.find((entry) => entry.id === morning.id)!;
+  assert.deepEqual({ ...edited, title: morning.title, updated_at: morning.updated_at }, morning);
+  await page
+    .getByRole('navigation', { name: 'Main views' })
+    .getByRole('button', { name: 'Map', exact: true })
+    .click();
+  await page.locator('.journal-map-pin[data-latitude="12"][data-longitude="20"]').click();
+  const event_pin = page.getByRole('region', { name: 'Entries at selected map pin' });
+  await event_pin.getByRole('heading', { name: 'A new title for the morning', level: 3 }).waitFor();
+  await event_pin.getByRole('button', { name: 'View event' }).click();
+  await event_detail.getByRole('heading', { name: 'A new title for the morning' }).waitFor();
   assert.deepEqual(errors, []);
   assert.deepEqual(
     unexpected_requests,
@@ -661,7 +814,7 @@ try {
     'Smoke tests must never use unmocked external services.',
   );
   console.log(
-    'Firefox smoke passed: anchored popovers/dismissal/focus return, full-screen editors/discard recovery, Timeline + Map, separate locations, missing coordinates, filter reset, offline pins/retry, mocked tiles, photos/save recovery, and fixed mobile navigation down to 320px.',
+    'Firefox smoke passed: anchored popovers/dismissal/focus return, full-screen editors/discard recovery, Timeline + Map, photo event grouping, batch save retry and discard, event search/edit/reopen, separate locations, missing coordinates, filter reset, offline pins/retry, mocked tiles, and fixed mobile navigation down to 320px.',
   );
 } finally {
   await browser.close();
