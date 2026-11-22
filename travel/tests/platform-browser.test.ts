@@ -3,7 +3,7 @@ import { IDBFactory, IDBObjectStore } from 'fake-indexeddb';
 import { createBrowserStorage } from '../src/lib/browser-storage';
 import { emptyJournal } from '../src/lib/model';
 import { createBrowserPlatform } from '../src/lib/platform';
-import type { Journal, PhotoAsset } from '../src/lib/types';
+import type { CheckIn, Journal, PhotoAsset } from '../src/lib/types';
 
 const photo: PhotoAsset = {
   id: 'photo-a',
@@ -76,6 +76,64 @@ describe('browser journal storage', () => {
     expect((await second.load()).trips[0]?.title).toBe('Saved in first window');
     await second.save(journalWithTrip('After reload'));
     expect((await first.load()).trips[0]?.title).toBe('After reload');
+  });
+
+  test('migrates schema-1 storage on save while preserving legacy edits and original photos', async () => {
+    const factory = new IDBFactory();
+    const name = 'migration';
+    const storage = createBrowserStorage(factory, name);
+    await storage.load();
+    await storage.savePhoto(photo, blob);
+    const { trips } = journalWithTrip();
+    const place = {
+      id: 'harbour',
+      name: 'Harbour',
+      locality: '',
+      position: null,
+      created_at: timestamp,
+      updated_at: timestamp,
+    };
+    const visit = {
+      id: 'visit',
+      trip_id: trips[0].id,
+      place_id: place.id,
+      visited_at: timestamp,
+      utc_offset_minutes: 480,
+      actual_location: null,
+      notes: '',
+      photos: [photo],
+      created_at: timestamp,
+      updated_at: timestamp,
+    };
+    const original = { schema_version: 1, trips, places: [place], check_ins: [visit] };
+    await writeRawJournal(factory, name, original);
+    const first_read = await storage.load();
+    expect(first_read).toEqual({ ...original, schema_version: 2, stops: [] });
+
+    // Another schema-1 client adds a photo-derived event before this client saves.
+    const event: CheckIn = {
+      ...visit,
+      id: 'photo-event',
+      place_id: null,
+      title: 'Last light',
+      photos: [],
+      actual_location: {
+        latitude: 0,
+        longitude: 15,
+        source: 'photo',
+        captured_at: timestamp,
+        accuracy_m: null,
+      },
+    };
+    const edited = { ...original, check_ins: [visit, event] };
+    await writeRawJournal(factory, name, edited);
+    await expect(storage.save(first_read)).rejects.toThrow('another window');
+    const latest = await storage.load();
+    expect(latest).toEqual({ ...edited, schema_version: 2, stops: [] });
+    await storage.save(latest);
+    const reopened = createBrowserStorage(factory, name);
+    expect(await reopened.load()).toEqual(latest);
+    expect(await (await reopened.readPhoto(photo)).arrayBuffer()).toEqual(await blob.arrayBuffer());
   });
 
   test('does not turn corrupt metadata into a new empty journal', async () => {

@@ -5,6 +5,7 @@ import { setAppIcon } from '../../shared/brand';
 import fieldnotes_icon from '../../shared/assets/fieldnotes.svg';
 import '../../shared/apell.css';
 import './style.css';
+import './trips.css';
 
 setAppIcon(fieldnotes_icon);
 createRoot(document.getElementById('root')!).render(

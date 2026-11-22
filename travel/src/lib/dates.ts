@@ -1,4 +1,5 @@
 const minute_ms = 60_000;
+const day_ms = 24 * 60 * minute_ms;
 
 export function validateOffset(offset: number): number {
   if (!Number.isInteger(offset) || offset < -840 || offset > 840) {
@@ -12,6 +13,24 @@ export function isCalendarDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const date = new Date(`${value}T00:00:00.000Z`);
   return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+function calendarDayMillis(day: string): number {
+  if (!isCalendarDate(day)) throw new Error('Choose a valid calendar date.');
+  return Date.parse(`${day}T00:00:00.000Z`);
+}
+
+export function daysBetween(start: string, end: string): number {
+  return (calendarDayMillis(end) - calendarDayMillis(start)) / day_ms;
+}
+
+export function offsetDay(day: string, offset: number): string {
+  if (!Number.isSafeInteger(offset)) throw new Error('The number of days must be a whole number.');
+  const shifted = new Date(calendarDayMillis(day) + offset * day_ms);
+  const year = shifted.getUTCFullYear();
+  if (!Number.isFinite(year) || year < 0 || year > 9999)
+    throw new Error('The day is outside the supported date range.');
+  return shifted.toISOString().slice(0, 10);
 }
 
 export function isUtcTimestamp(value: string): boolean {

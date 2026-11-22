@@ -1,10 +1,12 @@
 import { isCalendarDate, isUtcTimestamp, toVisitInput, validateOffset } from './dates';
+import { stop_kinds } from './types';
 import type {
   CheckIn,
   Coordinates,
   Journal,
   PhotoAsset,
   Place,
+  PlannedStop,
   Trip,
   VisitLocation,
 } from './types';
@@ -14,6 +16,8 @@ export const max_photos_per_check_in = 20;
 export const text_limits = {
   trip_title: 200,
   trip_description: 10_000,
+  stop_title: 200,
+  stop_notes: 20_000,
   place_name: 200,
   place_locality: 300,
   check_in_title: 200,
@@ -141,6 +145,29 @@ export function parsePlace(value: unknown): Place {
   };
 }
 
+export function parseStop(value: unknown): PlannedStop {
+  const row = record(value, 'Planned stop');
+  if (typeof row.day !== 'string' || !isCalendarDate(row.day))
+    throw new Error('Choose a valid date for the stop.');
+  if (
+    typeof row.time !== 'string' ||
+    (row.time !== '' && !/^([01]\d|2[0-3]):[0-5]\d$/.test(row.time))
+  )
+    throw new Error('Enter a valid stop time or leave the time blank.');
+  const kind = stop_kinds.find((option) => option === row.kind);
+  if (!kind) throw new Error('Choose a valid stop category.');
+  return {
+    id: id(row.id, 'Planned stop'),
+    trip_id: id(row.trip_id, 'Trip'),
+    day: row.day,
+    title: text(row.title, 'Stop title', text_limits.stop_title, true).trim(),
+    kind,
+    time: row.time,
+    notes: text(row.notes, 'Stop notes', text_limits.stop_notes),
+    position: row.position === null ? null : parseCoordinates(row.position),
+  };
+}
+
 export function isSafePhotoPath(value: unknown): value is string {
   return (
     typeof value === 'string' &&
@@ -208,6 +235,7 @@ export function parseCheckIn(value: unknown): CheckIn {
   return {
     id: id(row.id, 'Check-in'),
     trip_id: id(row.trip_id, 'Trip'),
+    ...(row.stop_id !== undefined && { stop_id: id(row.stop_id, 'Planned stop') }),
     place_id,
     ...(title && { title }),
     visited_at,
@@ -221,29 +249,41 @@ export function parseCheckIn(value: unknown): CheckIn {
 }
 
 export function emptyJournal(): Journal {
-  return { schema_version: 1, trips: [], places: [], check_ins: [] };
+  return { schema_version: 2, trips: [], stops: [], places: [], check_ins: [] };
 }
 
 export function parseJournal(value: unknown): Journal {
   const row = record(value, 'Journal');
-  if (row.schema_version !== 1) throw new Error('This journal version is not supported.');
+  if (row.schema_version !== 1 && row.schema_version !== 2)
+    throw new Error('This journal version is not supported.');
   const trips = rows(row.trips, 'Trips', parseTrip);
+  const stops =
+    row.schema_version === 1 && row.stops === undefined
+      ? []
+      : rows(row.stops, 'Planned stops', parseStop);
   const places = rows(row.places, 'Places', parsePlace);
   const check_ins = rows(row.check_ins, 'Check-ins', parseCheckIn);
   unique(trips, (trip) => trip.id, 'Trips');
+  unique(stops, (stop) => stop.id, 'Planned stops');
   unique(places, (place) => place.id, 'Places');
   unique(check_ins, (check_in) => check_in.id, 'Check-ins');
   const trip_ids = new Set(trips.map((trip) => trip.id));
+  const stop_trips = new Map(stops.map((stop) => [stop.id, stop.trip_id]));
   const place_ids = new Set(places.map((place) => place.id));
+  for (const stop of stops) {
+    if (!trip_ids.has(stop.trip_id)) throw new Error('A planned stop refers to a missing trip.');
+  }
   for (const check_in of check_ins) {
     if (!trip_ids.has(check_in.trip_id)) throw new Error('A check-in refers to a missing trip.');
     if (check_in.place_id !== null && !place_ids.has(check_in.place_id))
       throw new Error('A check-in refers to a missing place.');
+    if (check_in.stop_id && stop_trips.get(check_in.stop_id) !== check_in.trip_id)
+      throw new Error('Choose a planned stop from the same trip as the check-in.');
   }
   const photos = check_ins.flatMap((check_in) => check_in.photos);
   unique(photos, (photo) => photo.id, 'Journal photos');
   unique(photos, (photo) => photo.path, 'Journal photo storage');
-  return { schema_version: 1, trips, places, check_ins };
+  return { schema_version: 2, trips, stops, places, check_ins };
 }
 
 function upsert<T extends { id: string }>(values: T[], value: T): T[] {
@@ -255,6 +295,47 @@ function upsert<T extends { id: string }>(values: T[], value: T): T[] {
 export function upsertTrip(journal: Journal, value: Trip): Journal {
   const trip = parseTrip(value);
   return parseJournal({ ...journal, trips: upsert(journal.trips, trip) });
+}
+
+function sameRouteDay(first: PlannedStop, second: PlannedStop): boolean {
+  return first.trip_id === second.trip_id && first.day === second.day;
+}
+
+export function upsertStop(journal: Journal, value: PlannedStop): Journal {
+  const stop = parseStop(value);
+  const previous = journal.stops.find((row) => row.id === stop.id);
+  const stops =
+    previous && !sameRouteDay(previous, stop)
+      ? [...journal.stops.filter((row) => row.id !== stop.id), stop]
+      : upsert(journal.stops, stop);
+  return parseJournal({ ...journal, stops });
+}
+
+export function removeStop(journal: Journal, stop_id: string): Journal {
+  id(stop_id, 'Planned stop');
+  const check_ins = journal.check_ins.map((check_in) => {
+    if (check_in.stop_id !== stop_id) return check_in;
+    const { stop_id: removed, ...visit } = check_in;
+    return visit;
+  });
+  return parseJournal({
+    ...journal,
+    stops: journal.stops.filter((stop) => stop.id !== stop_id),
+    check_ins,
+  });
+}
+
+export function moveStop(journal: Journal, stop_id: string, direction: -1 | 1): Journal {
+  if (direction !== -1 && direction !== 1) throw new Error('Move the stop one position at a time.');
+  const stops = [...journal.stops];
+  const index = stops.findIndex((row) => row.id === stop_id);
+  if (index === -1) throw new Error('The planned stop could not be found.');
+  for (let next = index + direction; next >= 0 && next < stops.length; next += direction) {
+    if (!sameRouteDay(stops[index], stops[next])) continue;
+    [stops[index], stops[next]] = [stops[next], stops[index]];
+    return { ...journal, stops };
+  }
+  return journal;
 }
 
 /** The place and the visit enter the journal together, so neither can leave a dangling reference. */
@@ -295,6 +376,7 @@ export function removeTrip(journal: Journal, trip_id: string): Journal {
   return parseJournal({
     ...journal,
     trips: journal.trips.filter((row) => row.id !== trip_id),
+    stops: journal.stops.filter((row) => row.trip_id !== trip_id),
     check_ins: journal.check_ins.filter((row) => row.trip_id !== trip_id),
   });
 }

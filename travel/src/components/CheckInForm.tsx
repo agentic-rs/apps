@@ -1,5 +1,13 @@
 import { useRef, useState } from 'react';
-import type { CheckIn, PhotoAsset, Place, TravelPlatform, Trip, VisitLocation } from '../lib/types';
+import type {
+  CheckIn,
+  PhotoAsset,
+  Place,
+  PlannedStop,
+  TravelPlatform,
+  Trip,
+  VisitLocation,
+} from '../lib/types';
 import { currentOffsetMinutes, fromVisitInput, toVisitInput } from '../lib/dates';
 import {
   readCoordinates,
@@ -18,6 +26,9 @@ export function CheckInForm({
   trip,
   places,
   check_in,
+  day,
+  stop,
+  stops,
   platform,
   onSave,
   onCancel,
@@ -25,31 +36,37 @@ export function CheckInForm({
   trip: Trip;
   places: Place[];
   check_in?: CheckIn;
+  day: string;
+  stop?: PlannedStop;
+  stops: PlannedStop[];
   platform: TravelPlatform;
   onSave(visit: CheckIn, place: Place | null, unused: PhotoAsset[]): Promise<void>;
   onCancel(unused: PhotoAsset[]): Promise<void>;
 }) {
   const editing_event = Boolean(check_in?.title);
+  const [stop_id, setStopId] = useState(check_in?.stop_id ?? stop?.id ?? '');
   const [title, setTitle] = useState(check_in?.title ?? '');
   const original_place = places.find((place) => place.id === check_in?.place_id);
   const [place_id, setPlaceId] = useState(original_place?.id ?? '');
-  const [name, setName] = useState(original_place?.name ?? '');
+  const [name, setName] = useState(original_place?.name ?? (!check_in && stop ? stop.title : ''));
   const [locality, setLocality] = useState(original_place?.locality ?? '');
   const [place_latitude, setPlaceLatitude] = useState(
-    original_place?.position?.latitude.toString() ?? '',
+    (original_place?.position ?? (!check_in && stop ? stop.position : null))?.latitude.toString() ??
+      '',
   );
   const [place_longitude, setPlaceLongitude] = useState(
-    original_place?.position?.longitude.toString() ?? '',
+    (
+      original_place?.position ?? (!check_in && stop ? stop.position : null)
+    )?.longitude.toString() ?? '',
   );
   const [edit_place, setEditPlace] = useState(false);
-  const [offset, setOffset] = useState(
-    (check_in?.utc_offset_minutes ?? currentOffsetMinutes()).toString(),
-  );
-  const [visited, setVisited] = useState(
-    toVisitInput(
-      check_in?.visited_at ?? new Date().toISOString(),
-      check_in?.utc_offset_minutes ?? currentOffsetMinutes(),
-    ),
+  const [visited, setVisited] = useState(() => {
+    if (check_in) return toVisitInput(check_in.visited_at, check_in.utc_offset_minutes);
+    const now = new Date();
+    return day + 'T' + toVisitInput(now.toISOString(), currentOffsetMinutes(now)).slice(11);
+  });
+  const [offset, setOffset] = useState(() =>
+    String(check_in?.utc_offset_minutes ?? currentOffsetMinutes(new Date(visited))),
   );
   const [notes, setNotes] = useState(check_in?.notes ?? '');
   const [latitude, setLatitude] = useState(check_in?.actual_location?.latitude.toString() ?? '');
@@ -64,6 +81,25 @@ export function CheckInForm({
   const [dirty, setDirty] = useState(false);
   const [discard, setDiscard] = useState(false);
   const selected_place = places.find((place) => place.id === place_id);
+
+  function chooseStop(id: string) {
+    const previous = stops.find((item) => item.id === stop_id);
+    const next = stops.find((item) => item.id === id);
+    // Follow the plan while the proposed place is untouched. Keep manually entered place details.
+    if (
+      !check_in &&
+      !place_id &&
+      !locality &&
+      name === (previous?.title ?? '') &&
+      place_latitude === (previous?.position?.latitude.toString() ?? '') &&
+      place_longitude === (previous?.position?.longitude.toString() ?? '')
+    ) {
+      setName(next?.title ?? '');
+      setPlaceLatitude(next?.position?.latitude.toString() ?? '');
+      setPlaceLongitude(next?.position?.longitude.toString() ?? '');
+    }
+    setStopId(id);
+  }
 
   function choosePlace(id: string) {
     const place = places.find((row) => row.id === id);
@@ -170,6 +206,7 @@ export function CheckInForm({
       const visit: CheckIn = {
         id: check_in?.id ?? createId(),
         trip_id: trip.id,
+        ...(stop_id && { stop_id }),
         place_id: place?.id ?? null,
         ...(editing_event && { title: title.trim() }),
         visited_at:
@@ -203,7 +240,7 @@ export function CheckInForm({
 
   return (
     <Dialog
-      title={editing_event ? 'Edit event' : check_in ? 'Edit check-in' : 'Keep this moment'}
+      title={editing_event ? 'Edit event' : check_in ? 'Edit check-in' : 'New check-in'}
       onDismiss={dismiss}
       full_screen
     >
@@ -211,9 +248,20 @@ export function CheckInForm({
         {(save) => (
           <>
             <fieldset disabled={busy} className="form-body check-in-form">
-              <p className="muted">
-                In <strong>{trip.title}</strong> <span className="dot">·</span> 打卡
-              </p>
+              <p className="muted">{trip.title}</p>
+              {stops.length > 0 && (
+                <label>
+                  Planned stop <span className="optional">optional</span>
+                  <select value={stop_id} onChange={(event) => chooseStop(event.target.value)}>
+                    <option value="">Unplanned visit</option>
+                    {stops.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.day} · {item.title}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               {editing_event && (
                 <label>
                   Event title

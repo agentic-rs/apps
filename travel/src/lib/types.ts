@@ -19,6 +19,27 @@ export interface Trip {
   updated_at: string;
 }
 
+export const stop_kinds = ['sight', 'food', 'transport', 'stay', 'other'] as const;
+export type StopKind = (typeof stop_kinds)[number];
+export const stop_kind_labels: Record<StopKind, string> = {
+  sight: 'Sight',
+  food: 'Food',
+  transport: 'Transport',
+  stay: 'Stay',
+  other: 'Other',
+};
+
+export interface PlannedStop {
+  id: string;
+  trip_id: string;
+  day: string;
+  title: string;
+  kind: StopKind;
+  time: string;
+  notes: string;
+  position: Coordinates | null;
+}
+
 export interface Place {
   id: string;
   name: string;
@@ -38,6 +59,7 @@ export interface PhotoAsset {
 export interface CheckIn {
   id: string;
   trip_id: string;
+  stop_id?: string;
   place_id: string | null;
   title?: string;
   visited_at: string;
@@ -50,8 +72,9 @@ export interface CheckIn {
 }
 
 export interface Journal {
-  schema_version: 1;
+  schema_version: 2;
   trips: Trip[];
+  stops: PlannedStop[];
   places: Place[];
   check_ins: CheckIn[];
 }

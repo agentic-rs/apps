@@ -1,0 +1,180 @@
+import { useState } from 'react';
+import { createId } from '../lib/identity';
+import { readCoordinates, text_limits } from '../lib/model';
+import {
+  stop_kind_labels,
+  stop_kinds,
+  type PlannedStop,
+  type StopKind,
+  type Trip,
+} from '../lib/types';
+import { CoordinateInputs } from './VisitFields';
+import { Dialog, DiscardPrompt } from './Dialog';
+import { EditorForm } from './EditorForm';
+import { Icon } from './Icon';
+
+interface StopFormProps {
+  trip: Trip;
+  day: string;
+  stop?: PlannedStop;
+  onSave(stop: PlannedStop): Promise<void>;
+  onCancel(): void;
+  onDelete?(stop: PlannedStop): void;
+}
+
+export function StopForm({ trip, day, stop, onSave, onCancel, onDelete }: StopFormProps) {
+  const [title, setTitle] = useState(stop?.title ?? '');
+  const [stop_day, setDay] = useState(stop?.day ?? day);
+  const [kind, setKind] = useState<StopKind>(stop?.kind ?? 'sight');
+  const [time, setTime] = useState(stop?.time ?? '');
+  const [notes, setNotes] = useState(stop?.notes ?? '');
+  const [latitude, setLatitude] = useState(stop?.position?.latitude.toString() ?? '');
+  const [longitude, setLongitude] = useState(stop?.position?.longitude.toString() ?? '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [discard, setDiscard] = useState(false);
+  const dirty =
+    title !== (stop?.title ?? '') ||
+    stop_day !== (stop?.day ?? day) ||
+    kind !== (stop?.kind ?? 'sight') ||
+    time !== (stop?.time ?? '') ||
+    notes !== (stop?.notes ?? '') ||
+    latitude !== (stop?.position?.latitude.toString() ?? '') ||
+    longitude !== (stop?.position?.longitude.toString() ?? '');
+
+  function dismiss() {
+    if (busy) return;
+    if (dirty) setDiscard(true);
+    else onCancel();
+  }
+
+  async function submit() {
+    if (busy) return;
+    setBusy(true);
+    setError('');
+    setDiscard(false);
+    try {
+      await onSave({
+        id: stop?.id ?? createId(),
+        trip_id: trip.id,
+        day: stop_day,
+        title: title.trim(),
+        kind,
+        time,
+        notes: notes.trim(),
+        position: readCoordinates(latitude, longitude),
+      });
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not save this stop.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Dialog title={stop ? 'Edit stop' : 'Add stop'} full_screen onDismiss={dismiss}>
+      <EditorForm onSave={submit}>
+        {(save) => (
+          <>
+            <fieldset className="form-body stop-form" disabled={busy}>
+              <p className="stop-form-trip">
+                <Icon name="book" size={17} />
+                {trip.title}
+              </p>
+              <label>
+                Stop name
+                <input
+                  required
+                  autoFocus
+                  maxLength={text_limits.stop_title}
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                />
+              </label>
+              <label>
+                Category
+                <select value={kind} onChange={(e) => setKind(e.target.value as StopKind)}>
+                  {stop_kinds.map((value) => (
+                    <option key={value} value={value}>
+                      {stop_kind_labels[value]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="form-grid">
+                <label>
+                  Day
+                  <input
+                    type="date"
+                    required
+                    value={stop_day}
+                    onChange={(e) => setDay(e.target.value)}
+                  />
+                </label>
+                <label>
+                  <span>
+                    Time <span className="optional">(optional)</span>
+                  </span>
+                  <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+                </label>
+              </div>
+              <label>
+                <span>
+                  Notes <span className="optional">(optional)</span>
+                </span>
+                <textarea
+                  rows={3}
+                  maxLength={text_limits.stop_notes}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                />
+              </label>
+              <details className="stop-coordinates" open={Boolean(stop?.position) || undefined}>
+                <summary>
+                  Map coordinates <span className="optional">(optional)</span>
+                </summary>
+                <CoordinateInputs
+                  prefix="Stop"
+                  latitude={latitude}
+                  longitude={longitude}
+                  onLatitude={setLatitude}
+                  onLongitude={setLongitude}
+                />
+              </details>
+              {stop && onDelete && (
+                <button type="button" className="stop-delete" onClick={() => onDelete(stop)}>
+                  <Icon name="trash" size={17} /> Delete stop
+                </button>
+              )}
+            </fieldset>
+            {error && (
+              <p className="form-error" role="alert">
+                {error}
+              </p>
+            )}
+            {discard && (
+              <DiscardPrompt
+                disabled={busy}
+                onKeep={() => setDiscard(false)}
+                onDiscard={onCancel}
+              />
+            )}
+            <footer className="dialog-footer">
+              <button type="button" className="secondary" disabled={busy} onClick={dismiss}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="primary"
+                disabled={busy || !title.trim() || !stop_day}
+                onClick={save}
+              >
+                {busy ? 'Saving…' : 'Save stop'}
+              </button>
+            </footer>
+          </>
+        )}
+      </EditorForm>
+    </Dialog>
+  );
+}

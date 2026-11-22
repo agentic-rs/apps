@@ -1,0 +1,278 @@
+.itinerary-day {
+  width: min(100%, 760px);
+  margin-inline: auto;
+  padding: 22px clamp(14px, 4vw, 32px) 36px;
+}
+
+.itinerary-day-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.itinerary-day-heading h2,
+.itinerary-journal h3 {
+  margin: 0;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-size: clamp(1.4rem, 4.4vw, 1.85rem);
+  line-height: 1.12;
+  font-weight: 500;
+  letter-spacing: -0.035em;
+}
+
+.itinerary-day-heading p {
+  margin: 6px 0 0;
+  color: var(--apell-muted);
+  font-size: 0.78rem;
+}
+
+.itinerary-day-heading .primary {
+  flex-shrink: 0;
+  padding-inline: 13px;
+}
+
+.itinerary-stops {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.itinerary-stops > li {
+  display: grid;
+  grid-template-columns: 29px minmax(0, 1fr);
+  gap: 12px;
+  position: relative;
+  padding-bottom: 14px;
+}
+
+.itinerary-stops > li:not(:last-child)::before {
+  content: '';
+  position: absolute;
+  top: 30px;
+  bottom: -14px;
+  left: 14px;
+  border-inline-start: 1px dashed var(--apell-control-line);
+}
+
+.itinerary-stop-number {
+  z-index: 1;
+  align-self: start;
+  display: grid;
+  place-items: center;
+  margin-top: 13px;
+  min-height: 29px;
+  padding-inline: 2px;
+  border-radius: 20px;
+  background: var(--apell-badge);
+  color: var(--apell-badge-text);
+  font-weight: 650;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.itinerary-stop-body {
+  min-width: 0;
+  padding: 14px 16px 4px;
+  background: var(--apell-surface);
+  border: 1px solid var(--apell-line);
+  border-radius: 12px;
+}
+
+.itinerary-stop-meta,
+.itinerary-stop-tools,
+.itinerary-check-in,
+.itinerary-reorder,
+.itinerary-journal-actions,
+.stop-form-trip,
+.stop-delete {
+  display: flex;
+  align-items: center;
+}
+
+.itinerary-stop-meta {
+  gap: 9px;
+  color: var(--apell-muted);
+  font-size: 0.73rem;
+}
+
+.itinerary-stop-meta time {
+  border-left: 1px solid var(--apell-line);
+  padding-left: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+.itinerary-stop-body > h3 {
+  margin: 0;
+}
+
+.itinerary-stop-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 4px 0;
+  background: transparent;
+  border: 0;
+  text-align: start;
+  font-size: 1.1rem;
+  font-weight: 650;
+  line-height: 1.32;
+  letter-spacing: -0.025em;
+  overflow-wrap: anywhere;
+}
+
+.itinerary-stop-title svg {
+  color: var(--apell-muted);
+}
+
+.itinerary-stop-notes {
+  margin: 0 0 6px;
+  color: var(--apell-muted);
+  font-size: 0.83rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.itinerary-stop-tools {
+  justify-content: space-between;
+  border-top: 1px solid var(--apell-line);
+}
+
+.itinerary-check-in,
+.stop-delete {
+  gap: 6px;
+  padding-inline: 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--apell-primary);
+  font-weight: 550;
+  font-size: 0.8rem;
+}
+
+.itinerary-reorder {
+  margin-right: -7px;
+}
+
+.itinerary-reorder button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.itinerary-linked {
+  margin: 0 -7px 5px;
+}
+
+.linked-entry {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 9px;
+  margin: 0 0 5px;
+  border-radius: 8px;
+  background: var(--apell-subtle);
+}
+.linked-entry-copy {
+  flex: 1;
+  min-width: 0;
+  padding: 3px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 4px;
+  background: transparent;
+  border: 0;
+  text-align: start;
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+.linked-entry-time {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--apell-badge-text);
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+.linked-entry-notes {
+  color: var(--apell-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.linked-entry .visit-photos {
+  flex: 0 0 56px;
+  display: block;
+  margin: 0;
+}
+.linked-entry .photo-frame {
+  width: 56px;
+  height: 56px;
+}
+
+.itinerary-cross-day > p {
+  margin: 8px 4px 4px;
+  color: var(--apell-muted);
+  font-size: 0.78rem;
+}
+
+.itinerary-empty {
+  margin: 0 0 16px;
+  padding: 20px 14px;
+  border: 1px dashed var(--apell-control-line);
+  border-radius: 12px;
+  color: var(--apell-muted);
+  font-size: 0.85rem;
+}
+
+.itinerary-journal {
+  margin-top: 10px;
+  padding-top: 18px;
+  border-top: 1px solid var(--apell-line);
+}
+
+.itinerary-journal > h3 {
+  font-size: 1.35rem;
+}
+
+.itinerary-journal-actions {
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.itinerary-journal-actions button {
+  padding-inline: 12px;
+}
+
+.stop-form-trip {
+  gap: 8px;
+  color: var(--apell-muted);
+  overflow-wrap: anywhere;
+}
+
+.stop-form-trip svg {
+  flex: none;
+}
+
+.stop-coordinates {
+  padding-block: 2px;
+  border-block: 1px solid var(--apell-line);
+}
+
+.stop-coordinates summary {
+  cursor: pointer;
+  padding: 12px 0;
+  min-height: 44px;
+  font-size: 0.86rem;
+  font-weight: 550;
+}
+
+.stop-delete {
+  margin-top: 12px;
+  color: var(--apell-danger);
+}

@@ -9,10 +9,12 @@ export function TripForm({
   trip,
   onSave,
   onCancel,
+  onDelete,
 }: {
   trip?: Trip;
   onSave(trip: Trip): Promise<void>;
   onCancel(): void;
+  onDelete?(): void;
 }) {
   const [title, setTitle] = useState(trip?.title ?? '');
   const [description, setDescription] = useState(trip?.description ?? '');
@@ -50,7 +52,7 @@ export function TripForm({
   }
   return (
     <Dialog
-      title={trip ? 'Edit trip' : 'A new adventure'}
+      title={trip ? 'Edit trip' : 'New trip'}
       full_screen
       onDismiss={() => {
         if (!busy) dirty ? setDiscard(true) : onCancel();
@@ -60,7 +62,6 @@ export function TripForm({
         {(save) => (
           <>
             <fieldset disabled={busy} className="form-body">
-              <p className="muted">A weekend away or a journey across the world. Give it a home.</p>
               <label>
                 Trip name
                 <input
@@ -92,15 +93,19 @@ export function TripForm({
                 </label>
               </div>
               <label>
-                A little about the trip <span className="optional">optional</span>
+                Description <span className="optional">optional</span>
                 <textarea
                   rows={3}
                   maxLength={text_limits.trip_description}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Slow mornings, unfamiliar streets, and a few good stories…"
                 />
               </label>
+              {onDelete && (
+                <button type="button" className="text-danger" onClick={onDelete}>
+                  Delete trip
+                </button>
+              )}
             </fieldset>
             {error && (
               <p className="form-error" role="alert">

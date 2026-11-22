@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { fitCoordinates, mapPoints } from '../src/lib/map';
-import type { CheckIn, Coordinates, Place } from '../src/lib/types';
+import { fitCoordinates, mapPoints, mapStops, routeLines } from '../src/lib/map';
+import type { CheckIn, Coordinates, Place, PlannedStop } from '../src/lib/types';
 
 const now = '2026-05-12T14:20:00.000Z';
 
@@ -25,6 +25,79 @@ function visit(id: string, place_id: string, position: Coordinates | null): Chec
   };
 }
 
+function stop(id: string, longitude: number | null): PlannedStop {
+  return {
+    id,
+    trip_id: 'trip-1',
+    day: '2026-05-12',
+    title: `Stop ${id}`,
+    kind: 'sight',
+    time: '',
+    notes: '',
+    position: longitude === null ? null : { latitude: 10, longitude },
+  };
+}
+
+describe('daily route', () => {
+  test('keeps stop identities and itinerary order, including a return to a shared position', () => {
+    const stops = [stop('a', 11), stop('b', null), stop('c', 8), stop('d', 11)];
+    const { points, unlocated_ids } = mapStops(stops);
+    expect(points.map((point) => point.id)).toEqual(['a', 'c', 'd']);
+    expect(unlocated_ids).toEqual(['b']);
+    expect(points[0].position).toEqual(points[2].position);
+    expect(points[0].entry_ids).toEqual(['a']);
+    expect(points[2].entry_ids).toEqual(['d']);
+    expect(routeLines(stops, 10)).toEqual([
+      [
+        [10, 8],
+        [10, 11],
+      ],
+    ]);
+  });
+
+  test('draws short date-line legs anchored to the visible world, including after panning', () => {
+    const stops = [stop('a', 179), stop('b', -179)];
+    expect(routeLines(stops, 180)).toEqual([
+      [
+        [10, 179],
+        [10, 181],
+      ],
+    ]);
+    expect(routeLines(stops, -180)).toEqual([
+      [
+        [10, -181],
+        [10, -179],
+      ],
+    ]);
+    expect(routeLines(stops, 0)).toEqual([
+      [
+        [10, 179],
+        [10, 181],
+      ],
+      [
+        [10, -181],
+        [10, -179],
+      ],
+    ]);
+  });
+
+  test('draws only legs between distinct consecutive positions', () => {
+    expect(routeLines([], 0)).toEqual([]);
+    expect(routeLines([stop('a', null), stop('b', 180), stop('c', -180)], 0)).toEqual([]);
+    const stops = [stop('a', 11), stop('b', 12), stop('c', 13)];
+    expect(routeLines(stops, 10)).toEqual([
+      [
+        [10, 11],
+        [10, 12],
+      ],
+      [
+        [10, 12],
+        [10, 13],
+      ],
+    ]);
+  });
+});
+
 describe('map locations', () => {
   test('visit and named-place modes use only their own coordinates', () => {
     const places = [place('a', { latitude: 12, longitude: 34 })];
@@ -34,17 +107,17 @@ describe('map locations', () => {
     expect(actual.points[0]).toMatchObject({
       position: { latitude: 12.1, longitude: 34.2 },
       place_id: 'a',
-      visit_ids: ['one'],
+      entry_ids: ['one'],
       label: 'Place a',
     });
     expect(standard.points[0]).toMatchObject({
       position: { latitude: 12, longitude: 34 },
       place_id: 'a',
-      visit_ids: ['one'],
+      entry_ids: ['one'],
     });
     expect(actual.points[0].id).not.toBe(standard.points[0].id);
-    expect(actual.unlocated_visit_ids).toEqual([]);
-    expect(standard.unlocated_visit_ids).toEqual([]);
+    expect(actual.unlocated_ids).toEqual([]);
+    expect(standard.unlocated_ids).toEqual([]);
   });
 
   test('groups exact repeat visits at one place without rounding neighboring visits', () => {
@@ -56,11 +129,11 @@ describe('map locations', () => {
     ];
     const actual = mapPoints(visits, places, 'visits');
     expect(actual.points).toHaveLength(2);
-    expect(actual.points[0].visit_ids).toEqual(['one', 'two']);
-    expect(actual.points[1].visit_ids).toEqual(['three']);
+    expect(actual.points[0].entry_ids).toEqual(['one', 'two']);
+    expect(actual.points[1].entry_ids).toEqual(['three']);
     const standard = mapPoints(visits, places, 'places');
     expect(standard.points).toHaveLength(1);
-    expect(standard.points[0].visit_ids).toEqual(['one', 'two', 'three']);
+    expect(standard.points[0].entry_ids).toEqual(['one', 'two', 'three']);
     expect(
       mapPoints([...visits].reverse(), places, 'visits')
         .points.map((point) => point.id)
@@ -78,7 +151,7 @@ describe('map locations', () => {
     );
     expect(mapPoints(events, [], 'places')).toEqual({
       points: [],
-      unlocated_visit_ids: ['one', 'two'],
+      unlocated_ids: ['one', 'two'],
     });
     const named_place = place('a', { latitude: 12, longitude: -35 });
     const linked = [{ ...first, place_id: named_place.id }];
@@ -103,11 +176,11 @@ describe('map locations', () => {
       visit('three', 'actual-only', null),
     ];
     const actual = mapPoints(visits, places, 'visits');
-    expect(actual.points.flatMap((point) => point.visit_ids)).toEqual(['two']);
-    expect(actual.unlocated_visit_ids).toEqual(['one', 'three']);
+    expect(actual.points.flatMap((point) => point.entry_ids)).toEqual(['two']);
+    expect(actual.unlocated_ids).toEqual(['one', 'three']);
     const standard = mapPoints(visits, places, 'places');
-    expect(standard.points.flatMap((point) => point.visit_ids)).toEqual(['one']);
-    expect(standard.unlocated_visit_ids).toEqual(['two', 'three']);
+    expect(standard.points.flatMap((point) => point.entry_ids)).toEqual(['one']);
+    expect(standard.unlocated_ids).toEqual(['two', 'three']);
   });
 
   test('different named places remain selectable even at identical coordinates', () => {
@@ -125,7 +198,7 @@ describe('map locations', () => {
   test('empty selections and invalid references do not invent map points', () => {
     expect(mapPoints([], [place('a', { latitude: 12, longitude: 34 })], 'places')).toEqual({
       points: [],
-      unlocated_visit_ids: [],
+      unlocated_ids: [],
     });
     expect(() => mapPoints([visit('one', 'missing', null)], [], 'visits')).toThrow('missing place');
   });
@@ -136,7 +209,7 @@ describe('map locations', () => {
     const visits = [visit('one', 'a', position)];
     const result = mapPoints(visits, places, 'places');
     result.points[0].position.latitude = 0;
-    result.points[0].visit_ids.push('two');
+    result.points[0].entry_ids.push('two');
     expect(places[0].position).toEqual({ latitude: 12, longitude: 34 });
     expect(visits).toHaveLength(1);
     expect(visits[0].actual_location?.latitude).toBe(12);

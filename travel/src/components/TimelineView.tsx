@@ -7,52 +7,53 @@ import { VisitCard } from './VisitCard';
 export function TimelineView({
   visits,
   places,
-  trips,
+  trip,
   platform,
   search,
-  has_trips,
   onSearch,
-  onCreate,
   onOpenVisit,
   onPhoto,
 }: {
   visits: CheckIn[];
   places: Place[];
-  trips: Trip[];
+  trip: Trip;
   platform: TravelPlatform;
   search: string;
-  has_trips: boolean;
   onSearch(value: string): void;
-  onCreate(): void;
   onOpenVisit(id: string): void;
   onPhoto(photo: PhotoAsset, caption: string): void;
 }) {
   const by_place = new Map(places.map((place) => [place.id, place]));
-  const by_trip = new Map(trips.map((trip) => [trip.id, trip]));
-  const filtered = visits.filter((visit) => {
-    const place = visit.place_id === null ? undefined : by_place.get(visit.place_id);
-    return [
-      visit.title,
-      place?.name,
-      place?.locality,
-      visit.notes,
-      by_trip.get(visit.trip_id)!.title,
-    ]
-      .join(' ')
-      .toLocaleLowerCase()
-      .includes(search.toLocaleLowerCase());
-  });
+  const query = search.trim().toLocaleLowerCase();
+  const groups = new Map<string, CheckIn[]>();
+  let count = 0;
+  for (const visit of visits) {
+    const place = visit.place_id ? by_place.get(visit.place_id) : undefined;
+    if (
+      query &&
+      ![visit.title, place?.name, place?.locality, visit.notes]
+        .join(' ')
+        .toLocaleLowerCase()
+        .includes(query)
+    )
+      continue;
+    const day = toVisitInput(visit.visited_at, visit.utc_offset_minutes).slice(0, 10);
+    const entries = groups.get(day) ?? [];
+    entries.push(visit);
+    groups.set(day, entries);
+    count++;
+  }
   return (
     <section className="timeline-view" aria-label="Travel timeline">
-      {(visits.length > 0 || search) && (
+      {visits.length > 0 && (
         <div className="timeline-tools">
           <label className="search-box">
             <Icon name="search" size={18} />
             <input
               aria-label="Search timeline"
-              placeholder="Find a memory"
+              placeholder="Search journal"
               value={search}
-              onChange={(event) => onSearch(event.target.value)}
+              onChange={(e) => onSearch(e.target.value)}
             />
             {search && (
               <button
@@ -64,60 +65,43 @@ export function TimelineView({
               </button>
             )}
           </label>
-          <span className="timeline-count">{formatEntryCount(filtered.length)}</span>
+          <span className="timeline-count">{formatEntryCount(count)}</span>
         </div>
       )}
-      {filtered.length === 0 ? (
-        <div className="empty-state">
-          <span className="empty-icon">
-            <Icon name={search ? 'search' : 'pin'} size={32} />
-          </span>
-          <h2>{search ? 'No matching moments' : 'Your next stop starts here'}</h2>
-          <p>
-            {search
-              ? 'Try an event title, a place name, or a word from your notes.'
-              : 'Check in, keep a photo, and remember where you were.'}
-          </p>
-          {!search && (
-            <button className="primary" onClick={onCreate}>
-              <Icon name="plus" size={18} />
-              {has_trips ? 'Add a check-in' : 'Start a trip'}
-            </button>
-          )}
-        </div>
+      {count === 0 ? (
+        <p className="journal-empty">
+          {query ? 'No matching entries.' : 'Your check-ins and photo events will appear here.'}
+        </p>
       ) : (
         <div className="timeline-list">
-          {filtered.map((visit, index) => {
-            const day = toVisitInput(visit.visited_at, visit.utc_offset_minutes).slice(0, 10);
-            const previous = filtered[index - 1];
-            const show_day =
-              !previous ||
-              toVisitInput(previous.visited_at, previous.utc_offset_minutes).slice(0, 10) !== day;
-            const place = visit.place_id === null ? undefined : by_place.get(visit.place_id);
-            return (
-              <div className="timeline-entry" key={visit.id}>
-                {show_day && (
-                  <h2 className="timeline-day">
+          {[...groups.keys()]
+            .sort()
+            .reverse()
+            .map((day) => {
+              const entries = groups.get(day)!;
+              return (
+                <section key={day}>
+                  <h3 className="timeline-day">
                     <span />
-                    {formatVisitDate(visit.visited_at, visit.utc_offset_minutes)}
-                  </h2>
-                )}
-                <VisitCard
-                  visit={visit}
-                  place={place}
-                  trip={by_trip.get(visit.trip_id)!}
-                  platform={platform}
-                  onOpen={() => onOpenVisit(visit.id)}
-                  onPhoto={(photo) => onPhoto(photo, visitTitle(visit, place))}
-                />
-              </div>
-            );
-          })}
-          <p className="timeline-end">
-            <span />
-            The beginning of your story
-            <span />
-          </p>
+                    {formatVisitDate(entries[0].visited_at, entries[0].utc_offset_minutes)}
+                  </h3>
+                  {entries.map((visit) => {
+                    const place = visit.place_id ? by_place.get(visit.place_id) : undefined;
+                    return (
+                      <VisitCard
+                        key={visit.id}
+                        visit={visit}
+                        place={place}
+                        trip={trip}
+                        platform={platform}
+                        onOpen={() => onOpenVisit(visit.id)}
+                        onPhoto={(asset) => onPhoto(asset, visitTitle(visit, place))}
+                      />
+                    );
+                  })}
+                </section>
+              );
+            })}
         </div>
       )}
     </section>

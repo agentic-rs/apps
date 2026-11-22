@@ -1,12 +1,14 @@
 import { describe, expect, test } from 'bun:test';
 import {
   currentOffsetMinutes,
+  daysBetween,
   formatTripDates,
   formatVisitDate,
   formatVisitTime,
   fromVisitInput,
   isCalendarDate,
   isUtcTimestamp,
+  offsetDay,
   toVisitInput,
 } from '../src/lib/dates';
 
@@ -54,6 +56,19 @@ describe('visit time zones', () => {
 });
 
 describe('calendar validation', () => {
+  test('counts and offsets itinerary days across leap years, DST dates and year boundaries', () => {
+    expect(offsetDay('2024-02-28', 1)).toBe('2024-02-29');
+    expect(offsetDay('2026-01-01', -1)).toBe('2025-12-31');
+    expect(daysBetween('2024-02-28', '2024-03-01')).toBe(2);
+    expect(daysBetween('2026-03-09', '2026-03-07')).toBe(-2);
+    expect(offsetDay('0000-01-01', 0)).toBe('0000-01-01');
+    expect(() => offsetDay('9999-12-31', 1)).toThrow('range');
+    expect(() => offsetDay('0000-01-01', -1)).toThrow('range');
+    expect(() => offsetDay('2026-04-31', 1)).toThrow('date');
+    expect(() => offsetDay('2026-04-01', 1.5)).toThrow('whole number');
+    expect(() => daysBetween('2026-04-01', '')).toThrow('date');
+  });
+
   test('validates leap years and exact UTC timestamp spelling', () => {
     expect(isCalendarDate('2024-02-29')).toBe(true);
     expect(isCalendarDate('2026-02-29')).toBe(false);

@@ -4,18 +4,22 @@ import {
   emptyJournal,
   formatCoordinates,
   max_photo_bytes,
+  moveStop,
   parseCheckIn,
   parseJournal,
   parsePhotoAsset,
   parsePlace,
+  parseStop,
   parseTrip,
   removeCheckIn,
+  removeStop,
   removeTrip,
   saveCheckIn,
+  upsertStop,
   upsertTrip,
   visitTitle,
 } from '../src/lib/model';
-import type { CheckIn, Journal, PhotoAsset, Place, Trip } from '../src/lib/types';
+import type { CheckIn, Journal, PhotoAsset, Place, PlannedStop, Trip } from '../src/lib/types';
 
 const now = '2026-05-12T14:20:00.000Z';
 const trip: Trip = {
@@ -40,6 +44,16 @@ const photo: PhotoAsset = {
   path: 'images/photo-1.png',
   mime_type: 'image/png',
   size_bytes: 100,
+};
+const stop: PlannedStop = {
+  id: 'stop-1',
+  trip_id: trip.id,
+  day: trip.start_date,
+  title: 'Town market',
+  kind: 'food',
+  time: '',
+  notes: 'Use the east entrance.',
+  position: null,
 };
 const check_in: CheckIn = {
   id: 'visit-1',
@@ -192,7 +206,7 @@ describe('journal data integrity', () => {
 
   test('validates schema and missing fields before reading or saving', () => {
     expect(() => parseJournal(null)).toThrow();
-    expect(() => parseJournal({ ...emptyJournal(), schema_version: 2 })).toThrow('version');
+    expect(() => parseJournal({ ...emptyJournal(), schema_version: 3 })).toThrow('version');
     expect(() => parseJournal({ ...emptyJournal(), trips: {} })).toThrow('list');
     expect(() => parseJournal({ schema_version: 1 })).toThrow();
     expect(() => parseCheckIn({ ...check_in, actual_location: undefined })).toThrow();
@@ -286,6 +300,91 @@ describe('journal data integrity', () => {
     expect(without_visit.check_ins).toEqual([]);
     expect(without_visit.trips).toHaveLength(1);
     expect(without_visit.places).toEqual([place]);
+  });
+});
+
+describe('planned stops', () => {
+  test('migrates schema 1 visits, photo events, exact coordinates and original photo references', () => {
+    const old_event: CheckIn = {
+      ...check_in,
+      id: 'event',
+      title: 'Morning light',
+      place_id: null,
+      photos: [{ ...photo, id: 'morning', path: 'images/morning.png' }],
+      actual_location: { ...check_in.actual_location!, source: 'photo' },
+    };
+    const old = {
+      schema_version: 1,
+      trips: [trip],
+      places: [place],
+      check_ins: [check_in, old_event],
+    };
+    const migrated = parseJournal(old);
+    expect(migrated).toEqual({ ...old, schema_version: 2, stops: [] });
+    expect(parseJournal(JSON.parse(JSON.stringify(migrated)))).toEqual(migrated);
+    expect(() => parseJournal({ ...old, places: [] })).toThrow('missing place');
+    expect(() => parseJournal({ ...migrated, stops: undefined })).toThrow('list');
+  });
+
+  test('requires valid stop dates, local times, categories, references and positions', () => {
+    expect(parseStop({ ...stop, title: '  Town market  ', time: '00:00' })).toEqual({
+      ...stop,
+      time: '00:00',
+    });
+    expect(parseStop({ ...stop, time: '23:59' }).time).toBe('23:59');
+    for (const time of ['8:30', '24:00', '12:60', '09:00Z']) {
+      expect(() => parseStop({ ...stop, time })).toThrow('time');
+    }
+    for (const day of ['', '2026-02-29', '2026-3-04'])
+      expect(() => parseStop({ ...stop, day })).toThrow('date');
+    expect(() => parseStop({ ...stop, kind: 'unknown' })).toThrow('category');
+    expect(() => parseStop({ ...stop, title: '   ' })).toThrow('title');
+    expect(() => parseStop({ ...stop, position: { latitude: 200, longitude: 0 } })).toThrow(
+      'Latitude',
+    );
+    expect(() => upsertStop(emptyJournal(), stop)).toThrow('missing trip');
+    expect(() => parseJournal({ ...populated(), stops: [stop, stop] })).toThrow('duplicate');
+  });
+
+  test('reorders within the same trip day, preserves edits in place and appends on a day change', () => {
+    const other_trip = { ...trip, id: 'other-trip' };
+    const tomorrow = { ...stop, id: 'tomorrow', day: '2026-05-13' };
+    const unrelated = { ...stop, id: 'unrelated', trip_id: other_trip.id };
+    const ferry = { ...stop, id: 'ferry', time: '09:00' };
+    let journal = upsertTrip(populated(), other_trip);
+    for (const planned of [stop, tomorrow, unrelated, ferry])
+      journal = upsertStop(journal, planned);
+    const ord = (value: Journal) => value.stops.map((row) => row.id);
+    const reordered = moveStop(journal, ferry.id, -1);
+    expect(ord(reordered)).toEqual([ferry.id, tomorrow.id, unrelated.id, stop.id]);
+    expect(ord(moveStop(reordered, ferry.id, 1))).toEqual(ord(journal));
+    expect(moveStop(reordered, ferry.id, -1)).toEqual(reordered);
+    expect(moveStop(reordered, unrelated.id, 1)).toEqual(reordered);
+    const edited = upsertStop(reordered, { ...ferry, title: 'Ferry platform' });
+    expect(ord(edited)).toEqual(ord(reordered));
+    expect(edited.stops[0].title).toBe('Ferry platform');
+    const moved = upsertStop(edited, { ...ferry, day: tomorrow.day });
+    expect(moved.stops.filter((row) => row.day === tomorrow.day)).toEqual([
+      tomorrow,
+      { ...ferry, day: tomorrow.day },
+    ]);
+  });
+
+  test('validates stop links and retains recorded visits when a planned stop is removed', () => {
+    const other_trip = { ...trip, id: 'trip-2' };
+    const other_stop = { ...stop, id: 'stop-2', trip_id: other_trip.id };
+    const journal = upsertStop(upsertStop(upsertTrip(populated(), other_trip), stop), other_stop);
+    const linked = saveCheckIn(journal, { ...check_in, stop_id: stop.id }, place);
+    expect(linked.check_ins[0].actual_location).toEqual(check_in.actual_location);
+    for (const stop_id of ['missing', other_stop.id]) {
+      expect(() => saveCheckIn(journal, { ...check_in, stop_id }, place)).toThrow('same trip');
+    }
+    expect(removeStop(linked, stop.id)).toEqual({ ...journal, stops: [other_stop] });
+    expect(removeCheckIn(linked, check_in.id).stops).toEqual([stop, other_stop]);
+    const deleted = removeTrip(linked, trip.id);
+    expect(deleted.stops).toEqual([other_stop]);
+    expect(deleted.check_ins).toEqual([]);
+    expect(deleted.places).toEqual([place]);
   });
 });
 

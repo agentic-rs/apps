@@ -5,6 +5,7 @@ import {
   layerGroup,
   map as createMap,
   marker,
+  polyline,
   type Coords,
   type DoneCallback,
   type Map as LeafletMap,
@@ -14,16 +15,65 @@ import {
 import 'leaflet/dist/leaflet.css';
 import '../map.css';
 import { formatVisitDate, formatVisitTime } from '../lib/dates';
-import { fitCoordinates, mapPoints, type MapMode, type MapPoint } from '../lib/map';
+import {
+  fitCoordinates,
+  mapPoints,
+  mapStops,
+  normalizeLongitude,
+  routeLines,
+  visiblePosition,
+  type MapMode,
+  type MapPoint,
+} from '../lib/map';
 import { createTileSource } from '../lib/map-tiles';
 import { formatCoordinates, formatEntryCount, visitTitle } from '../lib/model';
-import type { CheckIn, Coordinates, Place, TravelPlatform } from '../lib/types';
+import {
+  stop_kind_labels,
+  type CheckIn,
+  type Coordinates,
+  type Place,
+  type PlannedStop,
+  type TravelPlatform,
+} from '../lib/types';
 import { Icon } from './Icon';
 import { Photo } from './Photo';
 
 type TileSource = ReturnType<typeof createTileSource>;
 type TileState = { controller: AbortController; object_url: string; failed: boolean };
-type PinGroup = { key: string; position: Coordinates; points: MapPoint[]; visit_ids: string[] };
+type PinGroup = { key: string; position: Coordinates; points: MapPoint[]; entry_ids: string[] };
+
+const map_modes = {
+  stops: {
+    label: 'Day route',
+    position_label: 'planned stop',
+    description: 'Straight lines show your stop order',
+    region: 'Map of planned stops in itinerary order',
+    missing: 'without stop coordinates',
+    empty_title: 'No stops on this day',
+    empty_help: 'Add a stop to your itinerary to start a route.',
+    position_help: 'Add coordinates to a stop to place it on the map.',
+  },
+  visits: {
+    label: 'Actual visits',
+    position_label: 'actual visit',
+    description: 'Where your visits happened',
+    region: 'Map of actual visit locations',
+    missing: 'without visit coordinates',
+    empty_title: 'Your journeys will take shape here.',
+    empty_help: 'Check in on a trip to put a memory on the map.',
+    position_help: 'Add actual visit coordinates to see your entries here.',
+  },
+  places: {
+    label: 'Named places',
+    position_label: 'place reference',
+    description: 'Standard positions of named places',
+    region: 'Map of named place reference locations',
+    missing: 'without place coordinates',
+    empty_title: 'Your journeys will take shape here.',
+    empty_help: 'Check in on a trip to put a memory on the map.',
+    position_help: 'Add reference coordinates to your named places to see them here.',
+  },
+};
 
 /** Native tiles use the host HTTP bridge; images only see private blob URLs. */
 class JournalTiles extends GridLayer {
@@ -101,10 +151,6 @@ class JournalTiles extends GridLayer {
   }
 }
 
-function normalizeLongitude(longitude: number): number {
-  return ((((longitude + 180) % 360) + 360) % 360) - 180;
-}
-
 function groupPins(points: MapPoint[]): PinGroup[] {
   const groups = new Map<string, PinGroup>();
   for (const point of points) {
@@ -112,31 +158,30 @@ function groupPins(points: MapPoint[]): PinGroup[] {
     const existing = groups.get(key);
     if (existing) {
       existing.points.push(point);
-      existing.visit_ids.push(...point.visit_ids);
+      existing.entry_ids.push(...point.entry_ids);
     } else {
       groups.set(key, {
         key,
         position: point.position,
         points: [point],
-        visit_ids: [...point.visit_ids],
+        entry_ids: [...point.entry_ids],
       });
     }
   }
   return [...groups.values()];
 }
 
-function visiblePosition(position: Coordinates, map: LeafletMap): [number, number] {
-  const longitude = normalizeLongitude(position.longitude);
-  const wrapped = longitude + 360 * Math.round((map.getCenter().lng - longitude) / 360);
-  return [position.latitude, wrapped];
-}
-
 function fitPins(map: LeafletMap, points: MapPoint[]) {
+  map.invalidateSize();
   const bounds = fitCoordinates(points);
   if (!bounds) {
     map.setView([20, 0], 2, { animate: false });
     return;
   }
+  const height = map.getSize().y;
+  // Leave room for the right-hand zoom buttons and the full pin bubbles. The
+  // caption is hidden on short maps, so more of that height can show the route.
+  const top = Math.min(height <= 360 ? 106 : 156, Math.floor(height * 0.45));
   const clamp = (value: number) => Math.min(85.05112878, Math.max(-85.05112878, value));
   map.fitBounds(
     [
@@ -144,8 +189,8 @@ function fitPins(map: LeafletMap, points: MapPoint[]) {
       [clamp(bounds.north), bounds.east],
     ],
     {
-      paddingTopLeft: [42, 112],
-      paddingBottomRight: [56, 76],
+      paddingTopLeft: [32, top],
+      paddingBottomRight: [82, Math.min(90, Math.floor(height * 0.25))],
       maxZoom: 14,
       animate: false,
     },
@@ -153,16 +198,20 @@ function fitPins(map: LeafletMap, points: MapPoint[]) {
 }
 
 export function MapView({
+  stops,
   visits,
   places,
   platform,
   onOpenVisit,
+  onOpenStop,
   active,
 }: {
+  stops: PlannedStop[];
   visits: CheckIn[];
   places: Place[];
   platform: TravelPlatform;
   onOpenVisit(id: string): void;
+  onOpenStop(id: string): void;
   active: boolean;
 }) {
   const container = useRef<HTMLDivElement>(null);
@@ -170,36 +219,45 @@ export function MapView({
   const tile_layer = useRef<JournalTiles | null>(null);
   const markers = useRef(new Map<string, Marker>());
   const last_fitted = useRef('');
+  const following_pins = useRef(true);
   const [map, setMap] = useState<LeafletMap | null>(null);
-  const [mode, setMode] = useState<MapMode>('visits');
+  const [mode, setMode] = useState<MapMode>('stops');
   const [zoom, setZoom] = useState(2);
   const [tile_failures, setTileFailures] = useState(0);
   const [selected_key, setSelectedKey] = useState<string | null>(null);
   const [unlocated_open, setUnlocatedOpen] = useState(false);
-  const data = useMemo(() => mapPoints(visits, places, mode), [visits, places, mode]);
+  const data = useMemo(
+    () => (mode === 'stops' ? mapStops(stops) : mapPoints(visits, places, mode)),
+    [stops, visits, places, mode],
+  );
   const groups = useMemo(() => groupPins(data.points), [data.points]);
+  const numbers = useMemo(() => new Map(stops.map((stop, index) => [stop.id, index + 1])), [stops]);
   const fit_key = `${mode}:${groups.map((group) => group.key).join(';')}`;
   const selected = groups.find((group) => group.key === selected_key);
-  const visible_ids = new Set(
-    unlocated_open ? data.unlocated_visit_ids : (selected?.visit_ids ?? []),
-  );
-  const selected_visits = visits
+  const visible_ids = new Set(unlocated_open ? data.unlocated_ids : (selected?.entry_ids ?? []));
+  const selected_visits = (mode === 'stops' ? [] : visits)
     .filter((visit) => visible_ids.has(visit.id))
     .sort((a, b) => b.visited_at.localeCompare(a.visited_at));
   const places_by_id = new Map(places.map((place) => [place.id, place]));
-  const mapped_visits = visits.length - data.unlocated_visit_ids.length;
+  const selected_stops = mode === 'stops' ? stops.filter((stop) => visible_ids.has(stop.id)) : [];
+  const total = mode === 'stops' ? stops.length : visits.length;
+  const selection_count = selected_stops.length + selected_visits.length;
+  const displayCount = (count: number) =>
+    mode === 'stops' ? `${count} ${count === 1 ? 'stop' : 'stops'}` : formatEntryCount(count);
+  const labels = map_modes[mode];
   const selected_names = selected ? [...new Set(selected.points.map((point) => point.label))] : [];
 
   useEffect(() => {
     setSelectedKey(null);
     setUnlocatedOpen(false);
-  }, [visits]);
+  }, [stops, visits]);
 
   useEffect(() => {
     if (!container.current) return;
     const instance = createMap(container.current, {
       zoomControl: false,
       attributionControl: true,
+      trackResize: false,
       minZoom: 2,
       maxZoom: 19,
       zoomAnimation: false,
@@ -212,17 +270,8 @@ export function MapView({
     );
     const updateZoom = () => setZoom(instance.getZoom());
     instance.on('zoomend', updateZoom);
-    const resize =
-      typeof ResizeObserver === 'undefined'
-        ? null
-        : new ResizeObserver(() => {
-            if (container.current?.clientWidth && container.current.clientHeight)
-              instance.invalidateSize({ pan: false });
-          });
-    resize?.observe(container.current);
     setMap(instance);
     return () => {
-      resize?.disconnect();
       instance.remove();
     };
   }, []);
@@ -230,11 +279,36 @@ export function MapView({
   // Fit before attaching tiles, so opening the map only downloads its actual viewport.
   useEffect(() => {
     if (!map || !active) return;
-    map.invalidateSize({ pan: false });
-    if (last_fitted.current !== fit_key) {
-      last_fitted.current = fit_key;
+    const markMoved = () => {
+      following_pins.current = false;
+    };
+    map.on('movestart zoomstart', markMoved);
+    const refit = () => {
       fitPins(map, data.points);
-    }
+      following_pins.current = true;
+      last_fitted.current = fit_key;
+    };
+    if (last_fitted.current !== fit_key) refit();
+    const element = map.getContainer();
+    const updateSize = () => {
+      const previous = map.getSize();
+      if (
+        !element.clientHeight ||
+        !element.clientWidth ||
+        (element.clientWidth === previous.x && element.clientHeight === previous.y)
+      )
+        return;
+      if (following_pins.current) refit();
+      else map.invalidateSize();
+    };
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updateSize);
+    if (observer) observer.observe(element);
+    else window.addEventListener('resize', updateSize);
+    return () => {
+      map.off('movestart zoomstart', markMoved);
+      observer?.disconnect();
+      window.removeEventListener('resize', updateSize);
+    };
   }, [map, active, fit_key, data.points]);
 
   useEffect(() => {
@@ -257,6 +331,23 @@ export function MapView({
   }, [map, active, platform.native]);
 
   useEffect(() => {
+    if (!map || !active || mode !== 'stops' || stops.length < 2) return;
+    const path = polyline(routeLines(stops, map.getCenter().lng), {
+      className: 'map-route-line',
+      interactive: false,
+      weight: 3,
+      opacity: 0.92,
+      dashArray: '6 7',
+    }).addTo(map);
+    const wrapRoute = () => path.setLatLngs(routeLines(stops, map.getCenter().lng));
+    map.on('moveend', wrapRoute);
+    return () => {
+      map.off('moveend', wrapRoute);
+      path.remove();
+    };
+  }, [map, active, mode, stops]);
+
+  useEffect(() => {
     if (!map) return;
     const pins = layerGroup().addTo(map);
     const next_markers = new Map<string, Marker>();
@@ -264,16 +355,27 @@ export function MapView({
       const content = document.createElement('span');
       content.className = 'map-pin-bubble';
       const count = document.createElement('span');
-      count.textContent = String(group.visit_ids.length);
+      const planned = mode === 'stops';
+      count.textContent = String(
+        planned ? numbers.get(group.entry_ids[0]) : group.entry_ids.length,
+      );
       content.append(count);
+      if (planned && group.entry_ids.length > 1) {
+        const extra = document.createElement('small');
+        extra.className = 'map-pin-extra';
+        extra.textContent = `+${group.entry_ids.length - 1}`;
+        content.append(extra);
+      }
       const names = [...new Set(group.points.map((point) => point.label))].join(', ');
-      const label = `${names}: ${formatEntryCount(group.visit_ids.length)}`;
-      const pin = marker(visiblePosition(group.position, map), {
+      const label = planned
+        ? group.points.map((point) => `Stop ${numbers.get(point.id)}, ${point.label}`).join(' · ')
+        : `${names}: ${formatEntryCount(group.entry_ids.length)}`;
+      const pin = marker(visiblePosition(group.position, map.getCenter().lng), {
         icon: divIcon({
           className: `journal-map-pin ${mode}`,
           html: content,
           iconSize: [44, 48],
-          iconAnchor: [22, 43],
+          iconAnchor: planned ? [22, 21] : [22, 43],
         }),
         title: label,
         keyboard: true,
@@ -283,7 +385,14 @@ export function MapView({
       element?.setAttribute('aria-label', label);
       element?.setAttribute('data-latitude', String(group.position.latitude));
       element?.setAttribute('data-longitude', String(group.position.longitude));
-      element?.setAttribute('data-visit-count', String(group.visit_ids.length));
+      if (planned) {
+        element?.setAttribute(
+          'data-stop-numbers',
+          group.entry_ids.map((id) => numbers.get(id)).join(','),
+        );
+      } else {
+        element?.setAttribute('data-visit-count', String(group.entry_ids.length));
+      }
       pin.on('click', () => {
         setSelectedKey(group.key);
         setUnlocatedOpen(false);
@@ -293,7 +402,9 @@ export function MapView({
     markers.current = next_markers;
     const wrapPins = () => {
       for (const group of groups)
-        next_markers.get(group.key)?.setLatLng(visiblePosition(group.position, map));
+        next_markers
+          .get(group.key)
+          ?.setLatLng(visiblePosition(group.position, map.getCenter().lng));
     };
     map.on('moveend', wrapPins);
     return () => {
@@ -301,7 +412,7 @@ export function MapView({
       pins.remove();
       next_markers.clear();
     };
-  }, [map, groups, mode]);
+  }, [map, groups, mode, numbers]);
 
   useEffect(() => {
     for (const [key, pin] of markers.current) {
@@ -313,7 +424,7 @@ export function MapView({
     if (!map || !active || !selected || unlocated_open) return;
     const frame = requestAnimationFrame(() => {
       const panel_height = Math.min(panel.current?.clientHeight ?? 160, map.getSize().y * 0.45);
-      map.panInside(visiblePosition(selected.position, map), {
+      map.panInside(visiblePosition(selected.position, map.getCenter().lng), {
         paddingTopLeft: [32, 100],
         paddingBottomRight: [60, panel_height + 28],
         animate: false,
@@ -334,30 +445,20 @@ export function MapView({
         className="journal-map-canvas"
         ref={container}
         role="region"
-        aria-label={
-          mode === 'visits'
-            ? 'Map of actual visit locations'
-            : 'Map of named place reference locations'
-        }
+        aria-label={labels.region}
       />
       <div className="map-top-tools">
         <div className="map-mode-switch" role="group" aria-label="Map positions">
-          <button
-            type="button"
-            aria-pressed={mode === 'visits'}
-            onClick={() => chooseMode('visits')}
-          >
-            <Icon name="locate" size={16} />
-            Actual visits
-          </button>
-          <button
-            type="button"
-            aria-pressed={mode === 'places'}
-            onClick={() => chooseMode('places')}
-          >
-            <Icon name="pin" size={16} />
-            Named places
-          </button>
+          {(['stops', 'visits', 'places'] as const).map((option) => (
+            <button
+              key={option}
+              type="button"
+              aria-pressed={mode === option}
+              onClick={() => chooseMode(option)}
+            >
+              {map_modes[option].label}
+            </button>
+          ))}
         </div>
         <button
           type="button"
@@ -365,7 +466,10 @@ export function MapView({
           aria-label="Fit all map pins"
           title="Fit all pins"
           onClick={() => {
-            if (map) fitPins(map, data.points);
+            if (map) {
+              fitPins(map, data.points);
+              following_pins.current = true;
+            }
           }}
         >
           <Icon name="compass" size={20} />
@@ -374,9 +478,9 @@ export function MapView({
       <div className="map-caption">
         <span className={`map-legend-dot ${mode}`} />
         <span>
-          {mode === 'visits' ? 'Where your visits happened' : 'Standard positions of named places'}
+          {labels.description}
           <small>
-            {mapped_visits} of {formatEntryCount(visits.length)} on the map
+            {total - data.unlocated_ids.length} of {displayCount(total)} on the map
           </small>
         </span>
       </div>
@@ -409,18 +513,8 @@ export function MapView({
       {data.points.length === 0 && !unlocated_open && (
         <div className="map-empty-message">
           <Icon name="pin" size={26} />
-          <strong>
-            {visits.length
-              ? 'These moments need a position.'
-              : 'Your journeys will take shape here.'}
-          </strong>
-          <span>
-            {visits.length
-              ? mode === 'visits'
-                ? 'Add actual visit coordinates to see your entries here.'
-                : 'Add reference coordinates to your named places to see them here.'
-              : 'Check in on a trip to put a memory on the map.'}
-          </span>
+          <strong>{total ? 'Coordinates needed' : labels.empty_title}</strong>
+          <span>{total ? labels.position_help : labels.empty_help}</span>
           {tile_failures > 0 && (
             <span className="map-empty-offline" role="status">
               Map background unavailable.{' '}
@@ -431,7 +525,7 @@ export function MapView({
           )}
         </div>
       )}
-      {data.unlocated_visit_ids.length > 0 && !selected && !unlocated_open && (
+      {data.unlocated_ids.length > 0 && !selected && !unlocated_open && (
         <button
           className="map-missing-button"
           type="button"
@@ -442,8 +536,7 @@ export function MapView({
         >
           <Icon name="pin" size={16} />
           <span>
-            {data.unlocated_visit_ids.length}{' '}
-            {mode === 'visits' ? 'without visit coordinates' : 'without place coordinates'}
+            {data.unlocated_ids.length} {labels.missing}
           </span>
           <Icon name="arrow" size={15} />
         </button>
@@ -452,28 +545,25 @@ export function MapView({
         <section
           className="map-selection-card"
           ref={panel}
-          aria-label={
-            unlocated_open ? 'Entries without coordinates' : 'Entries at selected map pin'
-          }
+          aria-label={`${mode === 'stops' ? 'Stops' : 'Entries'} ${unlocated_open ? 'without coordinates' : 'at selected map pin'}`}
         >
           <header>
             <div>
               <span className="map-card-kicker">
-                {unlocated_open
-                  ? 'NOT ON THIS MAP'
-                  : formatEntryCount(selected_visits.length).toUpperCase()}
+                {unlocated_open ? 'NOT ON THIS MAP' : displayCount(selection_count).toUpperCase()}
               </span>
               <h2>
                 {unlocated_open
                   ? 'Missing coordinates'
                   : selected_names.length === 1
                     ? selected_names[0]
-                    : 'Moments at this position'}
+                    : mode === 'stops'
+                      ? 'Stops at this position'
+                      : 'Moments at this position'}
               </h2>
               {selected && (
                 <p>
-                  {formatCoordinates(selected.position)}{' '}
-                  <span>· {mode === 'visits' ? 'actual visit' : 'place reference'}</span>
+                  {formatCoordinates(selected.position)} <span>· {labels.position_label}</span>
                 </p>
               )}
               {tile_failures > 0 && <p role="status">Map background unavailable.</p>}
@@ -491,6 +581,24 @@ export function MapView({
             </button>
           </header>
           <div className="map-selected-visits">
+            {selected_stops.map((stop) => (
+              <button
+                type="button"
+                className="map-stop-row"
+                key={stop.id}
+                onClick={() => onOpenStop(stop.id)}
+              >
+                <span className="map-stop-number">{numbers.get(stop.id)}</span>
+                <span className="map-stop-copy">
+                  <strong>{stop.title}</strong>
+                  <small>
+                    {stop.time && `${stop.time} · `}
+                    {stop_kind_labels[stop.kind]}
+                  </small>
+                </span>
+                <Icon name="arrow" size={16} />
+              </button>
+            ))}
             {selected_visits.map((visit) => {
               const place = visit.place_id === null ? undefined : places_by_id.get(visit.place_id);
               const title = visitTitle(visit, place);

@@ -10,8 +10,6 @@ import type { Journal } from '../src/lib/types';
 // No device APIs or existing journal data are accessed. The real production
 // SDK speaks to an in-memory host over its ordinary MessageChannel bridge.
 const firefox_path = process.env.FIREFOX_PATH;
-if (!firefox_path)
-  throw new Error('Set FIREFOX_PATH to a Playwright-compatible Firefox executable.');
 const dist_root = resolve(fileURLToPath(new URL('../dist/', import.meta.url)));
 if (!(await Bun.file(resolve(dist_root, 'index.html')).exists())) {
   throw new Error('Build the production app with bun run build before running this check.');
@@ -304,7 +302,7 @@ try {
   }, `http://127.0.0.1:${server.port}`);
 
   const frame = page.frameLocator('#applet');
-  await frame.getByRole('heading', { name: 'Timeline', exact: true }).waitFor();
+  await frame.getByRole('heading', { name: 'Fieldnotes', exact: true }).waitFor();
   const native_frame = page.frames().find((candidate) => candidate.url().endsWith('/index.html'))!;
   assert.equal(
     await native_frame.evaluate(() => self.origin),
@@ -316,26 +314,47 @@ try {
     'undefined',
     'Exercise the custom-scheme UUID fallback.',
   );
-  assert.equal(
-    await frame.getByRole('navigation', { name: 'Main views' }).getByRole('button').count(),
-    2,
-  );
-  assert.equal(http_urls.length, 0, 'Timeline must not request map tiles.');
-  await frame.getByRole('button', { name: 'Start a trip', exact: true }).click();
+  assert.equal(http_urls.length, 0, 'The trip library must not request map tiles.');
+  await frame.getByRole('button', { name: 'New trip', exact: true }).click();
   await frame.getByLabel('Trip name').fill('Native bridge journey');
+  await frame.getByLabel('Start date').fill('2026-05-12');
+  await frame.getByLabel('End date').fill('2026-05-13');
   await frame.getByRole('button', { name: 'Create trip', exact: true }).click();
   await frame.getByRole('dialog').waitFor({ state: 'hidden' });
   assert.equal(journal().trips.length, 1);
 
-  await frame.getByRole('button', { name: 'Add to journal', exact: true }).click();
-
-  await frame.getByRole('button', { name: 'New check-in', exact: true }).click();
+  const trip_title = journal().trips[0].title;
+  await frame.getByRole('heading', { name: trip_title, exact: true }).waitFor();
+  const mainView = (name: string) =>
+    frame
+      .getByRole('navigation', { name: 'Main views' })
+      .getByRole('button', { name, exact: true });
   const dialog = frame.getByRole('dialog');
-  await dialog.getByLabel('Place name', { exact: true }).fill('Lakeside park');
+  for (const [title, latitude, longitude] of [
+    ['Lakeside park', '12', '34'],
+    ['Lookout terrace', '12.02', '34.02'],
+  ]) {
+    await frame.getByRole('button', { name: 'Add stop', exact: true }).click();
+    await dialog.getByLabel('Stop name').fill(title);
+    assert.equal(await dialog.getByLabel('Day', { exact: true }).inputValue(), '2026-05-12');
+    await dialog.locator('summary').click();
+    await dialog.getByLabel('Stop latitude', { exact: true }).fill(latitude);
+    await dialog.getByLabel('Stop longitude', { exact: true }).fill(longitude);
+    await dialog.getByRole('button', { name: 'Save stop', exact: true }).click();
+    await dialog.waitFor({ state: 'hidden' });
+  }
+  assert.deepEqual(
+    journal().stops.map(({ title }) => title),
+    ['Lakeside park', 'Lookout terrace'],
+  );
+  assert.equal(http_urls.length, 0, 'Planning a stop must not request map tiles.');
+
+  await frame.getByRole('button', { name: 'Check in at Lakeside park', exact: true }).click();
+  assert.equal(
+    await dialog.getByLabel('Place name', { exact: true }).inputValue(),
+    'Lakeside park',
+  );
   await dialog.getByLabel('City or area').fill('North district');
-  await dialog.locator('summary').click();
-  await dialog.getByLabel('Place latitude', { exact: true }).fill('12');
-  await dialog.getByLabel('Place longitude', { exact: true }).fill('34');
   await dialog.getByLabel('Visit date & time').fill('2026-05-12T18:30');
   await dialog.getByLabel('Visit time zone').selectOption('480');
   await dialog.getByLabel('Notes').fill('A native photo and a separate visit position.');
@@ -384,6 +403,7 @@ try {
   await dialog.waitFor({ state: 'hidden' });
   let saved = journal();
   assert.equal(saved.check_ins.length, 1);
+  assert.equal(saved.check_ins[0].stop_id, saved.stops[0].id);
   assert.equal(saved.check_ins[0].photos.length, 2);
   assert.equal(saved.check_ins[0].visited_at, '2026-05-12T10:30:00.000Z');
   assert.deepEqual(saved.places[0].position, { latitude: 12, longitude: 34 });
@@ -399,11 +419,9 @@ try {
     .scrollIntoViewIfNeeded();
   await imageReady(frame.getByRole('img', { name: 'Lakeside park, photo 1', exact: true }));
 
-  await frame.getByRole('button', { name: 'Add to journal', exact: true }).click();
-
   await frame.getByRole('button', { name: 'New check-in', exact: true }).click();
   await dialog.getByLabel('Choose a saved place').selectOption(saved.places[0].id);
-  await dialog.getByLabel('Visit date & time').fill('2026-05-13T18:30');
+  await dialog.getByLabel('Visit date & time').fill('2026-05-12T19:30');
   await dialog.getByLabel('Notes').fill('A return visit without recorded coordinates.');
   await dialog.getByRole('button', { name: 'Save check-in', exact: true }).click();
   await dialog.waitFor({ state: 'hidden' });
@@ -412,19 +430,15 @@ try {
   assert.equal(saved.check_ins[1].actual_location, null);
 
   await native_frame.goto(`http://127.0.0.1:${server.port}/index.html`);
-  await frame.getByRole('heading', { name: 'Timeline', exact: true }).waitFor();
+  await frame.getByRole('button', { name: `Open trip ${trip_title}`, exact: true }).click();
+  await frame.getByRole('button', { name: 'Edit Lookout terrace', exact: true }).waitFor();
+  await mainView('Journal').click();
   await frame.locator('.timeline-list .visit-card').nth(1).waitFor();
   await frame
     .getByRole('button', { name: 'Open photo: Lakeside park, photo 1', exact: true })
     .scrollIntoViewIfNeeded();
   await imageReady(frame.getByRole('img', { name: 'Lakeside park, photo 1', exact: true }));
   assert.deepEqual(journal(), saved, 'Reopening should preserve the saved journal and images.');
-  await frame.getByRole('button', { name: /^Trip filter:/ }).click();
-  await frame
-    .getByRole('dialog', { name: 'Filter trips', exact: true })
-    .getByRole('listbox', { name: 'Trips', exact: true })
-    .getByRole('option', { name: saved.trips[0].title, exact: true })
-    .click();
   const assertNativeLayout = async () => {
     const geometry = await native_frame.evaluate(() => {
       const footer = document.querySelector('.bottom-bar')!.getBoundingClientRect();
@@ -434,9 +448,9 @@ try {
         body_height: document.body.scrollHeight,
         viewport_width: innerWidth,
         viewport_height: innerHeight,
-        header_height: document.querySelector('.view-header')!.getBoundingClientRect().height,
-        footer_height: footer.height,
-        main_height: document.querySelector('.app-content')!.getBoundingClientRect().height,
+        main_bottom: document.querySelector('main')!.getBoundingClientRect().bottom,
+        main_height: document.querySelector('main')!.getBoundingClientRect().height,
+        footer_top: footer.top,
         bottom: footer.bottom,
       };
     });
@@ -453,11 +467,13 @@ try {
       Math.abs(geometry.bottom - geometry.viewport_height) <= 2,
       'Native bottom tabs must remain visible.',
     );
-    assert(geometry.header_height <= 60, 'Native header must stay compact.');
-    assert(geometry.footer_height <= 60, 'Native footer must stay compact.');
     assert(
-      geometry.main_height >= geometry.viewport_height - 120,
-      'Native navigation must leave the rest of the viewport available to the main view.',
+      geometry.main_bottom <= geometry.footer_top + 1,
+      'Navigation must not cover the main view.',
+    );
+    assert(
+      geometry.main_height >= geometry.viewport_height / 2,
+      'The main view must remain usable on a compact screen.',
     );
   };
   await assertNativeLayout();
@@ -466,11 +482,51 @@ try {
   await frame
     .locator('.app-shell')
     .screenshot({ path: resolve(qa_directory, 'native-timeline.png') });
+  await mainView('Map').click();
+  const itinerary_date = frame.getByLabel('Choose itinerary date', { exact: true });
+  await itinerary_date.fill('2026-05-12');
+  const second_stop = frame.getByRole('button', { name: 'Stop 2, Lookout terrace', exact: true });
+  const assertPinsTouchable = async (expected: number) => {
+    await native_frame.waitForFunction((count) => {
+      const pins = [...document.querySelectorAll('.journal-map-pin')];
+      return (
+        innerWidth === 320 &&
+        pins.length === count &&
+        pins.every((pin) => {
+          const number = pin.querySelector('.map-pin-bubble > span')!.getBoundingClientRect();
+          const y = (number.top + number.bottom) / 2;
+          return [number.left, number.right - 1].every((x) =>
+            pin.contains(document.elementFromPoint(x, y)),
+          );
+        })
+      );
+    }, expected);
+  };
+  await second_stop.waitFor();
+  assert.equal(await second_stop.getAttribute('data-stop-numbers'), '2');
+  await frame.locator('.map-route-line').waitFor();
+  await page.locator('#applet').evaluate((element) => {
+    element.style.width = '320px';
+    element.style.height = '568px';
+  });
+  await assertPinsTouchable(2);
+  await frame.getByRole('button', { name: 'Fit all map pins' }).click();
+  await assertPinsTouchable(2);
+  await second_stop.click();
   await frame
-    .getByRole('navigation', { name: 'Main views' })
-    .getByRole('button', { name: 'Map', exact: true })
+    .getByRole('region', { name: 'Stops at selected map pin' })
+    .getByRole('button', { name: /Lookout terrace/ })
     .click();
-  await frame.locator('.journal-map-pin').waitFor();
+  assert.equal(await dialog.getByLabel('Stop name').inputValue(), 'Lookout terrace');
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await dialog.waitFor({ state: 'hidden' });
+  await itinerary_date.fill('2026-05-13');
+  await frame.getByText('No stops on this day', { exact: true }).waitFor();
+  assert.equal(await frame.locator('.journal-map-pin').count(), 0);
+  await itinerary_date.fill('2026-05-12');
+  await frame.getByRole('button', { name: 'Actual visits', exact: true }).click();
+  await frame.locator('.journal-map-pin[data-visit-count="1"]').waitFor();
+  await assertPinsTouchable(1);
   await frame.locator('.leaflet-tile-loaded').first().waitFor();
   await assertNativeLayout();
   assert.equal(await frame.locator('.journal-map-pin').getAttribute('data-latitude'), '12.34567');
@@ -505,14 +561,8 @@ try {
     document.querySelector<HTMLIFrameElement>('#applet')!.style.height = '500px';
   });
   await assertNativeLayout();
-  await frame
-    .getByRole('navigation', { name: 'Main views' })
-    .getByRole('button', { name: 'Timeline', exact: true })
-    .click();
-  assert.equal(
-    (await frame.getByRole('button', { name: /^Trip filter:/ }).innerText()).trim(),
-    saved.trips[0].title,
-  );
+  await mainView('Journal').click();
+  await frame.getByRole('heading', { name: trip_title, exact: true }).waitFor();
   await assertNativeLayout();
   assert(http_urls.length > 0, 'Native map must use the mocked HTTP bridge.');
   assert(
@@ -529,7 +579,6 @@ try {
       eventImage('2026:06:10 08:15:00', 12),
     ])),
   );
-  await frame.getByRole('button', { name: 'Add to journal', exact: true }).click();
   await frame.getByRole('button', { name: 'Events from photos', exact: true }).click();
   const importer = frame.getByRole('dialog', { name: 'Events from photos', exact: true });
   for (let i = 0; i < 3; i++) {
@@ -651,6 +700,8 @@ try {
   await dialog.getByRole('heading', { name: 'A quiet morning' }).waitFor();
   saved = journal();
   await native_frame.goto(`http://127.0.0.1:${server.port}/index.html`);
+  await frame.getByRole('button', { name: `Open trip ${trip_title}`, exact: true }).click();
+  await mainView('Journal').click();
   await frame.getByRole('button', { name: 'Open event A quiet morning', exact: true }).click();
   await imageReady(dialog.getByRole('img', { name: 'A quiet morning, photo 2' }));
   assert.deepEqual(journal(), saved);
@@ -689,7 +740,8 @@ try {
           'two distinct positions',
           'save failure and retry',
           'reopen persistence',
-          'Timeline and Map with fixed compact navigation',
+          'daily stop persistence, linked check-ins, route paths and day filtering',
+          'itinerary, journal and map navigation on a compact screen',
           'mocked native tile requests and cache',
           'distinct map position modes and missing coordinates',
           'multi-photo EXIF grouping, title request privacy, editable AI and manual titles',

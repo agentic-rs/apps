@@ -148,20 +148,29 @@ try {
           };
         }),
     );
-  const waitClosed = () => page.locator('dialog').waitFor({ state: 'detached' });
-  const filterButton = () => page.getByRole('button', { name: /^Trip filter:/ });
-  const tripTitle = async (id: string) =>
-    id ? (await readJournal()).trips.find((trip) => trip.id === id)!.title : 'All trips';
-  const chooseTripFilter = async (id: string) => {
-    const title = await tripTitle(id);
-    await filterButton().click();
-    const popup = page.getByRole('dialog', { name: 'Filter trips', exact: true });
-    await popup
-      .getByRole('listbox', { name: 'Trips', exact: true })
-      .getByRole('option', { name: title, exact: true })
+  const waitClosed = () => page.locator('dialog').first().waitFor({ state: 'detached' });
+  const button = (name: string) => page.getByRole('button', { name, exact: true });
+  const goTo = async (view: 'Itinerary' | 'Journal' | 'Map') => {
+    await page
+      .getByRole('navigation', { name: 'Main views' })
+      .getByRole('button', { name: view, exact: true })
       .click();
-    await popup.waitFor({ state: 'detached' });
-    assert.equal((await filterButton().innerText()).trim(), title);
+  };
+  const chooseDay = async (date: string) => {
+    const picker = page.getByLabel('Choose itinerary date');
+    await picker.fill(date);
+    assert.equal(await picker.inputValue(), date);
+  };
+  const openTrip = () => button('Open trip Coastal days').click();
+  const addStop = async (name: string, latitude: string, longitude: string) => {
+    await button('Add stop').click();
+    const editor = page.getByRole('dialog', { name: 'Add stop', exact: true });
+    await editor.getByLabel('Stop name').fill(name);
+    await editor.getByText('Map coordinates', { exact: false }).click();
+    await editor.getByLabel('Stop latitude').fill(latitude);
+    await editor.getByLabel('Stop longitude').fill(longitude);
+    await editor.getByRole('button', { name: 'Save stop' }).click();
+    await waitClosed();
   };
   const assertFullScreenEditor = async (editor: Locator) => {
     await editor.waitFor({ state: 'visible' });
@@ -186,55 +195,6 @@ try {
       `Editor must fill the viewport: ${JSON.stringify(geometry)}`,
     );
   };
-  const assertAnchoredPopover = async (trigger: Locator, popup: Locator) => {
-    await popup.waitFor({ state: 'visible' });
-    const [anchor, bounds] = await Promise.all([trigger.boundingBox(), popup.boundingBox()]);
-    assert(anchor && bounds, 'The popover and its trigger must be visible.');
-    const viewport = page.viewportSize()!;
-    assert(
-      bounds.width <= viewport.width - 16 && bounds.height < viewport.height - 60,
-      'A small menu must not occupy the full screen.',
-    );
-    assert(
-      bounds.x >= 0 &&
-        bounds.y >= 0 &&
-        bounds.x + bounds.width <= viewport.width + 1 &&
-        bounds.y + bounds.height <= viewport.height + 1,
-      'Popover must fit inside the viewport.',
-    );
-    assert(
-      Math.min(
-        Math.abs(bounds.y - anchor.y - anchor.height),
-        Math.abs(bounds.y + bounds.height - anchor.y),
-      ) <= 16,
-      `Popover must stay next to its trigger: ${JSON.stringify({ anchor, bounds })}`,
-    );
-    assert(
-      Math.min(bounds.x + bounds.width, anchor.x + anchor.width) > Math.max(bounds.x, anchor.x),
-      'Popover must align horizontally with its trigger.',
-    );
-  };
-  const checkPopoverDismissal = async (trigger: Locator, title: string) => {
-    const popup = page.getByRole('dialog', { name: title, exact: true });
-    await trigger.click();
-    await assertAnchoredPopover(trigger, popup);
-    await page.screenshot({
-      path: resolve(output, `${title === 'Your trips' ? 'trips' : 'filter'}-popover.png`),
-    });
-    await page.mouse.click(2, page.viewportSize()!.height - 80);
-    await popup.waitFor({ state: 'detached' });
-    assert(
-      await trigger.evaluate((element) => element === document.activeElement),
-      'Outside dismissal must restore focus to the triggering button.',
-    );
-    await trigger.click();
-    await page.keyboard.press('Escape');
-    await popup.waitFor({ state: 'detached' });
-    assert(
-      await trigger.evaluate((element) => element === document.activeElement),
-      'Escape dismissal must restore focus to the triggering button.',
-    );
-  };
   const closeDetail = async () => {
     await page
       .getByRole('dialog', { name: 'Check-in', exact: true })
@@ -245,7 +205,7 @@ try {
   const assertMobileLayout = async () => {
     assert.equal(
       await page.getByRole('navigation', { name: 'Main views' }).getByRole('button').count(),
-      2,
+      3,
     );
     const layout = await page.evaluate(() => {
       const footer = document.querySelector<HTMLElement>('.bottom-bar')!.getBoundingClientRect();
@@ -272,21 +232,45 @@ try {
     assert(layout.footer_height >= 44, 'Bottom navigation needs a usable touch target.');
   };
   await page.goto(`http://127.0.0.1:${server.port}`);
-  await page.getByRole('heading', { name: 'Timeline', exact: true }).waitFor();
-  assert.equal(tile_requests, 0, 'Opening Timeline must not fetch map tiles.');
+  await page.getByRole('heading', { name: 'Fieldnotes', exact: true }).waitFor();
+  assert.equal(tile_requests, 0, 'Opening the trip library must not fetch map tiles.');
   await page.screenshot({ path: resolve(output, 'desktop-empty.png'), fullPage: true });
-  await page.getByRole('button', { name: 'Start a trip', exact: true }).click();
+  await page.getByRole('button', { name: 'New trip', exact: true }).click();
   await page.getByLabel('Trip name').fill('Coastal days');
   await page.getByLabel('Start date').fill('2026-05-01');
   await page.getByLabel('End date').fill('2026-05-04');
   await page
-    .getByLabel('A little about the trip')
+    .getByLabel('Description')
     .fill('A few quiet days, new streets, and the long way home.');
   await page.locator('dialog').getByRole('button', { name: 'Create trip', exact: true }).click();
   await waitClosed();
-  await page.getByRole('button', { name: 'Add to journal', exact: true }).click();
-  await page.getByRole('button', { name: 'New check-in', exact: true }).click();
-  await page.getByLabel('Place name', { exact: true }).fill('Old harbour');
+  const second_tab = await context.newPage();
+  await second_tab.goto(page.url());
+  await second_tab.getByRole('button', { name: 'Open trip Coastal days' }).click();
+  await second_tab.getByRole('button', { name: 'Add stop', exact: true }).click();
+  await second_tab.getByLabel('Stop name').fill('Draft in another tab');
+  await addStop('Lookout', '10.14', '20.56');
+  await second_tab.getByRole('button', { name: 'Save stop' }).click();
+  await second_tab.getByRole('alert').filter({ hasText: 'changed in another window' }).waitFor();
+  assert.equal((await readJournal()).stops.length, 1);
+  await second_tab.close();
+  await addStop('Old harbour', '10.12', '20.54');
+  await button('Move Old harbour earlier').click();
+  await page.waitForFunction(
+    () => document.querySelector('.itinerary-stop-title')?.textContent === 'Old harbour',
+  );
+  assert.deepEqual(
+    (await readJournal()).stops.map((stop) => stop.title),
+    ['Old harbour', 'Lookout'],
+  );
+  await button('Edit Lookout').click();
+  await page.getByLabel('Category').selectOption('food');
+  await page.getByLabel('Time').fill('12:45');
+  await page.getByLabel('Notes').fill('A picnic above the bay.');
+  await button('Save stop').click();
+  await waitClosed();
+  await button('Check in at Old harbour').click();
+  assert.equal(await page.getByLabel('Place name', { exact: true }).inputValue(), 'Old harbour');
   await page.getByLabel('City or area').fill('Seaside');
   await page.locator('summary').click();
   await page.getByLabel('Place latitude', { exact: true }).fill('10.12');
@@ -339,14 +323,17 @@ try {
   await page.getByRole('button', { name: 'Save check-in', exact: true }).click();
   await waitClosed();
   let journal = await readJournal();
-  const trip_id = journal.trips[0].id;
+  assert.equal(journal.check_ins[0].stop_id, journal.stops[0].id);
+  await page
+    .getByRole('group', { name: 'Journal at Old harbour' })
+    .getByRole('button', { name: 'Open check-in at Old harbour' })
+    .waitFor();
   const place_id = journal.places[0].id;
   assert.equal(journal.places.length, 1);
   assert.equal(journal.check_ins[0].actual_location?.latitude, 10.12345);
   assert.equal(journal.places[0].position?.latitude, 10.12);
   assert.equal(journal.check_ins[0].visited_at, '2026-05-01T01:35:00.000Z');
   assert.equal(await readPhotoCount(), 1);
-  await page.getByRole('button', { name: 'Add to journal', exact: true }).click();
   await page.getByRole('button', { name: 'New check-in', exact: true }).click();
   await page.getByLabel('Choose a saved place').selectOption(journal.places[0].id);
   await page.getByLabel('Visit latitude', { exact: true }).fill('10.13');
@@ -362,6 +349,9 @@ try {
     journal.check_ins[0].actual_location?.latitude,
     journal.check_ins[1].actual_location?.latitude,
   );
+  assert.equal(await page.getByLabel('Choose itinerary date').inputValue(), '2026-05-02');
+  assert.equal(await page.locator('.itinerary-stops li').count(), 0);
+  await goTo('Journal');
   assert(
     (await page.locator('.timeline-list .visit-card').first().innerText()).includes('Back again'),
     'Timeline must show the newest visit first.',
@@ -392,7 +382,6 @@ try {
   await page.locator('.lightbox img').waitFor();
   await page.getByRole('button', { name: 'Close dialog' }).click();
   await waitClosed();
-  await page.getByRole('button', { name: 'Add to journal', exact: true }).click();
   await page.getByRole('button', { name: 'New check-in', exact: true }).click();
   await page.getByLabel('Place name', { exact: true }).fill('Unknown stop');
   await page.getByLabel('Visit date & time').fill('2026-05-03T11:00');
@@ -404,35 +393,18 @@ try {
   await page.getByLabel('Trip name').fill('City wander');
   await page.getByRole('button', { name: 'Create trip', exact: true }).click();
   await waitClosed();
-  await chooseTripFilter(trip_id);
+  assert.equal(await page.locator('.itinerary-stops li').count(), 0);
+  assert.equal(await page.locator('.visit-card').count(), 0);
   await page.reload();
+  await openTrip();
+  await goTo('Journal');
   await page.locator('.timeline-list .visit-card').nth(2).waitFor();
   assert.equal(await page.locator('.timeline-list .visit-card').count(), 3);
-  await chooseTripFilter(trip_id);
-  await page.setViewportSize({ width: 390, height: 844 });
-  await checkPopoverDismissal(
-    page.getByRole('button', { name: 'Trips', exact: true }),
-    'Your trips',
-  );
-  await checkPopoverDismissal(filterButton(), 'Filter trips');
-  await filterButton().click();
-  assert.equal(
-    await page
-      .getByRole('dialog', { name: 'Filter trips' })
-      .getByRole('option', { name: 'Coastal days', exact: true })
-      .getAttribute('aria-selected'),
-    'true',
-  );
-  await page.keyboard.press('Escape');
-  await waitClosed();
+  await button('Trips').click();
   for (const height of [844, 500]) {
     await page.setViewportSize({ width: 390, height });
-    await page.getByRole('button', { name: 'Trips', exact: true }).click();
-    await page
-      .getByRole('dialog', { name: 'Your trips', exact: true })
-      .getByRole('button', { name: 'New trip', exact: true })
-      .click();
-    const editor = page.getByRole('dialog', { name: 'A new adventure', exact: true });
+    await button('New trip').click();
+    const editor = page.getByRole('dialog', { name: 'New trip', exact: true });
     await assertFullScreenEditor(editor);
     await page.screenshot({ path: resolve(output, `trip-form-${height}.png`) });
     await editor.getByLabel('Trip name').fill('Unsaved travel idea');
@@ -450,16 +422,22 @@ try {
     );
   }
   await page.setViewportSize({ width: 390, height: 844 });
+  await openTrip();
   await assertMobileLayout();
-  await page.screenshot({ path: resolve(output, 'mobile-timeline.png'), fullPage: true });
-  await page.getByRole('button', { name: 'Add to journal', exact: true }).click();
+  await page
+    .locator('.itinerary-linked .visit-photos img')
+    .evaluate((image) => (image as HTMLImageElement).decode());
+  await page.screenshot({ path: resolve(output, 'mobile-itinerary.png'), fullPage: true });
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await page.screenshot({ path: resolve(output, 'mobile-itinerary-dark.png') });
+  await page.emulateMedia({ colorScheme: 'light' });
   await page.getByRole('button', { name: 'New check-in', exact: true }).click();
-  await assertFullScreenEditor(page.getByRole('dialog', { name: 'Keep this moment', exact: true }));
+  await assertFullScreenEditor(page.getByRole('dialog', { name: 'New check-in', exact: true }));
   await page.getByLabel('Choose a saved place').selectOption(place_id);
   await page.getByLabel('Visit latitude', { exact: true }).fill('12');
   await page.screenshot({ path: resolve(output, 'mobile-form.png'), fullPage: true });
   await page.setViewportSize({ width: 390, height: 500 });
-  await assertFullScreenEditor(page.getByRole('dialog', { name: 'Keep this moment', exact: true }));
+  await assertFullScreenEditor(page.getByRole('dialog', { name: 'New check-in', exact: true }));
   await page.screenshot({ path: resolve(output, 'compact-form.png'), fullPage: true });
   await page.getByRole('button', { name: 'Save check-in' }).click();
   await page.getByRole('alert').filter({ hasText: 'Enter both latitude and longitude' }).waitFor();
@@ -470,122 +448,44 @@ try {
   await page.getByRole('button', { name: 'Discard changes' }).click();
   await waitClosed();
   await page.setViewportSize({ width: 390, height: 844 });
-  await page
-    .getByRole('navigation', { name: 'Main views' })
-    .getByRole('button', { name: 'Map', exact: true })
-    .click();
-  await page.locator('.journal-map-pin').nth(1).waitFor();
+  await chooseDay('2026-05-01');
+  await goTo('Map');
+  await page.locator('.map-route-line').waitFor();
+  await page.locator('.journal-map-pin[data-stop-numbers="1"][data-latitude="10.12"]').click();
+  await page.getByRole('region', { name: 'Stops at selected map pin' }).waitFor();
+  await button('Close map selection').click();
   await page.locator('.leaflet-tile-loaded').first().waitFor();
   assert(tile_requests > 0, 'Map must load the mocked tile service.');
-  const positions = () =>
-    page.locator('.journal-map-pin').evaluateAll((elements) =>
-      elements
-        .map((element) => ({
-          latitude: Number(element.getAttribute('data-latitude')),
-          longitude: Number(element.getAttribute('data-longitude')),
-          visits: Number(element.getAttribute('data-visit-count')),
-        }))
-        .sort((a, b) => a.latitude - b.latitude),
-    );
-  assert.deepEqual(await positions(), [
-    { latitude: 10.12345, longitude: 20.54321, visits: 1 },
-    { latitude: 10.13, longitude: 20.55, visits: 1 },
-  ]);
-  await page.getByRole('button', { name: '1 without visit coordinates' }).waitFor();
   await assertMobileLayout();
   await page.screenshot({ path: resolve(output, 'mobile-map.png'), fullPage: true });
-  await page.setViewportSize({ width: 390, height: 500 });
-  await assertMobileLayout();
-  await page.screenshot({ path: resolve(output, 'compact-map.png'), fullPage: true });
   await page.setViewportSize({ width: 320, height: 568 });
   await assertMobileLayout();
-  const attribution_geometry = await page.evaluate(() => {
-    const attribution = document
-      .querySelector('.leaflet-control-attribution')!
-      .getBoundingClientRect();
-    const add_button = document.querySelector('.add-check-in')!.getBoundingClientRect();
-    return {
-      overlap_width:
-        Math.min(attribution.right, add_button.right) - Math.max(attribution.left, add_button.left),
-      overlap_height:
-        Math.min(attribution.bottom, add_button.bottom) - Math.max(attribution.top, add_button.top),
-      attribution_left: attribution.left,
-      attribution_right: attribution.right,
-      viewport_width: innerWidth,
-    };
-  });
-  assert(
-    attribution_geometry.overlap_width <= 0 || attribution_geometry.overlap_height <= 0,
-    `The add button overlaps map attribution at 320px: ${JSON.stringify(attribution_geometry)}`,
-  );
-  assert(
-    attribution_geometry.attribution_left >= 0 &&
-      attribution_geometry.attribution_right <= attribution_geometry.viewport_width,
-    'Map attribution must remain fully inside the narrow viewport.',
-  );
+  await button('Fit all map pins').click();
+  const attribution = await page.locator('.leaflet-control-attribution').boundingBox();
+  assert(attribution && attribution.x >= 0 && attribution.x + attribution.width <= 321);
   await page.screenshot({ path: resolve(output, 'narrow-map.png'), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole('button', { name: 'Named places', exact: true }).click();
-  await page.locator('.journal-map-pin[data-visit-count="2"]').waitFor();
-  assert.deepEqual(await positions(), [{ latitude: 10.12, longitude: 20.54, visits: 2 }]);
-  await page.getByRole('button', { name: '1 without place coordinates' }).click();
-  const empty_trip_id = (await readJournal()).trips.find(
-    (trip) => trip.title === 'City wander',
-  )!.id;
-  await page.getByRole('region', { name: 'Entries without coordinates' }).waitFor();
-  await chooseTripFilter(empty_trip_id);
-  await page.locator('.map-selection-card').waitFor({ state: 'detached' });
-  assert.equal(await page.locator('.journal-map-pin').count(), 0);
-  assert.equal(
-    await page
-      .getByRole('button', { name: 'Named places', exact: true })
-      .getAttribute('aria-pressed'),
-    'true',
-  );
-  await chooseTripFilter(trip_id);
-  await page.locator('.journal-map-pin[data-visit-count="2"]').waitFor();
-  assert.equal(
-    await page.locator('.map-selection-card').count(),
-    0,
-    'Returning to the trip must not reopen a stale missing-coordinate panel.',
-  );
-  await page.getByRole('button', { name: '1 without place coordinates' }).click();
-  await page
-    .getByRole('region', { name: 'Entries without coordinates' })
-    .getByRole('button', { name: 'View check-in' })
-    .click();
+  await chooseDay('2026-05-02');
+  await page.getByText('No stops on this day', { exact: true }).waitFor();
+  assert.equal(await page.locator('.map-route-line').count(), 0);
+  await button('Actual visits').click();
+  await page.locator('.journal-map-pin[data-latitude="10.13"][data-longitude="20.55"]').waitFor();
+  assert.equal(await page.locator('.journal-map-pin').count(), 1);
+  await chooseDay('2026-05-03');
+  await button('1 without visit coordinates').click();
+  const missing = page.getByRole('region', { name: 'Entries without coordinates' });
+  await missing.getByRole('button', { name: 'View check-in' }).click();
   const detail = page.getByRole('dialog', { name: 'Check-in', exact: true });
   await detail.getByRole('heading', { name: 'Unknown stop' }).waitFor();
   assert((await detail.innerText()).includes('Location not recorded'));
-  assert((await detail.innerText()).includes('No reference coordinates'));
   await closeDetail();
-  await page.getByRole('button', { name: 'Close map selection' }).click();
-  await page.locator('.journal-map-pin').click();
-  await page.getByRole('region', { name: 'Entries at selected map pin' }).waitFor();
-  await chooseTripFilter(empty_trip_id);
-  await page.locator('.map-selection-card').waitFor({ state: 'detached' });
-  await chooseTripFilter(trip_id);
-  await page.locator('.journal-map-pin[data-visit-count="2"]').waitFor();
-  assert.equal(
-    await page.locator('.map-selection-card').count(),
-    0,
-    'A selected pin from another trip must not survive filtering.',
+  await chooseDay('2026-05-01');
+  await missing.waitFor({ state: 'detached' });
+  await button('Named places').click();
+  const named_pin = page.locator(
+    '.journal-map-pin[data-latitude="10.12"][data-longitude="20.54"][data-visit-count="1"]',
   );
-  assert.equal(
-    await page
-      .getByRole('button', { name: 'Named places', exact: true })
-      .getAttribute('aria-pressed'),
-    'true',
-  );
-  await page.locator('.journal-map-pin').click();
-  await page
-    .getByRole('region', { name: 'Entries at selected map pin' })
-    .getByRole('button', { name: 'View check-in' })
-    .first()
-    .click();
-  await detail.getByRole('heading', { name: 'Old harbour' }).waitFor();
-  await closeDetail();
-  await page.getByRole('button', { name: 'Close map selection' }).click();
+  await named_pin.waitFor();
   fail_tiles = true;
   await page.getByRole('button', { name: 'Zoom in', exact: true }).click();
   await page
@@ -596,7 +496,7 @@ try {
     failed_tile_requests > 0,
     'The outage scenario must request uncached tiles at a new zoom.',
   );
-  assert.deepEqual(await positions(), [{ latitude: 10.12, longitude: 20.54, visits: 2 }]);
+  await named_pin.waitFor();
   await page.locator('.journal-map-pin').click();
   await page
     .getByRole('region', { name: 'Entries at selected map pin' })
@@ -621,12 +521,44 @@ try {
     successful_tile_requests > successes_before_retry,
     'Retry must obtain replacement tiles after the outage.',
   );
-  assert.equal((await filterButton().innerText()).trim(), await tripTitle(trip_id));
+  await goTo('Itinerary');
+  await button('Edit Lookout').click();
+  await page.getByLabel('Day', { exact: true }).fill('2026-05-04');
+  await button('Save stop').click();
+  await waitClosed();
+  assert.equal(await page.getByLabel('Choose itinerary date').inputValue(), '2026-05-04');
+  await button('Edit Lookout').waitFor();
+  assert.equal(await button('Edit Old harbour').count(), 0);
+  await chooseDay('2026-05-01');
+  await button('Edit Old harbour').click();
+  await page.getByLabel('Day', { exact: true }).fill('2026-05-04');
+  await button('Save stop').click();
+  await waitClosed();
+  const linked = page.getByRole('group', { name: 'Journal at Old harbour' });
+  await linked.getByText('Recorded 1 May 2026').waitFor();
+  await linked.getByRole('button', { name: 'Open check-in at Old harbour' }).click();
+  await detail.getByText('The best kind of morning.').waitFor();
+  await closeDetail();
+  await chooseDay('2026-05-01');
   await page
-    .getByRole('navigation', { name: 'Main views' })
-    .getByRole('button', { name: 'Timeline', exact: true })
-    .click();
-  assert.equal((await filterButton().innerText()).trim(), await tripTitle(trip_id));
+    .getByRole('region', { name: 'Day journal' })
+    .getByRole('button', { name: 'Open check-in at Old harbour' })
+    .waitFor();
+  await chooseDay('2026-05-04');
+  await button('Edit Old harbour').click();
+  await button('Delete stop').click();
+  await button('Delete').click();
+  await waitClosed();
+  const unlinked = await readJournal();
+  assert.equal(unlinked.stops.length, 1);
+  assert.equal(unlinked.check_ins[0].stop_id, undefined);
+  assert.equal(await readPhotoCount(), 1);
+  await chooseDay('2026-05-01');
+  await page
+    .getByRole('region', { name: 'Day journal' })
+    .getByRole('button', { name: 'Open check-in at Old harbour' })
+    .waitFor();
+  await goTo('Journal');
   await assertMobileLayout();
   await page.setViewportSize({ width: 390, height: 500 });
   await assertMobileLayout();
@@ -662,7 +594,6 @@ try {
   assert.equal((await readJournal()).check_ins.length, 2);
 
   const openPhotoEvents = async () => {
-    await page.getByRole('button', { name: 'Add to journal', exact: true }).click();
     await page.getByRole('button', { name: 'Events from photos', exact: true }).click();
     return page.getByRole('dialog', { name: 'Events from photos', exact: true });
   };
@@ -779,6 +710,8 @@ try {
   assert.equal(await readPhotoCount(), initial_photo_count + 4);
   assert.deepEqual(await readJournal(), after_import);
   await page.reload();
+  await openTrip();
+  await goTo('Journal');
   await page.getByLabel('Search timeline').fill('Morning at the first stop');
   const morning_card = page.getByRole('button', {
     name: 'Open event Morning at the first stop',
@@ -802,6 +735,8 @@ try {
     .getByRole('navigation', { name: 'Main views' })
     .getByRole('button', { name: 'Map', exact: true })
     .click();
+  await chooseDay('2026-05-05');
+  await button('Actual visits').click();
   await page.locator('.journal-map-pin[data-latitude="12"][data-longitude="20"]').click();
   const event_pin = page.getByRole('region', { name: 'Entries at selected map pin' });
   await event_pin.getByRole('heading', { name: 'A new title for the morning', level: 3 }).waitFor();
@@ -814,7 +749,7 @@ try {
     'Smoke tests must never use unmocked external services.',
   );
   console.log(
-    'Firefox smoke passed: anchored popovers/dismissal/focus return, full-screen editors/discard recovery, Timeline + Map, photo event grouping, batch save retry and discard, event search/edit/reopen, separate locations, missing coordinates, filter reset, offline pins/retry, mocked tiles, and fixed mobile navigation down to 320px.',
+    'Firefox smoke passed: trip and day navigation, saved stop order, day routes, linked check-ins, journal photos, offline map retry, photo event review and mobile layouts.',
   );
 } finally {
   await browser.close();

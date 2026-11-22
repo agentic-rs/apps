@@ -1,19 +1,19 @@
 import { parseCoordinates, visitTitle } from './model';
-import type { CheckIn, Coordinates, Place } from './types';
+import type { CheckIn, Coordinates, Place, PlannedStop } from './types';
 
-export type MapMode = 'visits' | 'places';
+export type MapMode = 'stops' | 'visits' | 'places';
 
 export interface MapPoint {
   id: string;
   position: Coordinates;
   place_id: string | null;
-  visit_ids: string[];
+  entry_ids: string[];
   label: string;
 }
 
 export interface MapPointsResult {
   points: MapPoint[];
-  unlocated_visit_ids: string[];
+  unlocated_ids: string[];
 }
 
 export interface CoordinateBounds {
@@ -36,20 +36,20 @@ export interface CoordinateBounds {
 export function mapPoints(
   visits: readonly CheckIn[],
   places: readonly Place[],
-  mode: MapMode,
+  mode: Exclude<MapMode, 'stops'>,
 ): MapPointsResult {
   if (mode !== 'visits' && mode !== 'places')
     throw new Error('Choose visit or named-place map positions.');
   const places_by_id = new Map(places.map((place) => [place.id, place]));
   const points_by_id = new Map<string, MapPoint>();
-  const unlocated_visit_ids: string[] = [];
+  const unlocated_ids: string[] = [];
   for (const visit of visits) {
     const place = visit.place_id === null ? undefined : places_by_id.get(visit.place_id);
     if (visit.place_id !== null && !place)
       throw new Error('A mapped check-in refers to a missing place.');
     const source = mode === 'visits' ? visit.actual_location : place?.position;
     if (!source) {
-      unlocated_visit_ids.push(visit.id);
+      unlocated_ids.push(visit.id);
       continue;
     }
     const position = parseCoordinates(source);
@@ -61,22 +61,72 @@ export function mapPoints(
           : `visit:${visit.place_id}:${position.latitude}:${position.longitude}`;
     const point = points_by_id.get(point_id);
     if (point) {
-      point.visit_ids.push(visit.id);
+      point.entry_ids.push(visit.id);
     } else {
       points_by_id.set(point_id, {
         id: point_id,
         position,
         place_id: visit.place_id,
-        visit_ids: [visit.id],
+        entry_ids: [visit.id],
         label: mode === 'places' && place ? place.name : visitTitle(visit, place),
       });
     }
   }
-  return { points: [...points_by_id.values()], unlocated_visit_ids };
+  return { points: [...points_by_id.values()], unlocated_ids };
 }
 
-function normalizeLongitude(value: number): number {
+export function mapStops(stops: readonly PlannedStop[]): MapPointsResult {
+  const points: MapPoint[] = [];
+  const unlocated_ids: string[] = [];
+  for (const stop of stops) {
+    if (stop.position) {
+      points.push({
+        id: stop.id,
+        place_id: null,
+        position: parseCoordinates(stop.position),
+        entry_ids: [stop.id],
+        label: stop.title,
+      });
+    } else {
+      unlocated_ids.push(stop.id);
+    }
+  }
+  return { points, unlocated_ids };
+}
+
+export function normalizeLongitude(value: number): number {
+  if (value >= -180 && value < 180) return value;
   return ((((value + 180) % 360) + 360) % 360) - 180;
+}
+
+export function visiblePosition(position: Coordinates, center_longitude: number): [number, number] {
+  const longitude = normalizeLongitude(position.longitude);
+  return [position.latitude, longitude + 360 * Math.round((center_longitude - longitude) / 360)];
+}
+
+/** Connect adjacent itinerary stops on the shortest longitude arc in the displayed world. */
+export function routeLines(
+  stops: readonly Pick<PlannedStop, 'position'>[],
+  center_longitude: number,
+): [number, number][][] {
+  const lines: [number, number][][] = [];
+  for (let index = 1; index < stops.length; index++) {
+    const previous = stops[index - 1].position;
+    const current = stops[index].position;
+    if (!previous || !current) continue;
+    const start = visiblePosition(previous, center_longitude);
+    const end = visiblePosition(current, start[1]);
+    if (start[0] === end[0] && start[1] === end[1]) continue;
+    lines.push([start, end]);
+    // When the pins sit at opposite edges of the displayed world, draw the short
+    // segment in both copies so it still reaches both numbered markers.
+    const displayed_end = visiblePosition(current, center_longitude);
+    const worlds_apart = Math.round((displayed_end[1] - end[1]) / 360);
+    if (worlds_apart) {
+      lines.push([[start[0], start[1] + worlds_apart * 360], displayed_end]);
+    }
+  }
+  return lines;
 }
 
 /**

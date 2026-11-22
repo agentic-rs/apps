@@ -1,5 +1,5 @@
 {
   "project_url": "https://github.com/agentic-rs/apps/tree/main/travel",
-  "description": "Keep a travel journal with photo events, check-ins, notes, and trips. Browse entries in Timeline and Map. Photos stay local. AI title suggestions use only the event time and coordinates. The map downloads tiles for the area you view.",
-  "release_notes": "Import photos and group them into events using capture times and GPS. Review each group, edit its AI-suggested title, and save the events to a trip."
+  "description": "Plan each day of a trip with ordered stops and a route map. Keep check-ins, notes and photos alongside the plan. Photos stay on your device. Optional AI title suggestions use event times and coordinates.",
+  "release_notes": "Build a daily itinerary, reorder stops, and see them numbered on the map. Attach a journal entry to a planned stop or record a detour. Existing trips, check-ins and photo events open in the new planner."
 }
