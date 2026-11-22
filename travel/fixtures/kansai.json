@@ -1,0 +1,110 @@
+{
+  "schema_version": 5,
+  "trips": [
+    {
+      "id": "example-kansai",
+      "title": "Kansai by rail",
+      "description": "Walk from Kyoto’s temples to Nishiki Market, spend a day around Nara Park, and finish in Osaka’s castle and shopping districts.",
+      "cities": ["Kyoto", "Nara", "Osaka"],
+      "city_arrival_dates": ["", "2030-05-21", "2030-05-22"],
+      "start_date": "2030-05-20",
+      "end_date": "2030-05-22",
+      "created_at": "2030-05-01T00:00:00.000Z",
+      "updated_at": "2030-05-01T00:00:00.000Z"
+    }
+  ],
+  "stops": [
+    {
+      "id": "example-kansai-nijo",
+      "trip_id": "example-kansai",
+      "day": "2030-05-20",
+      "title": "Nijō Castle",
+      "kind": "sight",
+      "time": "",
+      "notes": "Start the Kyoto day at the castle.",
+      "position": { "latitude": 35.014167, "longitude": 135.7475 }
+    },
+    {
+      "id": "example-kansai-kiyomizu",
+      "trip_id": "example-kansai",
+      "day": "2030-05-20",
+      "title": "Kiyomizu-dera",
+      "kind": "sight",
+      "time": "",
+      "notes": "Visit the temple before heading back into central Kyoto.",
+      "position": { "latitude": 34.994831, "longitude": 135.785003 }
+    },
+    {
+      "id": "example-kansai-nishiki",
+      "trip_id": "example-kansai",
+      "day": "2030-05-20",
+      "title": "Nishiki Market",
+      "kind": "food",
+      "time": "",
+      "notes": "Leave time for a snack at the market.",
+      "position": { "latitude": 35.005028, "longitude": 135.766139 }
+    },
+    {
+      "id": "example-kansai-nara-station",
+      "trip_id": "example-kansai",
+      "day": "2030-05-21",
+      "title": "JR Nara Station",
+      "kind": "transport",
+      "time": "",
+      "notes": "Arrive from Kyoto Station on the JR Nara Line.",
+      "position": { "latitude": 34.680661, "longitude": 135.819022 }
+    },
+    {
+      "id": "example-kansai-nara-park",
+      "trip_id": "example-kansai",
+      "day": "2030-05-21",
+      "title": "Nara Park",
+      "kind": "sight",
+      "time": "",
+      "notes": "Follow the park paths toward the temple.",
+      "position": { "latitude": 34.685453, "longitude": 135.843411 }
+    },
+    {
+      "id": "example-kansai-todaiji",
+      "trip_id": "example-kansai",
+      "day": "2030-05-21",
+      "title": "Tōdai-ji",
+      "kind": "sight",
+      "time": "",
+      "notes": "See the Great Buddha at the temple.",
+      "position": { "latitude": 34.689167, "longitude": 135.839722 }
+    },
+    {
+      "id": "example-kansai-osakajokoen",
+      "trip_id": "example-kansai",
+      "day": "2030-05-22",
+      "title": "Ōsakajōkōen Station",
+      "kind": "transport",
+      "time": "",
+      "notes": "Travel from Nara by rail and enter Osaka Castle Park from the station.",
+      "position": { "latitude": 34.6886, "longitude": 135.534 }
+    },
+    {
+      "id": "example-kansai-osaka-castle",
+      "trip_id": "example-kansai",
+      "day": "2030-05-22",
+      "title": "Osaka Castle",
+      "kind": "sight",
+      "time": "",
+      "notes": "Walk through the park to the castle keep.",
+      "position": { "latitude": 34.687222, "longitude": 135.525833 }
+    },
+    {
+      "id": "example-kansai-nipponbashi",
+      "trip_id": "example-kansai",
+      "day": "2030-05-22",
+      "title": "Nipponbashi Electric Town",
+      "kind": "other",
+      "time": "",
+      "notes": "Browse the electronics shops in Nipponbashi.",
+      "position": { "latitude": 34.66904, "longitude": 135.50617 }
+    }
+  ],
+  "places": [],
+  "check_ins": []
+}

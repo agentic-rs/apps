@@ -1,0 +1,69 @@
+{
+  "schema_version": 5,
+  "trips": [
+    {
+      "id": "example-kyoto",
+      "title": "A morning in Higashiyama",
+      "description": "Walk from Kiyomizu-dera through the old lanes of eastern Kyoto, with breakfast on the way to Yasaka Shrine.",
+      "cities": ["Kyoto"],
+      "start_date": "2030-03-16",
+      "end_date": "2030-03-16",
+      "created_at": "2030-03-01T00:00:00.000Z",
+      "updated_at": "2030-03-01T00:00:00.000Z"
+    }
+  ],
+  "stops": [
+    {
+      "id": "example-kyoto-kiyomizu",
+      "trip_id": "example-kyoto",
+      "day": "2030-03-16",
+      "title": "Kiyomizu-dera",
+      "kind": "sight",
+      "time": "",
+      "notes": "",
+      "position": { "latitude": 34.99483, "longitude": 135.785 }
+    },
+    {
+      "id": "example-kyoto-sannenzaka",
+      "trip_id": "example-kyoto",
+      "day": "2030-03-16",
+      "title": "Sannenzaka",
+      "kind": "sight",
+      "time": "",
+      "notes": "",
+      "position": { "latitude": 34.99647, "longitude": 135.78093 }
+    },
+    {
+      "id": "example-kyoto-ninenzaka",
+      "trip_id": "example-kyoto",
+      "day": "2030-03-16",
+      "title": "Ninenzaka",
+      "kind": "sight",
+      "time": "",
+      "notes": "",
+      "position": { "latitude": 34.99859, "longitude": 135.78081 }
+    },
+    {
+      "id": "example-kyoto-kodai-coffee",
+      "trip_id": "example-kyoto",
+      "day": "2030-03-16",
+      "title": "Maeda Coffee Kodai-ji",
+      "kind": "food",
+      "time": "",
+      "notes": "",
+      "position": { "latitude": 34.99917, "longitude": 135.77863 }
+    },
+    {
+      "id": "example-kyoto-yasaka",
+      "trip_id": "example-kyoto",
+      "day": "2030-03-16",
+      "title": "Yasaka Shrine",
+      "kind": "sight",
+      "time": "",
+      "notes": "",
+      "position": { "latitude": 35.00364, "longitude": 135.77853 }
+    }
+  ],
+  "places": [],
+  "check_ins": []
+}

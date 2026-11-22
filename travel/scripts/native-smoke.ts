@@ -869,6 +869,42 @@ try {
   );
   assert.equal(title_requests.length, 3, 'Editing and reopening must not regenerate a title.');
   await dialog.getByRole('button', { name: 'Close dialog' }).click();
+
+  await page.locator('#applet').evaluate((element) => {
+    element.style.width = '390px';
+    element.style.height = '720px';
+  });
+  for (const example of ['kyoto', 'singapore', 'kansai']) {
+    const source = Bun.file(new URL(`../fixtures/${example}.json`, import.meta.url));
+    files.set('journal/journal.json', [...(await source.bytes())]);
+    const sample = journal();
+    const [trip] = sample.trips;
+    assert.equal(trip.id, `example-${example}`);
+    assert(trip.cities?.length);
+    await native_frame.goto(native_frame.url());
+    await frame.getByRole('button', { name: `Open trip ${trip.title}`, exact: true }).click();
+    await frame.getByRole('heading', { name: trip.title, exact: true }).waitFor();
+    await frame.getByRole('button', { name: 'Trip overview', exact: true }).click();
+    const transfer = example === 'kansai';
+    const day = transfer ? trip.city_arrival_dates?.[1] : trip.start_date;
+    assert(day);
+    const cities = trip.cities.slice(0, transfer ? 2 : 1).join(' → ');
+    const row = overview.getByRole('button', { name: `Open itinerary for ${day}`, exact: true });
+    await row.getByText(cities, { exact: true }).waitFor();
+    if (transfer) {
+      await page
+        .locator('#applet')
+        .screenshot({ path: resolve(qa_directory, 'kansai-overview.png') });
+    }
+    await row.click();
+    const itinerary = frame.getByRole('region', { name: 'Day itinerary' });
+    await itinerary.getByRole('heading', { name: cities, exact: true }).waitFor();
+    const titles = sample.stops.filter((stop) => stop.day === day).map((stop) => stop.title);
+    assert(titles.length);
+    const stops = itinerary.getByRole('list', { name: 'Planned stops' });
+    assert.deepEqual(await stops.getByRole('button', { name: /^Edit / }).allTextContents(), titles);
+    assert.deepEqual(journal(), sample, 'Browsing a fixture must preserve its saved itinerary.');
+  }
   assert.deepEqual(errors, [], 'The native applet should not produce uncaught browser errors.');
   for (const method of [
     'photos.pick',
@@ -907,6 +943,7 @@ try {
           'distinct map position modes and missing coordinates',
           'multi-photo EXIF grouping, title request privacy, editable AI and manual titles',
           'atomic event batch retry, edit and reopen with photos',
+          'three example journals, including a city transfer day and its ordered stops',
         ],
       },
       null,

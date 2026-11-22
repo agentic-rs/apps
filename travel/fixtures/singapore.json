@@ -1,0 +1,139 @@
+{
+  "schema_version": 5,
+  "trips": [
+    {
+      "id": "example-singapore",
+      "title": "Three days in Singapore",
+      "description": "From the zoo to the Singapore River, then through Chinatown and Little India. The final day crosses to Sentosa and ends on Mount Faber.",
+      "cities": ["Singapore"],
+      "start_date": "2030-04-12",
+      "end_date": "2030-04-14",
+      "created_at": "2030-04-01T00:00:00.000Z",
+      "updated_at": "2030-04-01T00:00:00.000Z"
+    }
+  ],
+  "stops": [
+    {
+      "id": "sample-sg-zoo",
+      "trip_id": "example-singapore",
+      "day": "2030-04-12",
+      "title": "Singapore Zoo",
+      "kind": "sight",
+      "time": "",
+      "notes": "",
+      "position": { "latitude": 1.404709, "longitude": 103.79105 }
+    },
+    {
+      "id": "sample-sg-ngee-ann-city",
+      "trip_id": "example-singapore",
+      "day": "2030-04-12",
+      "title": "Ngee Ann City",
+      "kind": "other",
+      "time": "",
+      "notes": "",
+      "position": { "latitude": 1.30278, "longitude": 103.834 }
+    },
+    {
+      "id": "sample-sg-cavenagh-bridge",
+      "trip_id": "example-singapore",
+      "day": "2030-04-12",
+      "title": "Cavenagh Bridge",
+      "kind": "sight",
+      "time": "",
+      "notes": "",
+      "position": { "latitude": 1.28659, "longitude": 103.85239 }
+    },
+    {
+      "id": "sample-sg-merlion-park",
+      "trip_id": "example-singapore",
+      "day": "2030-04-12",
+      "title": "Merlion Park",
+      "kind": "sight",
+      "time": "",
+      "notes": "",
+      "position": { "latitude": 1.28683, "longitude": 103.855 }
+    },
+    {
+      "id": "sample-sg-sri-mariamman",
+      "trip_id": "example-singapore",
+      "day": "2030-04-13",
+      "title": "Sri Mariamman Temple",
+      "kind": "sight",
+      "time": "",
+      "notes": "",
+      "position": { "latitude": 1.28261, "longitude": 103.845 }
+    },
+    {
+      "id": "sample-sg-buddha-tooth-relic",
+      "trip_id": "example-singapore",
+      "day": "2030-04-13",
+      "title": "Buddha Tooth Relic Temple and Museum",
+      "kind": "sight",
+      "time": "",
+      "notes": "",
+      "position": { "latitude": 1.28155, "longitude": 103.844 }
+    },
+    {
+      "id": "sample-sg-maxwell",
+      "trip_id": "example-singapore",
+      "day": "2030-04-13",
+      "title": "Maxwell Food Centre",
+      "kind": "food",
+      "time": "",
+      "notes": "",
+      "position": { "latitude": 1.280336, "longitude": 103.844767 }
+    },
+    {
+      "id": "sample-sg-tekka",
+      "trip_id": "example-singapore",
+      "day": "2030-04-13",
+      "title": "Tekka Centre",
+      "kind": "other",
+      "time": "",
+      "notes": "",
+      "position": { "latitude": 1.3062, "longitude": 103.851 }
+    },
+    {
+      "id": "sample-sg-harbourfront",
+      "trip_id": "example-singapore",
+      "day": "2030-04-14",
+      "title": "HarbourFront MRT station",
+      "kind": "transport",
+      "time": "",
+      "notes": "",
+      "position": { "latitude": 1.265278, "longitude": 103.822222 }
+    },
+    {
+      "id": "sample-sg-fort-siloso",
+      "trip_id": "example-singapore",
+      "day": "2030-04-14",
+      "title": "Fort Siloso",
+      "kind": "sight",
+      "time": "",
+      "notes": "",
+      "position": { "latitude": 1.258889, "longitude": 103.808056 }
+    },
+    {
+      "id": "sample-sg-siloso-beach",
+      "trip_id": "example-singapore",
+      "day": "2030-04-14",
+      "title": "Siloso Beach",
+      "kind": "sight",
+      "time": "",
+      "notes": "",
+      "position": { "latitude": 1.253333, "longitude": 103.813333 }
+    },
+    {
+      "id": "sample-sg-mount-faber",
+      "trip_id": "example-singapore",
+      "day": "2030-04-14",
+      "title": "Mount Faber",
+      "kind": "sight",
+      "time": "",
+      "notes": "",
+      "position": { "latitude": 1.272222, "longitude": 103.820833 }
+    }
+  ],
+  "places": [],
+  "check_ins": []
+}
