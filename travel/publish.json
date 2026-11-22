@@ -1,5 +1,5 @@
 {
   "project_url": "https://github.com/agentic-rs/apps/tree/main/travel",
-  "description": "Plan each day of a trip with ordered stops and a route map. Keep check-ins, notes and photos alongside the plan. Photos stay on your device. Optional AI title suggestions use event times and coordinates.",
-  "release_notes": "Build a daily itinerary, reorder stops, and see them numbered on the map. Attach a journal entry to a planned stop or record a detour. Existing trips, check-ins and photo events open in the new planner."
+  "description": "Plan daily routes, check off packing lists and track travel expenses in their original currencies. Keep check-ins and photos alongside each stop. Photos stay on your device. Optional AI title suggestions use event times and coordinates.",
+  "release_notes": "Open a day's map to compare stop orders with a chosen start and finish. The trip toolbox adds an editable packing checklist and daily expenses with totals by currency."
 }

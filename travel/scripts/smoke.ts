@@ -150,7 +150,7 @@ try {
     );
   const waitClosed = () => page.locator('dialog').first().waitFor({ state: 'detached' });
   const button = (name: string) => page.getByRole('button', { name, exact: true });
-  const goTo = async (view: 'Itinerary' | 'Journal' | 'Map') => {
+  const goTo = async (view: 'Itinerary' | 'Journal' | 'Map' | 'Toolbox') => {
     await page
       .getByRole('navigation', { name: 'Main views' })
       .getByRole('button', { name: view, exact: true })
@@ -205,7 +205,7 @@ try {
   const assertMobileLayout = async () => {
     assert.equal(
       await page.getByRole('navigation', { name: 'Main views' }).getByRole('button').count(),
-      3,
+      4,
     );
     const layout = await page.evaluate(() => {
       const footer = document.querySelector<HTMLElement>('.bottom-bar')!.getBoundingClientRect();
@@ -424,9 +424,10 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   await openTrip();
   await assertMobileLayout();
-  await page
-    .locator('.itinerary-linked .visit-photos img')
-    .evaluate((image) => (image as HTMLImageElement).decode());
+  await page.waitForFunction(() => {
+    const photo = document.querySelector<HTMLImageElement>('.itinerary-linked .visit-photos img');
+    return photo && photo.complete && photo.naturalWidth > 0;
+  });
   await page.screenshot({ path: resolve(output, 'mobile-itinerary.png'), fullPage: true });
   await page.emulateMedia({ colorScheme: 'dark' });
   await page.screenshot({ path: resolve(output, 'mobile-itinerary-dark.png') });
@@ -638,11 +639,14 @@ try {
   const reviews = event_import.getByRole('article');
   await reviews.nth(3).waitFor();
   assert.equal(await reviews.count(), 4);
-  const previews = reviews.first().locator('img');
-  await previews.nth(1).waitFor();
-  await previews.evaluateAll((images) =>
-    Promise.all(images.map((image) => (image as HTMLImageElement).decode())),
-  );
+  await page.waitForFunction(() => {
+    const photos = document.querySelector('dialog article')?.querySelectorAll('img');
+    return (
+      photos &&
+      photos.length >= 2 &&
+      [...photos].every((photo) => photo.complete && photo.naturalWidth > 0)
+    );
+  });
   await page.screenshot({ path: resolve(output, 'photo-event-review.png') });
   await reviews.last().getByRole('checkbox', { name: 'Include event 4', exact: true }).uncheck();
   const titles_by_time = new Map([
@@ -742,6 +746,137 @@ try {
   await event_pin.getByRole('heading', { name: 'A new title for the morning', level: 3 }).waitFor();
   await event_pin.getByRole('button', { name: 'View event' }).click();
   await event_detail.getByRole('heading', { name: 'A new title for the morning' }).waitFor();
+  await event_detail.getByRole('button', { name: 'Close dialog' }).click();
+  await button('Trips').click();
+  await button('Open trip City wander').click();
+  await chooseDay('2026-05-07');
+  await addStop('Trailhead', '30', '100');
+  await addStop('Pavilion', '30', '100.04');
+  await addStop('Tea garden', '', '');
+  await addStop('Inn', '30', '100.06');
+  const optimizer = page.getByRole('button', { name: /optimize.*route/i });
+  const route_sheet = page.getByRole('dialog', { name: 'Optimize day route' });
+  await goTo('Map');
+  await optimizer.click();
+  await route_sheet.getByRole('listitem').filter({ hasText: 'Tea garden' }).waitFor();
+  assert.equal(await route_sheet.getByRole('button', { name: 'Apply order' }).count(), 0);
+  await route_sheet.getByRole('button', { name: 'Close', exact: true }).click();
+  await goTo('Itinerary');
+  await button('Edit Tea garden').click();
+  await page.getByText('Map coordinates', { exact: false }).click();
+  await page.getByLabel('Stop latitude').fill('30');
+  await page.getByLabel('Stop longitude').fill('100.02');
+  await page.getByLabel('Time', { exact: false }).fill('12:30');
+  await button('Save stop').click();
+  await waitClosed();
+  const original_route = await readJournal();
+  const city_id = original_route.trips.find((trip) => trip.title === 'City wander')!.id;
+  const city_stops = original_route.stops.filter((stop) => stop.trip_id === city_id);
+  await goTo('Map');
+  await optimizer.click();
+  const order = route_sheet.getByRole('list', { name: 'Suggested order' }).getByRole('listitem');
+  assert.match(await order.nth(1).innerText(), /Tea garden/);
+  await route_sheet.getByRole('combobox', { name: 'Start stop' }).selectOption(city_stops[3].id);
+  assert.equal(
+    await route_sheet.getByRole('combobox', { name: 'Finish stop' }).inputValue(),
+    city_stops[0].id,
+  );
+  assert.match(await order.first().innerText(), /Inn/);
+  await route_sheet.getByRole('button', { name: 'Cancel' }).click();
+  assert.deepEqual(await readJournal(), original_route);
+  await optimizer.click();
+  await route_sheet.getByText('12:30').waitFor();
+  const sheet_bounds = await route_sheet.boundingBox();
+  assert(
+    sheet_bounds &&
+      Math.abs(sheet_bounds.x) < 1 &&
+      Math.abs(sheet_bounds.width - page.viewportSize()!.width) < 1,
+    'The route sheet should fill the phone width.',
+  );
+  await page.screenshot({ path: resolve(output, 'mobile-route-preview.png') });
+  await page.evaluate(() => {
+    (window as unknown as { fail_next_save: boolean }).fail_next_save = true;
+  });
+  await route_sheet.getByRole('button', { name: 'Apply order' }).click();
+  await route_sheet.getByRole('alert').filter({ hasText: 'Test storage is full' }).waitFor();
+  assert.deepEqual(await readJournal(), original_route);
+  await route_sheet.getByRole('button', { name: 'Apply order' }).click();
+  await waitClosed();
+  const reordered = (await readJournal()).stops.filter((stop) => stop.trip_id === city_id);
+  assert.deepEqual(reordered, [city_stops[0], city_stops[2], city_stops[1], city_stops[3]]);
+  await page.locator('.journal-map-pin[data-stop-numbers="2"][data-longitude="100.02"]').waitFor();
+
+  await goTo('Toolbox');
+  await button('Open packing list').click();
+  const packing = page.getByRole('region', { name: 'Packing list' });
+  const item_name = packing.getByRole('textbox', { name: 'Item name' });
+  await item_name.fill('Rain cover');
+  await button('Add item').click();
+  await packing.getByRole('checkbox', { name: 'Rain cover' }).click();
+  await packing.getByRole('status').filter({ hasText: '1 of 6 packed' }).waitFor();
+  assert.equal(await packing.getByRole('checkbox', { name: 'Rain cover' }).isChecked(), true);
+  await button('Edit items').click();
+  await button('Rename Rain cover').click();
+  await item_name.fill('Pack cover');
+  await button('Save item').click();
+  await button('Done').click();
+  assert.equal(await packing.getByRole('checkbox', { name: 'Pack cover' }).isChecked(), true);
+  await page.screenshot({ path: resolve(output, 'mobile-packing.png') });
+  await button('Edit items').click();
+  // An explicitly emptied checklist must survive reopening without restoring starter items.
+  const remove_items = packing.getByRole('button', { name: /^Remove / });
+  while (await remove_items.count()) {
+    const first_item = (await remove_items.first().getAttribute('aria-label'))!;
+    await packing.getByRole('button', { name: first_item, exact: true }).click();
+    await packing
+      .getByRole('button', { name: first_item, exact: true })
+      .waitFor({ state: 'detached' });
+  }
+  await packing.getByRole('status').filter({ hasText: '0 of 0 packed' }).waitFor();
+  await page.getByRole('main').getByRole('button', { name: 'Toolbox', exact: true }).click();
+  await button('Open expenses').click();
+  const expenses = page.getByRole('region', { name: 'Trip expenses' });
+  const totals = expenses.locator('.expense-totals');
+  async function addExpense(title: string, currency: string, amount: string) {
+    await expenses.getByRole('button', { name: 'Add expense' }).click();
+    const form = page.getByRole('dialog', { name: 'Add expense' });
+    await form.getByLabel('Expense name').fill(title);
+    await form.getByLabel('Amount').fill(amount);
+    await form.getByLabel('Currency').selectOption(currency);
+    await form.getByRole('button', { name: 'Save expense' }).click();
+    await waitClosed();
+  }
+  await addExpense('Lunch', 'CNY', '18.45');
+  await addExpense('Ferry', 'CNY', '1.55');
+  await addExpense('Museum', 'JPY', '300');
+  await totals.getByText('CNY 20.00', { exact: true }).waitFor();
+  await totals.getByText('JPY 300', { exact: true }).waitFor();
+  await button('Edit expense Lunch').click();
+  const edit_expense = page.getByRole('dialog', { name: 'Edit expense' });
+  await edit_expense.getByLabel('Amount').fill('20.45');
+  await edit_expense.getByRole('button', { name: 'Save expense' }).click();
+  await waitClosed();
+  await totals.getByText('CNY 22.00', { exact: true }).waitFor();
+  await button('Edit expense Ferry').click();
+  await edit_expense.getByRole('button', { name: 'Delete expense' }).click();
+  await edit_expense.getByRole('button', { name: 'Delete', exact: true }).click();
+  await waitClosed();
+  await totals.getByText('CNY 20.45', { exact: true }).waitFor();
+  await totals.getByText('JPY 300', { exact: true }).waitFor();
+  await page.screenshot({ path: resolve(output, 'mobile-expenses.png') });
+  await page.reload();
+  await button('Open trip City wander').click();
+  await goTo('Toolbox');
+  await button('Open packing list').click();
+  await packing.getByRole('status').filter({ hasText: '0 of 0 packed' }).waitFor();
+  await button('Trips').click();
+  await openTrip();
+  await goTo('Toolbox');
+  await button('Open packing list').click();
+  await packing.getByRole('status').filter({ hasText: '0 of 5 packed' }).waitFor();
+  await page.getByRole('main').getByRole('button', { name: 'Toolbox', exact: true }).click();
+  await button('Open expenses').click();
+  assert.equal(await expenses.locator('.expense-totals').count(), 0);
   assert.deepEqual(errors, []);
   assert.deepEqual(
     unexpected_requests,
@@ -749,7 +884,7 @@ try {
     'Smoke tests must never use unmocked external services.',
   );
   console.log(
-    'Firefox smoke passed: trip and day navigation, saved stop order, day routes, linked check-ins, journal photos, offline map retry, photo event review and mobile layouts.',
+    'Firefox smoke passed: trips, route previews and retries, packing lists, multi-currency expenses, linked check-ins, photo events, offline maps and mobile layouts.',
   );
 } finally {
   await browser.close();

@@ -4,7 +4,7 @@ The official Apell apps, developed together on `main` and packaged independently
 
 - [Recorder](recorder/README.md) supports audio documents, text and voice channels, local or API transcription, playback, and sharing.
 - [Learning](learning/README.md): an AI guide for exploring topics, understanding key points, and remembering what you learn.
-- [Fieldnotes](travel/README.md) organizes trips into daily itineraries with ordered stops, route maps, check-ins and photo journals.
+- [Fieldnotes](travel/README.md) organizes trips into daily itineraries with route planning, check-ins and photo journals. Its trip toolbox includes packing lists and expenses.
 
 See each applet's README for development, packaging, and verification instructions. Generated packages, build output, dependencies, and local environment files are excluded from Git.
 

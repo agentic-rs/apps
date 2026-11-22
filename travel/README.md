@@ -2,6 +2,8 @@
 
 Fieldnotes is a local-first itinerary planner for Apell. Open a trip, choose a day, and arrange the places you want to visit. Photos and check-ins keep a record of what happened along the way.
 
+The mobile interaction reference is QYER’s 穷游行程助手. Its day-map route optimizer and trip toolbox guide the corresponding Fieldnotes flows. [Apple’s walkthrough of the iPhone app](https://apps.apple.com/cn/iphone/story/id1469876186)
+
 ## Plan a trip
 
 1. Select **New trip** and enter a name. Start and end dates are optional.
@@ -27,11 +29,19 @@ Before saving, enter any missing times and UTC offsets, or uncheck **Include** t
 
 The map opens on **Day route**. Numbered pins show the selected day’s planned stops. A dashed line connects consecutive stops with coordinates in itinerary order. Gaps indicate missing positions. The line represents the planned sequence and provides no turn-by-turn directions. Select a pin to open a stop.
 
+Tap the map button beside **Add stop**, then **Optimize route**. Choose a starting stop and a finishing stop to preview the suggested order and its straight-line distance. Each stop needs coordinates. **Apply order** updates the day’s itinerary and pins together. Scheduled times and journal links stay attached to their stops.
+
 The map uses locally bundled Leaflet and online OpenStreetMap tiles. **Actual visits** shows recorded event coordinates for the selected day. **Named places** shows the reference positions of places in those entries. Counted pins group check-ins at exactly the same position, including different places. Open a pin to choose a visit. Check-ins without the selected kind of coordinates remain accessible in a separate list. Pins near the date line fit together correctly.
 
 Tiles load only while Map is active. The browser uses ordinary HTTP caching; native Apell uses its HTTP bridge, two concurrent downloads, conditional revalidation, and a private cache bounded to 256 PNG slots plus metadata. Cache reads/writes never modify journal data. The loader honors server cache headers and uses seven days when freshness is unspecified. It does not prefetch areas or download offline map packages. When a background tile is unavailable, saved pins and check-in details remain usable and a retry control is shown.
 
 Opening or moving the map sends the requested tile coordinates to OpenStreetMap, revealing the displayed map area. Photos, notes, and named-place records are not sent. The app and journal remain local. Attribution is visible on the map; Leaflet's license is included in the package. See the [OpenStreetMap tile usage policy](https://operations.osmfoundation.org/policies/tiles/) for service terms.
+
+## Trip toolbox
+
+Open **Toolbox** within a trip to use its **Packing list** or **Expenses**. The checklist starts with five travel essentials. Tick items as you pack, add custom items, or use **Edit items** to rename and remove them.
+
+For an expense, enter a name, date, category, amount and currency. Tap a recorded expense to edit or delete it. The ledger groups spending by day and totals each currency separately. Routes, checklists and expense calculations run locally.
 
 ## Develop
 
@@ -66,7 +76,7 @@ For initial shell setup, run `apell dev --target 'Apell iPhone 16 Pro'` from the
 
 ## Editing and storage
 
-- Existing schema-1 journals, including photo-event journals, open with their trips, visits and photos intact. The first successful save writes schema 2 with its ordered stops.
+- Existing schema-1 and schema-2 journals open with their trips, ordered stops, visits and photos intact. The first successful save writes schema 3, which also stores trip checklists and expenses.
 - Trips have a name, optional date range, and description. Check-ins have a visit date/time, saved UTC offset, notes, and up to 20 photos of up to 32 MiB each.
 - Visit times preserve the recorded local time even after the device changes time zones. Select the time zone in effect during a past visit, including any daylight-saving adjustment.
 - Supported imports are JPEG, PNG, GIF, WebP, HEIC, HEIF, and AVIF. Originals are retained. Preview support depends on the browser/device codec; unsupported images display a clear fallback. Photos load near the viewport and release their object URLs offscreen.

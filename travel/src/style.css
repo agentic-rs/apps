@@ -364,8 +364,8 @@ p {
 }
 .bottom-bar nav {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  padding-inline: clamp(12px, 8vw, 80px);
+  grid-template-columns: repeat(4, 1fr);
+  padding-inline: clamp(6px, 3vw, 36px);
 }
 .bottom-bar nav button {
   display: flex;
@@ -809,6 +809,7 @@ summary {
   .dialog,
   .dialog.wide {
     width: 100%;
+    max-width: 100%;
     max-height: calc(100dvh - max(15px, var(--safe-area-top)));
     margin: auto 0 0;
     border: 0;

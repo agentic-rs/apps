@@ -1,3 +1,5 @@
+import type { TripExpense } from './expenses';
+
 export interface Coordinates {
   latitude: number;
   longitude: number;
@@ -17,6 +19,14 @@ export interface Trip {
   end_date: string;
   created_at: string;
   updated_at: string;
+  packing_items?: PackingItem[];
+  expenses?: TripExpense[];
+}
+
+export interface PackingItem {
+  id: string;
+  title: string;
+  packed: boolean;
 }
 
 export const stop_kinds = ['sight', 'food', 'transport', 'stay', 'other'] as const;
@@ -72,7 +82,7 @@ export interface CheckIn {
 }
 
 export interface Journal {
-  schema_version: 2;
+  schema_version: 3;
   trips: Trip[];
   stops: PlannedStop[];
   places: Place[];

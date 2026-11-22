@@ -537,3 +537,31 @@
     padding-block: 9px;
   }
 }
+.map-workspace {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.map-workspace .map-view {
+  flex: 1;
+  height: auto;
+}
+.route-action-bar {
+  flex: none;
+  background: var(--apell-surface);
+  border-top: 1px solid var(--apell-line);
+}
+.route-action-bar button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 6px 14px;
+  width: 100%;
+  color: var(--apell-primary);
+  border: 0;
+  background: transparent;
+  font-size: 0.87rem;
+  font-weight: 600;
+}

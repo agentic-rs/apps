@@ -276,3 +276,16 @@
   margin-top: 12px;
   color: var(--apell-danger);
 }
+.day-actions {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 4px;
+}
+.itinerary-leg {
+  grid-column: 2;
+  color: var(--apell-muted);
+  font-size: 0.72rem;
+  margin-block: -6px 0;
+  padding-inline-start: 5px;
+}

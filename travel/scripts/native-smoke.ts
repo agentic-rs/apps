@@ -302,7 +302,7 @@ try {
   }, `http://127.0.0.1:${server.port}`);
 
   const frame = page.frameLocator('#applet');
-  await frame.getByRole('heading', { name: 'Fieldnotes', exact: true }).waitFor();
+  await frame.getByRole('heading', { name: 'Your trips', exact: true }).waitFor();
   const native_frame = page.frames().find((candidate) => candidate.url().endsWith('/index.html'))!;
   assert.equal(
     await native_frame.evaluate(() => self.origin),
@@ -329,6 +329,10 @@ try {
     frame
       .getByRole('navigation', { name: 'Main views' })
       .getByRole('button', { name, exact: true });
+  assert.equal(
+    await frame.getByRole('navigation', { name: 'Main views' }).getByRole('button').count(),
+    4,
+  );
   const dialog = frame.getByRole('dialog');
   for (const [title, latitude, longitude] of [
     ['Lakeside park', '12', '34'],
@@ -429,9 +433,94 @@ try {
   assert.equal(saved.check_ins.length, 2);
   assert.equal(saved.check_ins[1].actual_location, null);
 
+  const [first, second] = saved.stops;
+  const optimizer = frame.getByRole('dialog', { name: 'Optimize day route', exact: true });
+  const optimize = frame.getByRole('button', { name: 'Optimize route', exact: true });
+  const day_map = frame.getByRole('button', { name: 'Open day map', exact: true });
+  await day_map.click();
+  await optimize.click();
+  await optimizer.getByLabel('Start stop').selectOption(second.id);
+  assert.equal(await optimizer.getByLabel('Finish stop').inputValue(), first.id);
+  await optimizer.getByRole('button', { name: 'Cancel' }).click();
+  assert.deepEqual(journal(), saved, 'Cancelling a preview must preserve the complete trip.');
+  await optimize.click();
+  await optimizer.getByLabel('Start stop').selectOption(second.id);
+  await optimizer.getByRole('button', { name: 'Apply order' }).click();
+  await optimizer.waitFor({ state: 'hidden' });
+  assert.deepEqual(journal().stops, [second, first]);
+  assert.deepEqual(
+    journal().check_ins,
+    saved.check_ins,
+    'A route change must preserve the linked visit and its photos.',
+  );
+  await frame.getByRole('button', { name: 'Stop 1, Lookout terrace', exact: true }).waitFor();
+
+  await mainView('Toolbox').click();
+  const openPacking = frame.getByRole('button', { name: 'Open packing list', exact: true });
+  const openExpenses = frame.getByRole('button', { name: 'Open expenses', exact: true });
+  const backToTools = frame.getByRole('main').getByRole('button', { name: 'Toolbox', exact: true });
+  const documents = frame.getByRole('checkbox', { name: 'Travel documents', exact: true });
+  await openPacking.click();
+  await frame
+    .getByRole('status')
+    .filter({ hasText: /^0 of \d+ packed$/ })
+    .waitFor();
+  // The controlled checkbox changes once the asynchronous native snapshot write succeeds.
+  await documents.click();
+  await frame
+    .getByRole('status')
+    .filter({ hasText: /^1 of \d+ packed$/ })
+    .waitFor();
+  await backToTools.click();
+  await openExpenses.click();
+  await frame.getByRole('button', { name: 'Add expense', exact: true }).click();
+  await dialog.getByLabel('Expense name').fill('Harbour ferry');
+  await dialog.getByLabel('Amount', { exact: true }).fill('14.75');
+  await dialog.getByRole('combobox', { name: /^Currency/ }).selectOption('EUR');
+  await dialog.getByLabel('Date', { exact: true }).fill('2026-05-12');
+  await dialog.getByRole('combobox', { name: /^Category/ }).selectOption('Transport');
+  await dialog.getByRole('button', { name: 'Save expense', exact: true }).click();
+  await dialog.waitFor({ state: 'hidden' });
+  saved = journal();
+  assert.equal(
+    saved.trips[0].packing_items?.find((item) => item.title === 'Travel documents')?.packed,
+    true,
+  );
+  const expense = saved.trips[0].expenses?.[0];
+  assert(expense);
+  assert.deepEqual(expense, {
+    id: expense.id,
+    title: 'Harbour ferry',
+    amount_minor: 1475,
+    currency: 'EUR',
+    day: '2026-05-12',
+    category: 'Transport',
+  });
+
   await native_frame.goto(`http://127.0.0.1:${server.port}/index.html`);
   await frame.getByRole('button', { name: `Open trip ${trip_title}`, exact: true }).click();
   await frame.getByRole('button', { name: 'Edit Lookout terrace', exact: true }).waitFor();
+  await day_map.click();
+  await frame.getByRole('button', { name: 'Stop 1, Lookout terrace', exact: true }).waitFor();
+  assert.deepEqual(journal(), saved, 'Route order and trip tools must survive reopening.');
+  await optimize.click();
+  await optimizer.getByLabel('Finish stop').selectOption(second.id);
+  assert.equal(await optimizer.getByLabel('Start stop').inputValue(), first.id);
+  await optimizer.getByRole('button', { name: 'Apply order' }).click();
+  await optimizer.waitFor({ state: 'hidden' });
+  assert.deepEqual(journal().stops, [first, second]);
+  assert.deepEqual(journal().check_ins, saved.check_ins);
+  saved = journal();
+  await mainView('Toolbox').click();
+  await openPacking.click();
+  assert(await documents.isChecked());
+  await backToTools.click();
+  await openExpenses.click();
+  const saved_expense = frame.getByRole('button', {
+    name: 'Edit expense Harbour ferry',
+    exact: true,
+  });
+  await saved_expense.getByText('EUR 14.75', { exact: true }).waitFor();
   await mainView('Journal').click();
   await frame.locator('.timeline-list .visit-card').nth(1).waitFor();
   await frame
@@ -741,6 +830,8 @@ try {
           'save failure and retry',
           'reopen persistence',
           'daily stop persistence, linked check-ins, route paths and day filtering',
+          'endpoint-based route preview, cancel, apply, reopen and restore',
+          'native packing checklist and expense ledger persistence',
           'itinerary, journal and map navigation on a compact screen',
           'mocked native tile requests and cache',
           'distinct map position modes and missing coordinates',

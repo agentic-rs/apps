@@ -1,0 +1,149 @@
+.packing-heading,
+.packing-row,
+.packing-add,
+.packing-rename {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.packing-heading {
+  justify-content: space-between;
+}
+.packing-heading h2 {
+  margin: 0;
+  font-size: 1.6rem;
+  letter-spacing: -0.035em;
+}
+.packing-edit,
+.packing-rename-button,
+.packing-remove {
+  min-height: 44px;
+  background: transparent;
+  border: 0;
+  color: var(--apell-primary);
+  font-weight: 550;
+}
+.packing-edit {
+  padding: 0 8px;
+}
+.packing-progress-text {
+  margin: 5px 0 5px;
+  color: var(--apell-muted);
+  font-size: 0.88rem;
+  font-variant-numeric: tabular-nums;
+}
+.packing-progress {
+  width: 100%;
+  height: 6px;
+  display: block;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--apell-subtle);
+  color: var(--apell-accent-line);
+}
+.packing-progress::-webkit-progress-bar {
+  background: var(--apell-subtle);
+}
+.packing-progress::-webkit-progress-value {
+  background: var(--apell-accent-line);
+}
+.packing-progress::-moz-progress-bar {
+  background: var(--apell-accent-line);
+}
+.packing-items {
+  list-style: none;
+  margin: 20px 0 0;
+  padding: 0 12px;
+  border: 1px solid var(--apell-line);
+  border-radius: 14px;
+  background: var(--apell-surface);
+}
+.packing-row {
+  min-height: 52px;
+}
+.packing-row + .packing-row {
+  border-top: 1px solid var(--apell-line);
+}
+.packing-row form {
+  flex: 1;
+  min-width: 0;
+}
+.packing-toggle,
+.packing-rename-button {
+  min-width: 0;
+  min-height: 52px;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  flex-direction: row;
+  gap: 12px;
+  padding: 3px 0;
+  margin: 0;
+  font-size: 0.95rem;
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+.packing-toggle {
+  cursor: pointer;
+}
+.packing-toggle input {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
+  padding: 0;
+  margin: 0;
+  accent-color: var(--apell-accent-line);
+}
+.packing-toggle input:checked + span {
+  text-decoration: line-through;
+  color: var(--apell-muted);
+}
+.packing-rename-button {
+  color: var(--apell-text);
+  font-weight: 500;
+}
+.packing-rename-button svg {
+  color: var(--apell-primary);
+}
+.packing-remove {
+  width: 44px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  color: var(--apell-danger);
+}
+.packing-add {
+  margin-top: 16px;
+}
+.packing-add input,
+.packing-rename input {
+  flex: 1;
+  width: 0;
+  min-height: 44px;
+  font-size: 1rem;
+}
+.packing-add button,
+.packing-rename button {
+  flex: none;
+}
+.packing-rename {
+  padding: 6px 0;
+  flex-wrap: wrap;
+}
+.packing-rename input {
+  flex-basis: 120px;
+}
+.packing-failure {
+  margin-top: 16px;
+  padding: 12px;
+  background: var(--apell-danger-soft);
+  border-radius: 10px;
+}
+.packing-failure p {
+  margin: 0 0 8px;
+  color: var(--apell-danger);
+}

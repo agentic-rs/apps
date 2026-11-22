@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { formatVisitDate, formatVisitTime, toVisitInput } from '../lib/dates';
 import { visitTitle } from '../lib/model';
+import { distanceKm, formatDistance } from '../lib/distance';
 import { stop_kind_labels } from '../lib/types';
 import type { CheckIn, PhotoAsset, Place, PlannedStop, TravelPlatform, Trip } from '../lib/types';
 import { Icon } from './Icon';
@@ -24,6 +25,7 @@ interface ItineraryDayProps {
   places: Place[];
   platform: TravelPlatform;
   onAddStop(): void;
+  onOpenMap(): void;
   onEditStop(stop: PlannedStop): void;
   onMoveStop(stop: PlannedStop, direction: -1 | 1): Promise<void>;
   onCheckIn(stop?: PlannedStop): void;
@@ -41,6 +43,7 @@ export function ItineraryDay({
   places,
   platform,
   onAddStop,
+  onOpenMap,
   onEditStop,
   onMoveStop,
   onCheckIn,
@@ -129,9 +132,19 @@ export function ItineraryDay({
             {visits.length} journal {visits.length === 1 ? 'entry' : 'entries'}
           </p>
         </div>
-        <button type="button" className="primary" onClick={onAddStop}>
-          <Icon name="plus" size={17} /> Add stop
-        </button>
+        <div className="day-actions">
+          <button
+            type="button"
+            className="icon-button"
+            onClick={onOpenMap}
+            aria-label="Open day map"
+          >
+            <Icon name="map" size={20} />
+          </button>
+          <button type="button" className="primary" onClick={onAddStop}>
+            <Icon name="plus" size={17} /> Add stop
+          </button>
+        </div>
       </header>
       {move_error && (
         <p className="form-error" role="alert">
@@ -142,6 +155,7 @@ export function ItineraryDay({
         <ol className="itinerary-stops" aria-label="Planned stops">
           {stops.map((stop, index) => {
             const linked = by_stop.get(stop.id)!;
+            const next_position = stops[index + 1]?.position;
             return (
               <li key={stop.id}>
                 <span className="itinerary-stop-number" aria-hidden="true">
@@ -223,6 +237,12 @@ export function ItineraryDay({
                     </div>
                   )}
                 </div>
+                {stop.position && next_position && (
+                  <span className="itinerary-leg">
+                    {formatDistance(distanceKm(stop.position, next_position))} straight line to next
+                    stop
+                  </span>
+                )}
               </li>
             );
           })}

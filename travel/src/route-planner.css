@@ -1,0 +1,92 @@
+.route-planner {
+  padding: 18px clamp(16px, 4vw, 24px);
+}
+.route-planner h3 {
+  margin: 0 0 10px;
+  font-size: 0.96rem;
+}
+.route-planner p {
+  margin: 0 0 12px;
+  color: var(--apell-muted);
+  font-size: 0.85rem;
+}
+.route-planner p:last-child {
+  margin-bottom: 0;
+}
+.route-planner p.form-error {
+  color: var(--apell-danger);
+}
+.route-endpoints {
+  border: 0;
+  padding: 0;
+  margin: 0 0 22px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.route-endpoints label {
+  min-width: 0;
+  margin: 0;
+}
+.route-distance {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border: 1px solid var(--apell-line);
+  border-radius: 10px;
+  overflow: hidden;
+  margin: 0 0 20px;
+  font-variant-numeric: tabular-nums;
+}
+.route-distance div {
+  padding: 10px 12px;
+}
+.route-distance div + div {
+  background: var(--apell-badge);
+  color: var(--apell-badge-text);
+}
+.route-distance dt {
+  font-size: 0.76rem;
+}
+.route-distance dd {
+  margin: 4px 0 0;
+  font-size: 1.24rem;
+  font-weight: 650;
+}
+.route-preview,
+.route-missing {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.route-preview li {
+  display: grid;
+  grid-template-columns: 27px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding-block: 9px;
+  overflow-wrap: anywhere;
+  font-size: 0.88rem;
+}
+.route-preview li + li,
+.route-missing li + li {
+  border-top: 1px solid var(--apell-line);
+}
+.route-preview-number {
+  display: grid;
+  place-items: center;
+  min-height: 26px;
+  border-radius: 17px;
+  background: var(--apell-badge);
+  color: var(--apell-badge-text);
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+.route-preview time {
+  font-variant-numeric: tabular-nums;
+  color: var(--apell-muted);
+  font-size: 0.76rem;
+}
+.route-missing li {
+  padding-block: 8px;
+  overflow-wrap: anywhere;
+}

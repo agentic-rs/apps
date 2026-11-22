@@ -204,6 +204,7 @@ export function MapView({
   platform,
   onOpenVisit,
   onOpenStop,
+  onOptimize,
   active,
 }: {
   stops: PlannedStop[];
@@ -212,6 +213,7 @@ export function MapView({
   platform: TravelPlatform;
   onOpenVisit(id: string): void;
   onOpenStop(id: string): void;
+  onOptimize(): void;
   active: boolean;
 }) {
   const container = useRef<HTMLDivElement>(null);
@@ -440,201 +442,213 @@ export function MapView({
   }
 
   return (
-    <section className="map-view" hidden={!active} aria-label="Travel map">
-      <div
-        className="journal-map-canvas"
-        ref={container}
-        role="region"
-        aria-label={labels.region}
-      />
-      <div className="map-top-tools">
-        <div className="map-mode-switch" role="group" aria-label="Map positions">
-          {(['stops', 'visits', 'places'] as const).map((option) => (
-            <button
-              key={option}
-              type="button"
-              aria-pressed={mode === option}
-              onClick={() => chooseMode(option)}
-            >
-              {map_modes[option].label}
-            </button>
-          ))}
+    <div className="map-workspace" hidden={!active}>
+      <section className="map-view" aria-label="Travel map">
+        <div
+          className="journal-map-canvas"
+          ref={container}
+          role="region"
+          aria-label={labels.region}
+        />
+        <div className="map-top-tools">
+          <div className="map-mode-switch" role="group" aria-label="Map positions">
+            {(['stops', 'visits', 'places'] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                aria-pressed={mode === option}
+                onClick={() => chooseMode(option)}
+              >
+                {map_modes[option].label}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            className="map-square-control"
+            aria-label="Fit all map pins"
+            title="Fit all pins"
+            onClick={() => {
+              if (map) {
+                fitPins(map, data.points);
+                following_pins.current = true;
+              }
+            }}
+          >
+            <Icon name="compass" size={20} />
+          </button>
         </div>
-        <button
-          type="button"
-          className="map-square-control"
-          aria-label="Fit all map pins"
-          title="Fit all pins"
-          onClick={() => {
-            if (map) {
-              fitPins(map, data.points);
-              following_pins.current = true;
-            }
-          }}
-        >
-          <Icon name="compass" size={20} />
-        </button>
-      </div>
-      <div className="map-caption">
-        <span className={`map-legend-dot ${mode}`} />
-        <span>
-          {labels.description}
-          <small>
-            {total - data.unlocated_ids.length} of {displayCount(total)} on the map
-          </small>
-        </span>
-      </div>
-      <div className="map-zoom-controls" aria-label="Map zoom">
-        <button
-          type="button"
-          aria-label="Zoom in"
-          disabled={zoom >= 19}
-          onClick={() => map?.zoomIn()}
-        >
-          <Icon name="plus" size={19} />
-        </button>
-        <button
-          type="button"
-          aria-label="Zoom out"
-          disabled={zoom <= 2}
-          onClick={() => map?.zoomOut()}
-        >
-          <span aria-hidden="true">−</span>
-        </button>
-      </div>
-      {tile_failures > 0 && data.points.length > 0 && !selected && !unlocated_open && (
-        <div className="map-tile-status" role="status">
-          <span>Map background unavailable. Your pins still work.</span>
-          <button type="button" onClick={() => tile_layer.current?.redraw()}>
-            Retry
+        <div className="map-caption">
+          <span className={`map-legend-dot ${mode}`} />
+          <span>
+            {labels.description}
+            <small>
+              {total - data.unlocated_ids.length} of {displayCount(total)} on the map
+            </small>
+          </span>
+        </div>
+        <div className="map-zoom-controls" aria-label="Map zoom">
+          <button
+            type="button"
+            aria-label="Zoom in"
+            disabled={zoom >= 19}
+            onClick={() => map?.zoomIn()}
+          >
+            <Icon name="plus" size={19} />
+          </button>
+          <button
+            type="button"
+            aria-label="Zoom out"
+            disabled={zoom <= 2}
+            onClick={() => map?.zoomOut()}
+          >
+            <span aria-hidden="true">−</span>
+          </button>
+        </div>
+        {tile_failures > 0 && data.points.length > 0 && !selected && !unlocated_open && (
+          <div className="map-tile-status" role="status">
+            <span>Map background unavailable. Your pins still work.</span>
+            <button type="button" onClick={() => tile_layer.current?.redraw()}>
+              Retry
+            </button>
+          </div>
+        )}
+        {data.points.length === 0 && !unlocated_open && (
+          <div className="map-empty-message">
+            <Icon name="pin" size={26} />
+            <strong>{total ? 'Coordinates needed' : labels.empty_title}</strong>
+            <span>{total ? labels.position_help : labels.empty_help}</span>
+            {tile_failures > 0 && (
+              <span className="map-empty-offline" role="status">
+                Map background unavailable.{' '}
+                <button type="button" onClick={() => tile_layer.current?.redraw()}>
+                  Retry
+                </button>
+              </span>
+            )}
+          </div>
+        )}
+        {data.unlocated_ids.length > 0 && !selected && !unlocated_open && (
+          <button
+            className="map-missing-button"
+            type="button"
+            onClick={() => {
+              setUnlocatedOpen(true);
+              setSelectedKey(null);
+            }}
+          >
+            <Icon name="pin" size={16} />
+            <span>
+              {data.unlocated_ids.length} {labels.missing}
+            </span>
+            <Icon name="arrow" size={15} />
+          </button>
+        )}
+        {(selected || unlocated_open) && (
+          <section
+            className="map-selection-card"
+            ref={panel}
+            aria-label={`${mode === 'stops' ? 'Stops' : 'Entries'} ${unlocated_open ? 'without coordinates' : 'at selected map pin'}`}
+          >
+            <header>
+              <div>
+                <span className="map-card-kicker">
+                  {unlocated_open ? 'NOT ON THIS MAP' : displayCount(selection_count).toUpperCase()}
+                </span>
+                <h2>
+                  {unlocated_open
+                    ? 'Missing coordinates'
+                    : selected_names.length === 1
+                      ? selected_names[0]
+                      : mode === 'stops'
+                        ? 'Stops at this position'
+                        : 'Moments at this position'}
+                </h2>
+                {selected && (
+                  <p>
+                    {formatCoordinates(selected.position)} <span>· {labels.position_label}</span>
+                  </p>
+                )}
+                {tile_failures > 0 && <p role="status">Map background unavailable.</p>}
+              </div>
+              <button
+                type="button"
+                className="icon-button"
+                aria-label="Close map selection"
+                onClick={() => {
+                  setSelectedKey(null);
+                  setUnlocatedOpen(false);
+                }}
+              >
+                <Icon name="close" size={19} />
+              </button>
+            </header>
+            <div className="map-selected-visits">
+              {selected_stops.map((stop) => (
+                <button
+                  type="button"
+                  className="map-stop-row"
+                  key={stop.id}
+                  onClick={() => onOpenStop(stop.id)}
+                >
+                  <span className="map-stop-number">{numbers.get(stop.id)}</span>
+                  <span className="map-stop-copy">
+                    <strong>{stop.title}</strong>
+                    <small>
+                      {stop.time && `${stop.time} · `}
+                      {stop_kind_labels[stop.kind]}
+                    </small>
+                  </span>
+                  <Icon name="arrow" size={16} />
+                </button>
+              ))}
+              {selected_visits.map((visit) => {
+                const place =
+                  visit.place_id === null ? undefined : places_by_id.get(visit.place_id);
+                const title = visitTitle(visit, place);
+                return (
+                  <article className="map-visit-row" key={visit.id}>
+                    {visit.photos[0] ? (
+                      <div className="map-visit-photo">
+                        <Photo photo={visit.photos[0]} platform={platform} alt={title} />
+                      </div>
+                    ) : (
+                      <span className="map-visit-symbol">
+                        <Icon name="pin" size={22} />
+                      </span>
+                    )}
+                    <div className="map-visit-copy">
+                      <h3>{title}</h3>
+                      <p>
+                        {formatVisitDate(visit.visited_at, visit.utc_offset_minutes)} ·{' '}
+                        {formatVisitTime(visit.visited_at, visit.utc_offset_minutes)}
+                      </p>
+                      {visit.notes && <p className="map-visit-note">{visit.notes}</p>}
+                      <button
+                        type="button"
+                        className="map-open-visit"
+                        onClick={() => onOpenVisit(visit.id)}
+                      >
+                        {visit.title ? 'View event' : 'View check-in'}
+                        <Icon name="arrow" size={14} />
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+        )}
+      </section>
+      {mode === 'stops' && stops.length >= 2 && (
+        <div className="route-action-bar">
+          <button onClick={onOptimize}>
+            <Icon name="route" size={19} />
+            Optimize route
+            <Icon name="next" size={16} />
           </button>
         </div>
       )}
-      {data.points.length === 0 && !unlocated_open && (
-        <div className="map-empty-message">
-          <Icon name="pin" size={26} />
-          <strong>{total ? 'Coordinates needed' : labels.empty_title}</strong>
-          <span>{total ? labels.position_help : labels.empty_help}</span>
-          {tile_failures > 0 && (
-            <span className="map-empty-offline" role="status">
-              Map background unavailable.{' '}
-              <button type="button" onClick={() => tile_layer.current?.redraw()}>
-                Retry
-              </button>
-            </span>
-          )}
-        </div>
-      )}
-      {data.unlocated_ids.length > 0 && !selected && !unlocated_open && (
-        <button
-          className="map-missing-button"
-          type="button"
-          onClick={() => {
-            setUnlocatedOpen(true);
-            setSelectedKey(null);
-          }}
-        >
-          <Icon name="pin" size={16} />
-          <span>
-            {data.unlocated_ids.length} {labels.missing}
-          </span>
-          <Icon name="arrow" size={15} />
-        </button>
-      )}
-      {(selected || unlocated_open) && (
-        <section
-          className="map-selection-card"
-          ref={panel}
-          aria-label={`${mode === 'stops' ? 'Stops' : 'Entries'} ${unlocated_open ? 'without coordinates' : 'at selected map pin'}`}
-        >
-          <header>
-            <div>
-              <span className="map-card-kicker">
-                {unlocated_open ? 'NOT ON THIS MAP' : displayCount(selection_count).toUpperCase()}
-              </span>
-              <h2>
-                {unlocated_open
-                  ? 'Missing coordinates'
-                  : selected_names.length === 1
-                    ? selected_names[0]
-                    : mode === 'stops'
-                      ? 'Stops at this position'
-                      : 'Moments at this position'}
-              </h2>
-              {selected && (
-                <p>
-                  {formatCoordinates(selected.position)} <span>· {labels.position_label}</span>
-                </p>
-              )}
-              {tile_failures > 0 && <p role="status">Map background unavailable.</p>}
-            </div>
-            <button
-              type="button"
-              className="icon-button"
-              aria-label="Close map selection"
-              onClick={() => {
-                setSelectedKey(null);
-                setUnlocatedOpen(false);
-              }}
-            >
-              <Icon name="close" size={19} />
-            </button>
-          </header>
-          <div className="map-selected-visits">
-            {selected_stops.map((stop) => (
-              <button
-                type="button"
-                className="map-stop-row"
-                key={stop.id}
-                onClick={() => onOpenStop(stop.id)}
-              >
-                <span className="map-stop-number">{numbers.get(stop.id)}</span>
-                <span className="map-stop-copy">
-                  <strong>{stop.title}</strong>
-                  <small>
-                    {stop.time && `${stop.time} · `}
-                    {stop_kind_labels[stop.kind]}
-                  </small>
-                </span>
-                <Icon name="arrow" size={16} />
-              </button>
-            ))}
-            {selected_visits.map((visit) => {
-              const place = visit.place_id === null ? undefined : places_by_id.get(visit.place_id);
-              const title = visitTitle(visit, place);
-              return (
-                <article className="map-visit-row" key={visit.id}>
-                  {visit.photos[0] ? (
-                    <div className="map-visit-photo">
-                      <Photo photo={visit.photos[0]} platform={platform} alt={title} />
-                    </div>
-                  ) : (
-                    <span className="map-visit-symbol">
-                      <Icon name="pin" size={22} />
-                    </span>
-                  )}
-                  <div className="map-visit-copy">
-                    <h3>{title}</h3>
-                    <p>
-                      {formatVisitDate(visit.visited_at, visit.utc_offset_minutes)} ·{' '}
-                      {formatVisitTime(visit.visited_at, visit.utc_offset_minutes)}
-                    </p>
-                    {visit.notes && <p className="map-visit-note">{visit.notes}</p>}
-                    <button
-                      type="button"
-                      className="map-open-visit"
-                      onClick={() => onOpenVisit(visit.id)}
-                    >
-                      {visit.title ? 'View event' : 'View check-in'}
-                      <Icon name="arrow" size={14} />
-                    </button>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        </section>
-      )}
-    </section>
+    </div>
   );
 }

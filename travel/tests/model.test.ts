@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test';
+import { changePacking, packingItems } from '../src/lib/packing';
 import {
   addPhotoEvents,
   emptyJournal,
@@ -206,7 +207,7 @@ describe('journal data integrity', () => {
 
   test('validates schema and missing fields before reading or saving', () => {
     expect(() => parseJournal(null)).toThrow();
-    expect(() => parseJournal({ ...emptyJournal(), schema_version: 3 })).toThrow('version');
+    expect(() => parseJournal({ ...emptyJournal(), schema_version: 4 })).toThrow('version');
     expect(() => parseJournal({ ...emptyJournal(), trips: {} })).toThrow('list');
     expect(() => parseJournal({ schema_version: 1 })).toThrow();
     expect(() => parseCheckIn({ ...check_in, actual_location: undefined })).toThrow();
@@ -320,7 +321,7 @@ describe('planned stops', () => {
       check_ins: [check_in, old_event],
     };
     const migrated = parseJournal(old);
-    expect(migrated).toEqual({ ...old, schema_version: 2, stops: [] });
+    expect(migrated).toEqual({ ...old, schema_version: 3, stops: [] });
     expect(parseJournal(JSON.parse(JSON.stringify(migrated)))).toEqual(migrated);
     expect(() => parseJournal({ ...old, places: [] })).toThrow('missing place');
     expect(() => parseJournal({ ...migrated, stops: undefined })).toThrow('list');
@@ -425,5 +426,63 @@ describe('photos and display', () => {
 
   test('coordinates are concise and preserve signed values', () => {
     expect(formatCoordinates({ latitude: -12.1234567, longitude: 34 })).toBe('-12.12346, 34.00000');
+  });
+});
+
+describe('trip packing lists', () => {
+  test('migrates a saved itinerary with a starter list unique to each trip', () => {
+    const original = upsertTrip(upsertStop(populated(), stop), { ...trip, id: 'other-trip' });
+    const journal = parseJournal({ ...original, schema_version: 2 });
+    expect(journal).toEqual(original);
+    const items = packingItems(journal.trips[0]);
+    expect(items.map((item) => item.title)).toContain('Phone charger');
+    expect(items.every((item) => !item.packed)).toBe(true);
+    const packed = changePacking(journal.trips[0], { kind: 'pack', id: items[0].id, packed: true });
+    const saved = upsertTrip(journal, packed);
+    expect(packingItems(saved.trips[0])[0].packed).toBe(true);
+    expect(packingItems(saved.trips[1])).toEqual(items);
+    expect(saved.check_ins).toEqual(original.check_ins);
+    expect(saved.stops).toEqual(original.stops);
+    expect(saved.schema_version).toBe(3);
+    expect(parseJournal(JSON.parse(JSON.stringify(saved)))).toEqual(saved);
+  });
+
+  test('preserves custom item identities, status, and an intentionally empty list through metadata edits', () => {
+    const initial = changePacking(
+      { ...trip, packing_items: [] },
+      { kind: 'add', id: 'camera', title: ' Camera ' },
+    );
+    const checked = changePacking(initial, { kind: 'pack', id: 'camera', packed: true });
+    const renamed = changePacking(checked, {
+      kind: 'rename',
+      id: 'camera',
+      title: ' Camera strap ',
+    });
+    const metadata_only = { ...trip, title: 'Winter trip' };
+    const journal = upsertTrip(upsertTrip(emptyJournal(), renamed), metadata_only);
+    expect(packingItems(journal.trips[0])).toEqual([
+      { id: 'camera', title: 'Camera strap', packed: true },
+    ]);
+    expect(packingItems(initial)[0]).toEqual({ id: 'camera', title: 'Camera', packed: false });
+    const removed = changePacking(journal.trips[0], { kind: 'remove', id: 'camera' });
+    const reopened = parseJournal(JSON.parse(JSON.stringify(upsertTrip(journal, removed))));
+    expect(packingItems(reopened.trips[0])).toEqual([]);
+    expect(packingItems(upsertTrip(reopened, metadata_only).trips[0])).toEqual([]);
+  });
+
+  test('rejects damaged persisted items, duplicate identities, and updates to a missing item', () => {
+    const item = { id: 'one', title: 'Charger', packed: false };
+    for (const list of [
+      null,
+      [item, item],
+      [{ ...item, id: 'bad/id' }],
+      [{ ...item, title: ' ' }],
+      [{ ...item, packed: 'yes' }],
+    ]) {
+      expect(() => parseTrip({ ...trip, packing_items: list })).toThrow();
+    }
+    const saved = { ...trip, packing_items: [item] };
+    expect(() => changePacking(saved, { kind: 'add', id: 'one', title: 'Second' })).toThrow();
+    expect(() => changePacking(saved, { kind: 'pack', id: 'missing', packed: true })).toThrow();
   });
 });

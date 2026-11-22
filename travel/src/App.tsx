@@ -23,22 +23,26 @@ import { PhotoEventsForm } from './components/PhotoEventsForm';
 import { TimelineView } from './components/TimelineView';
 import { MapView } from './components/MapView';
 import { TripLibrary } from './components/TripLibrary';
+import { TripToolbox } from './components/TripToolbox';
+import { RoutePlanner } from './components/RoutePlanner';
+import { applyDayRoute } from './lib/route-planner';
 import { TripDays } from './components/TripDays';
 import { ItineraryDay } from './components/ItineraryDay';
 import { VisitCard } from './components/VisitCard';
 import fieldnotes_icon from '../../shared/assets/fieldnotes.svg';
 
-type View = 'Itinerary' | 'Map' | 'Journal';
+type View = 'Itinerary' | 'Map' | 'Journal' | 'Toolbox';
 type Editor =
   | { kind: 'trip'; trip?: Trip }
   | { kind: 'stop'; stop?: PlannedStop }
+  | { kind: 'route' }
   | { kind: 'visit'; visit?: CheckIn; stop?: PlannedStop }
   | { kind: 'photo_events' };
 type Removal =
   | { kind: 'trip'; trip: Trip }
   | { kind: 'stop'; stop: PlannedStop }
   | { kind: 'visit'; visit: CheckIn };
-const views = { Itinerary: 'timeline', Map: 'map', Journal: 'book' } as const;
+const views = { Itinerary: 'timeline', Map: 'map', Journal: 'book', Toolbox: 'toolbox' } as const;
 
 function recordedDay(visit: CheckIn) {
   return toVisitInput(visit.visited_at, visit.utc_offset_minutes).slice(0, 10);
@@ -162,27 +166,29 @@ export function App() {
   const displayPhoto = (asset: PhotoAsset, caption: string) => setOpenPhoto({ asset, caption });
   return (
     <div className={`app-shell${platform.native ? ' native' : ''}`}>
-      <header className="view-header">
-        {trip && (
-          <button className="trip-back" onClick={() => openTrip('')}>
-            <Icon name="back" size={15} />
-            Trips
-          </button>
-        )}
-        <div className="view-title">
-          {!trip && <img className="brand-symbol" src={fieldnotes_icon} alt="" />}
-          <h1>{trip?.title ?? 'Fieldnotes'}</h1>
-        </div>
-        {trip && (
-          <button
-            className="icon-button"
-            aria-label="Edit trip"
-            onClick={() => setEditor({ kind: 'trip', trip })}
-          >
-            <Icon name="edit" size={19} />
-          </button>
-        )}
-      </header>
+      {(trip || !platform.native) && (
+        <header className="view-header">
+          {trip && (
+            <button className="trip-back" onClick={() => openTrip('')}>
+              <Icon name="back" size={15} />
+              Trips
+            </button>
+          )}
+          <div className="view-title">
+            {!trip && <img className="brand-symbol" src={fieldnotes_icon} alt="" />}
+            <h1>{trip?.title ?? 'Fieldnotes'}</h1>
+          </div>
+          {trip && (
+            <button
+              className="icon-button"
+              aria-label="Edit trip"
+              onClick={() => setEditor({ kind: 'trip', trip })}
+            >
+              <Icon name="edit" size={19} />
+            </button>
+          )}
+        </header>
+      )}
       {notice && (
         <div className="notice" role="status">
           {notice}
@@ -196,8 +202,26 @@ export function App() {
           <div className="timeline-panel">
             <TripLibrary
               journal={journal}
+              platform={platform}
               onOpen={(value) => openTrip(value.id)}
               onCreate={() => setEditor({ kind: 'trip' })}
+            />
+          </div>
+        ) : view === 'Toolbox' ? (
+          <div className="timeline-panel">
+            <TripToolbox
+              trip={trip}
+              day={day}
+              onChange={(update) =>
+                persist((snapshot) => {
+                  const current = snapshot.trips.find((item) => item.id === trip.id);
+                  if (!current) throw new Error('This trip has been removed.');
+                  return upsertTrip(snapshot, {
+                    ...update(current),
+                    updated_at: new Date().toISOString(),
+                  });
+                })
+              }
             />
           </div>
         ) : view === 'Journal' ? (
@@ -240,6 +264,7 @@ export function App() {
                   places={journal.places}
                   platform={platform}
                   onAddStop={() => setEditor({ kind: 'stop' })}
+                  onOpenMap={() => setView('Map')}
                   onEditStop={(stop) => setEditor({ kind: 'stop', stop })}
                   onMoveStop={(stop, direction) =>
                     persist((snapshot) => moveStop(snapshot, stop.id, direction))
@@ -258,6 +283,7 @@ export function App() {
                   places={journal.places}
                   platform={platform}
                   active
+                  onOptimize={() => setEditor({ kind: 'route' })}
                   onOpenVisit={setDetailId}
                   onOpenStop={(id) => {
                     const stop = stops.find((item) => item.id === id);
@@ -337,6 +363,18 @@ export function App() {
             await persist((snapshot) => upsertTrip(snapshot, value));
             if (!editor.trip) openTrip(value.id);
             setEditor(null);
+          }}
+        />
+      )}
+      {editor?.kind === 'route' && trip && (
+        <RoutePlanner
+          stops={day_stops}
+          onClose={() => setEditor(null)}
+          onApply={async (original_ids, ordered_ids) => {
+            await persist((snapshot) =>
+              applyDayRoute(snapshot, trip.id, day, original_ids, ordered_ids),
+            );
+            setNotice('Day route updated.');
           }}
         />
       )}

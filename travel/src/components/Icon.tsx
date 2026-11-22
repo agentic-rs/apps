@@ -1,6 +1,30 @@
 import type { CSSProperties } from 'react';
 
 const paths = {
+  toolbox: (
+    <>
+      <rect x="3" y="7" width="18" height="14" rx="3" />
+      <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 12c5 3 13 3 18 0m-9 1v3" />
+    </>
+  ),
+  checklist: (
+    <>
+      <path d="m3 6 2 2 3-4m-5 10 2 2 3-4m3-6h10m-10 8h10" />
+    </>
+  ),
+  wallet: (
+    <>
+      <path d="M19 7V4L5 6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h15V8H5" />
+      <path d="M20 11h-4a2 2 0 0 0 0 4h4" />
+    </>
+  ),
+  route: (
+    <>
+      <circle cx="5" cy="6" r="2" />
+      <circle cx="19" cy="18" r="2" />
+      <path d="M7 6h9a3 3 0 0 1 0 6H8a3 3 0 0 0 0 6h9" />
+    </>
+  ),
   back: <path d="m14 5-7 7 7 7" />,
   next: <path d="m10 5 7 7-7 7" />,
   map: (

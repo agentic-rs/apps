@@ -1,9 +1,11 @@
 import { isCalendarDate, isUtcTimestamp, toVisitInput, validateOffset } from './dates';
+import { parseExpenses } from './expenses';
 import { stop_kinds } from './types';
 import type {
   CheckIn,
   Coordinates,
   Journal,
+  PackingItem,
   PhotoAsset,
   Place,
   PlannedStop,
@@ -16,6 +18,7 @@ export const max_photos_per_check_in = 20;
 export const text_limits = {
   trip_title: 200,
   trip_description: 10_000,
+  packing_title: 200,
   stop_title: 200,
   stop_notes: 20_000,
   place_name: 200,
@@ -122,14 +125,31 @@ export function parseTrip(value: unknown): Trip {
   if (start_date && end_date && end_date < start_date) {
     throw new Error('The trip end date must be on or after its start date.');
   }
+  const packing_items =
+    row.packing_items === undefined
+      ? undefined
+      : rows(row.packing_items, 'Packing items', parsePackingItem);
+  if (packing_items) unique(packing_items, (item) => item.id, 'Packing items');
   return {
     id: id(row.id, 'Trip'),
     title: text(row.title, 'Trip title', text_limits.trip_title, true).trim(),
     description: text(row.description, 'Trip description', text_limits.trip_description),
     start_date,
     end_date,
+    ...(packing_items !== undefined && { packing_items }),
+    ...(row.expenses !== undefined && { expenses: parseExpenses(row.expenses) }),
     created_at: timestamp(row.created_at, 'Trip creation time'),
     updated_at: timestamp(row.updated_at, 'Trip update time'),
+  };
+}
+
+function parsePackingItem(value: unknown): PackingItem {
+  const row = record(value, 'Packing item');
+  if (typeof row.packed !== 'boolean') throw new Error('The packing item status is invalid.');
+  return {
+    id: id(row.id, 'Packing item'),
+    title: text(row.title, 'Packing item name', text_limits.packing_title, true).trim(),
+    packed: row.packed,
   };
 }
 
@@ -249,12 +269,12 @@ export function parseCheckIn(value: unknown): CheckIn {
 }
 
 export function emptyJournal(): Journal {
-  return { schema_version: 2, trips: [], stops: [], places: [], check_ins: [] };
+  return { schema_version: 3, trips: [], stops: [], places: [], check_ins: [] };
 }
 
 export function parseJournal(value: unknown): Journal {
   const row = record(value, 'Journal');
-  if (row.schema_version !== 1 && row.schema_version !== 2)
+  if (row.schema_version !== 1 && row.schema_version !== 2 && row.schema_version !== 3)
     throw new Error('This journal version is not supported.');
   const trips = rows(row.trips, 'Trips', parseTrip);
   const stops =
@@ -283,7 +303,7 @@ export function parseJournal(value: unknown): Journal {
   const photos = check_ins.flatMap((check_in) => check_in.photos);
   unique(photos, (photo) => photo.id, 'Journal photos');
   unique(photos, (photo) => photo.path, 'Journal photo storage');
-  return { schema_version: 2, trips, stops, places, check_ins };
+  return { schema_version: 3, trips, stops, places, check_ins };
 }
 
 function upsert<T extends { id: string }>(values: T[], value: T): T[] {
@@ -293,7 +313,9 @@ function upsert<T extends { id: string }>(values: T[], value: T): T[] {
 }
 
 export function upsertTrip(journal: Journal, value: Trip): Journal {
-  const trip = parseTrip(value);
+  // Metadata editors may omit the checklist. Apply their edits to the latest saved trip.
+  const existing = journal.trips.find((trip) => trip.id === value.id);
+  const trip = parseTrip({ ...existing, ...value });
   return parseJournal({ ...journal, trips: upsert(journal.trips, trip) });
 }
 

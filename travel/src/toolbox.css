@@ -1,0 +1,130 @@
+.toolbox {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 20px clamp(16px, 4vw, 30px) 36px;
+}
+.toolbox h2,
+.trip-library .library-heading :is(h1, h2) {
+  font-family: inherit;
+  font-size: clamp(1.65rem, 5vw, 2rem);
+  font-weight: 700;
+  line-height: 1.12;
+  letter-spacing: -0.045em;
+  margin: 0;
+}
+.tool-back,
+.tool-heading,
+.tool-rows button,
+.new-trip-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.tool-heading {
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.tool-back {
+  border: 0;
+  background: transparent;
+  color: var(--apell-primary);
+  padding: 0 4px;
+  font-size: 0.83rem;
+  margin: -7px 0 8px;
+}
+.tool-rows {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+  border: 1px solid var(--apell-line);
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--apell-surface);
+}
+.tool-rows li + li {
+  border-top: 1px solid var(--apell-line);
+}
+.tool-rows button,
+.new-trip-row {
+  width: 100%;
+  padding: 15px;
+  border: 0;
+  text-align: start;
+  background: transparent;
+}
+.tool-icon,
+.new-trip-symbol {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  flex: none;
+  color: var(--apell-badge-text);
+  background: var(--apell-badge);
+  border-radius: 12px;
+}
+.expense-icon {
+  background: var(--apell-selection);
+  color: var(--apell-primary);
+}
+.tool-row-copy,
+.new-trip-row > span:nth-child(2) {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 4px;
+  overflow-wrap: anywhere;
+}
+.tool-row-copy strong,
+.new-trip-row strong {
+  font-size: 0.98rem;
+}
+.tool-row-copy small,
+.new-trip-row small {
+  color: var(--apell-muted);
+  font-size: 0.78rem;
+}
+.tool-rows button > svg,
+.new-trip-row > svg {
+  color: var(--apell-muted);
+}
+.expense-totals {
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  border-radius: 14px;
+  background: var(--apell-badge);
+  color: var(--apell-badge-text);
+  gap: 5px;
+}
+.expense-totals span {
+  font-size: 0.78rem;
+}
+.expense-totals strong {
+  font-size: 1.35rem;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.expense-day {
+  margin-top: 24px;
+}
+.expense-day h3 {
+  margin: 0;
+  font-size: 0.84rem;
+  color: var(--apell-muted);
+  font-weight: 550;
+}
+.expense-day .tool-rows {
+  margin-top: 8px;
+}
+.expense-amount {
+  max-width: 45%;
+  overflow-wrap: anywhere;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.87rem;
+}
+.tool-empty {
+  font-size: 0.9rem;
+  color: var(--apell-muted);
+}
