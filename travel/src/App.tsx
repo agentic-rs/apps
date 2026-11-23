@@ -19,8 +19,9 @@ import { TripForm } from './components/TripForm';
 import { NewTrip } from './components/NewTrip';
 import { AddTripCity } from './components/AddTripCity';
 import { sameTripCity, tripCitySummary } from './lib/cities';
-import { createStopLookup } from './lib/stop-lookup';
+import { createStopLookup, type StopSearchCategory } from './lib/stop-lookup';
 import { citiesOnDay } from './lib/city-days';
+import { continuingStays, isContinuingStay } from './lib/hotel-stays';
 import { StopForm } from './components/StopForm';
 import { CheckInForm } from './components/CheckInForm';
 import { Photo } from './components/Photo';
@@ -41,7 +42,7 @@ const MapView = lazy(() => import('./components/MapView'));
 type View = 'Itinerary' | 'Map' | 'Journal' | 'Toolbox';
 type Editor =
   | { kind: 'new_trip' | 'edit_trip' | 'add_city' | 'overview' }
-  | { kind: 'stop'; stop?: PlannedStop }
+  | { kind: 'stop'; stop?: PlannedStop; initial_category?: StopSearchCategory }
   | { kind: 'route' }
   | { kind: 'visit'; visit?: CheckIn; stop?: PlannedStop }
   | { kind: 'photo_events' };
@@ -89,7 +90,13 @@ export function App() {
     [journal.check_ins, trip_id],
   );
   const entry_days = useMemo(
-    () => [...stops.map((stop) => stop.day), ...visits.map(recordedDay)].sort(),
+    () =>
+      [
+        ...stops.flatMap((stop) =>
+          stop.checkout_date ? [stop.day, stop.checkout_date] : [stop.day],
+        ),
+        ...visits.map(recordedDay),
+      ].sort(),
     [stops, visits],
   );
   const today = localToday();
@@ -301,11 +308,12 @@ export function App() {
                   day_cities={day_cities}
                   trip={trip}
                   stops={day_stops}
+                  continuing_stays={continuingStays(stops, day)}
                   visits={day_visits}
                   trip_visits={visits}
                   places={journal.places}
                   platform={platform}
-                  onAddStop={() => setEditor({ kind: 'stop' })}
+                  onAddStop={(initial_category) => setEditor({ kind: 'stop', initial_category })}
                   onOpenMap={() => setView('Map')}
                   onEditStop={(stop) => setEditor({ kind: 'stop', stop })}
                   onMoveStop={reorderStop}
@@ -497,14 +505,17 @@ export function App() {
       {editor?.kind === 'stop' && trip && (
         <StopForm
           lookup={lookup}
+          trip_stops={stops}
           trip={trip}
           day={day}
           stop={editor.stop}
+          initial_category={editor.initial_category}
           onCancel={() => setEditor(null)}
           onDelete={(stop) => confirmRemoval({ kind: 'stop', stop })}
           onSave={async (stop) => {
             await persist((snapshot) => upsertStop(snapshot, stop));
-            setChosenDay(stop.day);
+            if (!editor.stop || editor.stop.day === day || !isContinuingStay(stop, day))
+              setChosenDay(stop.day);
             setEditor(null);
           }}
         />

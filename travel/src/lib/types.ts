@@ -11,6 +11,7 @@ export interface TripCityLocation extends Coordinates {
 }
 
 export interface DirectoryRef {
+  subtitle?: string;
   provider: 'ourairports' | 'osm' | 'geoapify';
   id: string;
 }
@@ -58,6 +59,7 @@ export interface PlannedStop {
   id: string;
   trip_id: string;
   day: string;
+  checkout_date?: string;
   title: string;
   kind: StopKind;
   time: string;
@@ -97,7 +99,7 @@ export interface CheckIn {
   updated_at: string;
 }
 
-export const journal_schema_version = 6;
+export const journal_schema_version = 7;
 
 export interface Journal {
   schema_version: typeof journal_schema_version;

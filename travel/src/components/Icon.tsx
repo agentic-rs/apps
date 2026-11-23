@@ -1,6 +1,15 @@
 import type { CSSProperties } from 'react';
 
 const paths = {
+  landmark: <path d="m3 9 9-6 9 6ZM3 21h18M5 18h14M7 12v6m5-6v6m5-6v6" />,
+  bed: (
+    <>
+      <path d="M3 5v15m18-2H3m18 2v-8a2 2 0 0 0-2-2h-7v5H3m18 0h-9" />
+      <circle cx="7.5" cy="10" r="2" />
+    </>
+  ),
+  food: <path d="M5 3v5a3 3 0 0 0 6 0V3M8 3v18m11 0V3c-3 1-4 5-4 9h4" />,
+  plane: <path d="m21 3-1 4-5 5 1 7-2 2-3-6-4 3-1 3-2-2 1-3 3-4-6-3 2-2 7 1 5-5 4-1Z" />,
   toolbox: (
     <>
       <rect x="3" y="7" width="18" height="14" rx="3" />

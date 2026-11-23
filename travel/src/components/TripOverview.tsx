@@ -1,5 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { citiesOnDay } from '../lib/city-days';
+import { continuingStays } from '../lib/hotel-stays';
 import { daysBetween, isCalendarDate, itineraryDayLabel, offsetDay } from '../lib/dates';
 import type { PlannedStop, Trip } from '../lib/types';
 import { Dialog } from './Dialog';
@@ -127,15 +128,19 @@ export function TripOverview({
             const heading = itineraryDayLabel(date, first, trip);
             const cities = citiesOnDay(trip, date).join(' → ');
             const titles = stops_by_day.get(date) ?? [];
-            const summary = titles.length ? titles.slice(0, 3).join(' · ') : 'No stops planned';
-            const extra = titles.length > 3 ? ` · +${titles.length - 3} more` : '';
+            const stays = continuingStays(stops, date);
+            const summary =
+              titles.slice(0, 3).join(' · ') +
+              (titles.length > 3 ? ` · +${titles.length - 3} more` : '');
+            const lines = [summary, ...stays.map((stay) => stay.label)].filter(Boolean);
+            if (!lines.length) lines.push('No stops planned');
             return (
               <li key={date}>
                 <button
                   className="overview-day"
                   ref={date === anchor ? anchor_row : undefined}
                   aria-label={`Open itinerary for ${date}`}
-                  aria-description={`${heading}. ${cities || 'City not scheduled'}. ${summary}${extra}.`}
+                  aria-description={`${heading}. ${cities || 'City not scheduled'}. ${lines.join('. ')}.`}
                   aria-current={date === day ? 'date' : undefined}
                   disabled={saving}
                   onClick={() => onSelect(date)}
@@ -146,10 +151,9 @@ export function TripOverview({
                   </span>
                   <span className="overview-day-plan">
                     <strong>{cities || 'City not scheduled'}</strong>
-                    <span>
-                      {summary}
-                      {extra}
-                    </span>
+                    {lines.map((line, index) => (
+                      <span key={index}>{line}</span>
+                    ))}
                   </span>
                   <Icon name="next" size={16} />
                 </button>

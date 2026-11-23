@@ -2,15 +2,32 @@ import type { Coordinates, StopKind } from './types';
 import type { StopSearchCategory, StopSearchResult } from './stop-lookup';
 
 type PlaceCategory = Exclude<StopSearchCategory, 'airport'>;
+// The nearest individually mapped artworks, memorials and park fragments can
+// fill a whole city's browse list. Keep them available in a named search.
+const nearby_sight_tags = [
+  'tourism:attraction',
+  'tourism:museum',
+  'tourism:gallery',
+  'tourism:viewpoint',
+  'tourism:zoo',
+  'tourism:aquarium',
+  'tourism:theme_park',
+  'historic:castle',
+  'historic:palace',
+  'amenity:place_of_worship',
+  'leisure:garden',
+];
 const tags: Record<PlaceCategory, string[]> = {
   all: [],
   sight: [
-    'tourism',
+    ...nearby_sight_tags,
+    'tourism:artwork',
     'historic',
-    'amenity:place_of_worship',
     'leisure:park',
-    'leisure:garden',
-    'natural',
+    'natural:peak',
+    'natural:beach',
+    'natural:cave_entrance',
+    'waterway:waterfall',
   ],
   food: [
     'amenity:restaurant',
@@ -30,13 +47,31 @@ const tags: Record<PlaceCategory, string[]> = {
     'tourism:resort',
   ],
 };
+const sight_categories = [
+  'tourism.attraction',
+  'tourism.sights',
+  'entertainment.museum',
+  'entertainment.culture.gallery',
+  'entertainment.zoo',
+  'entertainment.aquarium',
+  'entertainment.theme_park',
+  'heritage',
+  'religion.place_of_worship',
+  'leisure.park',
+  'natural.mountain.peak',
+  'natural.mountain.cave_entrance',
+  'beach',
+];
 const categories: Record<PlaceCategory, string> = {
   all: 'accommodation,activity,catering,commercial,entertainment,heritage,leisure,natural,public_transport,religion,tourism',
-  sight: 'tourism,entertainment.museum,heritage,religion,leisure.park,natural',
+  sight: sight_categories.join(','),
   stay: 'accommodation',
   food: 'catering,commercial.food_and_drink.bakery',
 };
-const radius_m = 40_000;
+
+export function placeSearchRadiusKm(query: string): number {
+  return query ? 40 : 10;
+}
 
 function asObject(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -55,6 +90,12 @@ export function placeSearchUrl(
   center: Coordinates | undefined,
   public_key: string,
 ): URL {
+  const radius_km = placeSearchRadiusKm(query);
+  if (!query && !center)
+    throw new Error(
+      'Choose a city from the directory to browse nearby places, or enter the stop manually.',
+    );
+
   if (public_key) {
     if (!center)
       throw new Error(
@@ -62,31 +103,31 @@ export function placeSearchUrl(
       );
     const url = new URL('https://api.geoapify.com/v2/places');
     url.search = new URLSearchParams({
-      name: query,
       categories: categories[category],
       limit: '12',
       lang: 'en',
-      filter: `circle:${center.longitude},${center.latitude},${radius_m}`,
+      filter: `circle:${center.longitude},${center.latitude},${radius_km * 1000}`,
       bias: `proximity:${center.longitude},${center.latitude}`,
       apiKey: public_key,
     }).toString();
+    if (query) url.searchParams.set('name', query);
+    else url.searchParams.set('conditions', 'named');
     return url;
   }
-  const url = new URL('https://photon.komoot.io/api/');
-  url.search = new URLSearchParams({
-    q: center ? query : [query, city].filter(Boolean).join(', '),
-    limit: '12',
-    lang: 'en',
-  }).toString();
+  const url = new URL(query ? 'https://photon.komoot.io/api/' : 'https://photon.komoot.io/reverse');
+  url.searchParams.set('limit', '12');
+  url.searchParams.set('lang', 'en');
+  if (query) url.searchParams.set('q', center ? query : [query, city].filter(Boolean).join(', '));
+  else url.searchParams.set('radius', String(radius_km));
   if (center) {
     const { latitude, longitude } = center;
-    const dy = radius_m / 111_000;
+    const dy = radius_km / 111;
     const dx = dy / Math.max(0.001, Math.cos((latitude * Math.PI) / 180));
     url.searchParams.set('lat', String(latitude));
     url.searchParams.set('lon', String(longitude));
     // A wrapped bounding box is invalid for Photon. In that case the caller
     // still applies the same distance filter to the biased results.
-    if (longitude - dx >= -180 && longitude + dx <= 180)
+    if (query && longitude - dx >= -180 && longitude + dx <= 180)
       url.searchParams.set(
         'bbox',
         [
@@ -97,7 +138,8 @@ export function placeSearchUrl(
         ].join(','),
       );
   }
-  for (const tag of tags[category]) url.searchParams.append('osm_tag', tag);
+  const requested_tags = !query && category === 'sight' ? nearby_sight_tags : tags[category];
+  for (const tag of requested_tags) url.searchParams.append('osm_tag', tag);
   return url;
 }
 
@@ -119,8 +161,8 @@ function geoapifyKind(values: unknown): StopKind {
     return 'food';
   if (roots.has('public_transport') || roots.has('airport')) return 'transport';
   if (
-    ['tourism', 'entertainment', 'leisure', 'heritage', 'religion', 'natural'].some((key) =>
-      roots.has(key),
+    sight_categories.some((category) =>
+      values_list.some((value) => value === category || value.startsWith(category + '.')),
     )
   )
     return 'sight';
@@ -159,7 +201,6 @@ export function readPlaceResults(
     const kind = geoapify
       ? geoapifyKind(props.categories)
       : osmKind(string(props.osm_key), string(props.osm_value));
-    // Broad upstream tags such as "tourism" also include hotels.
     if (category !== 'all' && category !== kind) continue;
     const locality = [
       string(props.street),
@@ -177,5 +218,3 @@ export function readPlaceResults(
   }
   return [...results.values()];
 }
-
-export const search_radius_km = radius_m / 1000;

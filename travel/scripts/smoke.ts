@@ -88,6 +88,17 @@ try {
     const url = new URL(route.request().url());
     if (url.hostname === '127.0.0.1') return route.continue();
     if (
+      (url.origin === 'https://photon.komoot.io' && url.pathname === '/reverse') ||
+      (url.origin === 'https://api.geoapify.com' &&
+        url.pathname === '/v2/places' &&
+        !url.searchParams.has('name'))
+    ) {
+      return route.fulfill({
+        json: { type: 'FeatureCollection', features: [] },
+        headers: { 'Access-Control-Allow-Origin': '*' },
+      });
+    }
+    if (
       url.hostname === 'tile.openstreetmap.org' ||
       url.hostname.endsWith('.tile.openstreetmap.org')
     ) {

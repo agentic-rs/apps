@@ -1,6 +1,6 @@
 import { searchDirectoryAirports, searchDirectoryCities } from './offline-directory';
 import { distanceKm } from './distance';
-import { placeSearchUrl, readPlaceResults, search_radius_km } from './place-providers';
+import { placeSearchRadiusKm, placeSearchUrl, readPlaceResults } from './place-providers';
 import type { Coordinates, DirectoryRef, StopKind, TripCityLocation } from './types';
 
 export type StopSearchCategory = 'all' | 'sight' | 'food' | 'stay' | 'airport';
@@ -72,8 +72,8 @@ export function createStopLookup(
     attribution: public_key ? 'Geoapify' : 'Photon',
     async search({ query, category, city, location }, signal) {
       query = query.trim();
-      if (!query) return [];
       signal.throwIfAborted();
+      if (!query && category !== 'sight' && category !== 'stay') return [];
       if (category === 'airport') {
         const airports = await searchDirectoryAirports(query);
         signal.throwIfAborted();
@@ -101,8 +101,9 @@ export function createStopLookup(
       signal.throwIfAborted();
       const url = placeSearchUrl(query, category, city, center, public_key);
       const payload = await requestPlaces(url, signal, native);
+      const radius_km = placeSearchRadiusKm(query);
       return readPlaceResults(payload, Boolean(public_key), category).filter(
-        (place) => !center || distanceKm(center, place.position) <= search_radius_km,
+        (place) => !center || distanceKm(center, place.position) <= radius_km,
       );
     },
   };

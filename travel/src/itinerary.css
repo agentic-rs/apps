@@ -113,7 +113,7 @@
   font-size: 0.73rem;
 }
 
-.itinerary-stop-meta time {
+.itinerary-stop-meta > time {
   border-left: 1px solid var(--apell-line);
   padding-left: 9px;
   font-variant-numeric: tabular-nums;
@@ -292,11 +292,31 @@
   margin-top: 12px;
   color: var(--apell-danger);
 }
-.day-actions {
+.day-place-actions {
   display: flex;
-  align-items: center;
+  gap: 9px;
+}
+.day-place-actions button {
+  flex: 1;
+  justify-content: center;
+}
+.stop-picker-pane:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.stop-place-address {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  overflow-wrap: anywhere;
+  color: var(--apell-muted);
+  font-size: 0.82rem;
+}
+.stop-place-address svg {
   flex: none;
-  gap: 4px;
+  align-self: center;
 }
 .itinerary-leg {
   grid-column: 2;
@@ -312,4 +332,21 @@
 }
 .itinerary-place-credit a {
   color: inherit;
+}
+.ongoing-stay {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 9px 12px;
+  background: var(--apell-subtle);
+  border: 1px solid var(--apell-line);
+  border-radius: 9px;
+  text-align: start;
+  font-size: 0.84rem;
+}
+.ongoing-stay span {
+  flex: 1;
+  overflow-wrap: anywhere;
 }

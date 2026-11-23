@@ -2,12 +2,12 @@
 
 Fieldnotes is a local-first itinerary planner for Apell. Open a trip, choose a day, and arrange the places you want to visit. Photos and check-ins keep a record of what happened along the way.
 
-The mobile interaction reference is QYER’s 穷游行程助手. Its day-map route optimizer and trip toolbox guide the corresponding Fieldnotes flows. [Apple’s walkthrough of the iPhone app](https://apps.apple.com/cn/iphone/story/id1469876186)
+The mobile interaction reference is QYER’s 穷游行程助手. Its separate day actions for sightseeing and lodging, day-map route optimizer and trip toolbox guide the corresponding Fieldnotes flows. [Illustrated walkthrough of the day actions (step 8)](https://jingyan.baidu.com/article/a501d80c1d38a5ec630f5e29.html) · [Apple’s walkthrough of the iPhone app](https://apps.apple.com/cn/iphone/story/id1469876186)
 
 ## Plan a trip
 
 1. Select **New trip** and tap a city in the offline picker, or enter your own city name. Fieldnotes saves a one-city trip and opens its itinerary. Use **Edit trip** whenever you want to rename it or set dates.
-2. Open a day in **Itinerary** and select **Add stop**. Choose the city on a transfer day, search for a place and tap the result. Review its name, category and map pin, add a time or notes, then tap **Save stop**. **Enter manually** works for any stop.
+2. Open a day in **Itinerary**. **Add stop** opens nearby sights in the first city of the day. **Add hotel** opens nearby lodging in the last city. Tap either city on a transfer day to browse there. You can also search by name. Tap a place to review it, or tap **Change place** to return to your results. For a hotel, review the check-in and check-out dates. **Save stop** adds the place to the itinerary. **Enter manually** works for any stop.
 3. Use a stop’s arrows to change the visit order. Edit its date to move it to the end of another day’s plan. The stop order also determines the numbering on the day’s map.
 4. Select **Check in** at a stop to attach an entry and photos, or **New check-in** to record an unplanned visit. The entry keeps its own local date even when the plan changes.
 
@@ -25,7 +25,7 @@ A planned stop can have a map position. Check-ins can separately record the actu
 
 The app package includes searchable names and alternate spellings for 34,247 cities and 9,053 airports. City results show country and region for namesakes. Airport search works by name, municipality, IATA code such as `KIX`, or ICAO code. Both directories work from first launch without a network connection. The app reads local compressed indexes on demand. [GeoNames city data, CC BY 4.0](https://www.geonames.org/export/) · [OurAirports, public domain](https://ourairports.com/data/)
 
-**Places**, **Sights**, **Food** and **Hotels** send a request when you submit a search. For a directory city, the provider receives the search text, category and an area around the city centre. The search covers nearby places within 40 km. A custom city name without a known position is included in a Photon text search. Saved stops keep their own names and coordinates and open offline.
+**Sights** and **Hotels** request nearby places within 10 km of the selected city centre when you open the category. Fieldnotes reuses that list while the picker is open. Submitting a name searches up to 40 km from the city centre in the selected category. The provider receives the area, category and any submitted search text. A custom city name without a known position is included in a Photon text search. Saved stops keep their names, addresses when provided, and map coordinates offline.
 
 The default provider is Photon's public service for moderate traffic. To use Geoapify, supply `VITE_GEOAPIFY_PUBLIC_KEY` when building Fieldnotes. This must be a client-distributable key because the applet includes its value. Geoapify searches require a city with known coordinates. [Photon service](https://github.com/komoot/photon#usage) · [Geoapify Places API](https://apidocs.geoapify.com/docs/places/places/)
 
@@ -92,7 +92,7 @@ For initial shell setup, run `apell dev --target 'Apell iPhone 16 Pro'` from the
 
 ## Editing and storage
 
-- Journals from schemas 1 through 5 open with their trips, stops, travel dates, visits, photos and toolbox data intact. The next save writes schema 6, which stores optional city locations and source IDs for picked stops. Older and custom trips keep their city names.
+- Journals from schemas 1 through 6 open with their trips, stops, travel dates, visits, photos and toolbox data intact. The next save writes schema 7, which adds optional hotel check-out dates and place descriptions. Existing stays retain their original dates.
 - Trips have a name, cities, an optional date range, and a description. Check-ins have a visit date/time, saved UTC offset, notes, and up to 20 photos of up to 32 MiB each.
 - Visit times preserve the recorded local time even after the device changes time zones. Select the time zone in effect during a past visit, including any daylight-saving adjustment.
 - Supported imports are JPEG, PNG, GIF, WebP, HEIC, HEIF, and AVIF. Originals are retained. Preview support depends on the browser/device codec; unsupported images display a clear fallback. Photos load near the viewport and release their object URLs offscreen.

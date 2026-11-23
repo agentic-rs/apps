@@ -1,5 +1,5 @@
 {
   "project_url": "https://github.com/agentic-rs/apps/tree/main/travel",
   "description": "Choose a city and plan daily routes. Add another city when your trip takes you farther. Keep track of packing, expenses, check-ins and photos. Photos stay on your device. Optional AI title suggestions use event times and coordinates.",
-  "release_notes": "Find cities and airports offline by name, alternate spelling or airport code. Search for sights, food and hotels near either city on a transfer day. Choose a result to add its name and map pin to your itinerary."
+  "release_notes": "Browse sights and hotels from each itinerary day. Switch cities on a transfer day, compare places without losing your list, and plan hotel check-in and check-out dates."
 }

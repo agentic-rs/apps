@@ -216,7 +216,13 @@ function parseDirectoryRef(value: unknown): DirectoryRef {
   const row = record(value, 'Place source');
   if (row.provider !== 'ourairports' && row.provider !== 'osm' && row.provider !== 'geoapify')
     throw new Error('Unrecognized place source.');
-  return { provider: row.provider, id: text(row.id, 'Place source ID', 512, true) };
+  return {
+    provider: row.provider,
+    id: text(row.id, 'Place source ID', 512, true),
+    ...(row.subtitle !== undefined && {
+      subtitle: text(row.subtitle, 'Place description', text_limits.place_locality),
+    }),
+  };
 }
 
 export function parseStop(value: unknown): PlannedStop {
@@ -230,10 +236,20 @@ export function parseStop(value: unknown): PlannedStop {
     throw new Error('Enter a valid stop time or leave the time blank.');
   const kind = stop_kinds.find((option) => option === row.kind);
   if (!kind) throw new Error('Choose a valid stop category.');
+  const checkout = row.checkout_date;
+  if (
+    checkout !== undefined &&
+    (kind !== 'stay' ||
+      typeof checkout !== 'string' ||
+      !isCalendarDate(checkout) ||
+      checkout <= row.day)
+  )
+    throw new Error('Choose a check-out date after the check-in date for this stay.');
   return {
     id: id(row.id, 'Planned stop'),
     trip_id: id(row.trip_id, 'Trip'),
     day: row.day,
+    ...(checkout !== undefined && { checkout_date: checkout }),
     title: text(row.title, 'Stop title', text_limits.stop_title, true).trim(),
     kind,
     ...(row.directory_ref !== undefined && { directory_ref: parseDirectoryRef(row.directory_ref) }),

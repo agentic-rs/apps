@@ -1,6 +1,7 @@
-import { formatVisitDate, formatVisitTime, toVisitInput } from '../lib/dates';
+import { daysBetween, formatVisitDate, formatVisitTime, toVisitInput } from '../lib/dates';
 import { formatEntryCount, visitTitle } from '../lib/model';
 import { distanceKm, formatDistance } from '../lib/distance';
+import type { continuingStays } from '../lib/hotel-stays';
 import { stop_kind_labels } from '../lib/types';
 import type { CheckIn, PhotoAsset, Place, PlannedStop, TravelPlatform, Trip } from '../lib/types';
 import { Icon } from './Icon';
@@ -21,11 +22,12 @@ interface ItineraryDayProps {
   day_cities: string;
   trip: Trip;
   stops: PlannedStop[];
+  continuing_stays: ReturnType<typeof continuingStays>;
   visits: CheckIn[];
   trip_visits: CheckIn[];
   places: Place[];
   platform: TravelPlatform;
-  onAddStop(): void;
+  onAddStop(category: 'sight' | 'stay'): void;
   onOpenMap(): void;
   onEditStop(stop: PlannedStop): void;
   onMoveStop: MoveStop;
@@ -40,6 +42,7 @@ export function ItineraryDay({
   day_cities,
   trip,
   stops,
+  continuing_stays,
   visits,
   trip_visits,
   places,
@@ -129,21 +132,36 @@ export function ItineraryDay({
             {' · '}
             {formatEntryCount(visits.length)}
           </p>
-          <div className="day-actions">
-            <button
-              type="button"
-              className="icon-button"
-              onClick={onOpenMap}
-              aria-label="Open day map"
-            >
-              <Icon name="map" size={20} />
-            </button>
-            <button type="button" className="primary" onClick={onAddStop}>
-              <Icon name="plus" size={17} /> Add stop
-            </button>
-          </div>
+          <button
+            type="button"
+            className="icon-button"
+            onClick={onOpenMap}
+            aria-label="Open day map"
+          >
+            <Icon name="map" size={20} />
+          </button>
+        </div>
+        <div className="day-place-actions">
+          <button type="button" className="primary" onClick={() => onAddStop('sight')}>
+            <Icon name="landmark" size={18} /> Add stop
+          </button>
+          <button type="button" className="secondary" onClick={() => onAddStop('stay')}>
+            <Icon name="bed" size={18} /> Add hotel
+          </button>
         </div>
       </header>
+      {continuing_stays.map(({ stop, label }) => (
+        <button
+          type="button"
+          className="ongoing-stay"
+          key={stop.id}
+          onClick={() => onEditStop(stop)}
+        >
+          <Icon name="bed" size={17} />
+          <span>{label}</span>
+          <Icon name="next" size={15} />
+        </button>
+      ))}
       {move_error && (
         <p className="form-error" role="alert">
           {move_error}
@@ -154,6 +172,7 @@ export function ItineraryDay({
           {stops.map((stop, index) => {
             const linked = by_stop.get(stop.id)!;
             const next_position = stops[index + 1]?.position;
+            const nights = stop.checkout_date ? daysBetween(stop.day, stop.checkout_date) : 0;
             return (
               <li key={stop.id}>
                 <span className="itinerary-stop-number" aria-hidden="true">
@@ -162,6 +181,15 @@ export function ItineraryDay({
                 <div className="itinerary-stop-body">
                   <div className="itinerary-stop-meta">
                     <span>{stop_kind_labels[stop.kind]}</span>
+                    {stop.checkout_date && (
+                      <span>
+                        {nights} {nights === 1 ? 'night' : 'nights'}
+                        {' · Until '}
+                        <time dateTime={stop.checkout_date}>
+                          {formatVisitDate(stop.checkout_date + 'T00:00:00Z', 0)}
+                        </time>
+                      </span>
+                    )}
                     {stop.time && <time dateTime={stop.day + 'T' + stop.time}>{stop.time}</time>}
                   </div>
                   <h3>
@@ -231,7 +259,9 @@ export function ItineraryDay({
           })}
         </ol>
       ) : (
-        <p className="itinerary-empty">No stops planned for this day.</p>
+        !continuing_stays.length && (
+          <p className="itinerary-empty">No stops planned for this day.</p>
+        )
       )}
       {stops.some(
         (stop) => stop.directory_ref && stop.directory_ref.provider !== 'ourairports',

@@ -51,8 +51,7 @@ const files = new Map<string, number[]>();
 const directories = new Set<string>();
 const calls: string[] = [];
 const http_urls: string[] = [];
-let search_test_active = false;
-let place_request_count = 0;
+const place_requests: { city: string; query: string }[] = [];
 const event_images: number[][] = [];
 const title_requests: LlmRequest[] = [];
 const model_target = { connection_id: 'smoke-provider', model_id: 'smoke-model' };
@@ -77,6 +76,68 @@ async function eventImage(local_time: string, latitude: number): Promise<number[
     .jpeg()
     .toBuffer();
   return [...bytes];
+}
+
+// Both supported providers receive a city centre and category filters. Model both
+// independently so a stale city, category or name produces different visible rows.
+function placeResponse(url: URL) {
+  const geoapify = url.origin === 'https://api.geoapify.com';
+  const params = url.searchParams;
+  const [longitude, latitude] = geoapify
+    ? (params.get('filter') ?? '').replace('circle:', '').split(',').map(Number)
+    : [Number(params.get('lon')), Number(params.get('lat'))];
+  const cities = [
+    { name: 'Kyoto', latitude: 35.011, longitude: 135.768 },
+    { name: 'Nara', latitude: 34.682, longitude: 135.828 },
+  ];
+  const city_index = cities.findIndex(
+    (city) =>
+      Math.abs(city.latitude - latitude) < 0.08 && Math.abs(city.longitude - longitude) < 0.08,
+  );
+  const city = cities[city_index];
+  const query = params.get(geoapify ? 'name' : 'q') ?? '';
+  place_requests.push({ city: city?.name ?? '', query });
+  const categories = params.get('categories')?.split(',') ?? [];
+  const tags = params.getAll('osm_tag');
+  const venues = [
+    { name: 'test museum', kind: 'museum', category: 'entertainment.museum' },
+    { name: 'test inn', kind: 'hotel', category: 'accommodation' },
+  ];
+  const features = city
+    ? venues.flatMap((venue, index) => {
+        const name = `${city.name} ${venue.name}`;
+        const include = geoapify
+          ? categories.some(
+              (value) => venue.category === value || venue.category.startsWith(value + '.'),
+            )
+          : tags.length === 0 || tags.includes(`tourism:${venue.kind}`);
+        if (!include || !name.toLowerCase().includes(query.toLowerCase())) return [];
+        const id = 100 + city_index * venues.length + index;
+        return [
+          {
+            type: 'Feature',
+            properties: geoapify
+              ? { name, city: city.name, place_id: 'fixture-' + id, categories: [venue.category] }
+              : {
+                  name,
+                  city: city.name,
+                  osm_id: id,
+                  osm_type: 'N',
+                  osm_key: 'tourism',
+                  osm_value: venue.kind,
+                },
+            geometry: { type: 'Point', coordinates: [city.longitude, city.latitude] },
+          },
+        ];
+      })
+    : [];
+  return {
+    status: query === 'Unavailable inn' ? 503 : 200,
+    headers: [{ name: 'Content-Type', value: 'application/json' }],
+    body: Array.from(
+      new TextEncoder().encode(JSON.stringify({ type: 'FeatureCollection', features })),
+    ),
+  };
 }
 
 function hostCall(request: BridgeRequest): unknown {
@@ -190,53 +251,8 @@ function hostCall(request: BridgeRequest): unknown {
     }
     case 'http.request': {
       const url = new URL(String(params.url));
-      if (
-        search_test_active &&
-        (url.origin === 'https://photon.komoot.io' || url.origin === 'https://api.geoapify.com')
-      ) {
-        const geoapify = url.origin === 'https://api.geoapify.com';
-        assert.equal(url.searchParams.get(geoapify ? 'name' : 'q'), 'Nara test inn');
-        if (geoapify) {
-          assert.match(url.searchParams.get('filter') ?? '', /^circle:135\.\d+,34\.6/);
-        } else {
-          const lat = Number(url.searchParams.get('lat'));
-          const lon = Number(url.searchParams.get('lon'));
-          assert(
-            lat > 34.6 && lat < 34.8 && lon > 135.78 && lon < 135.9,
-            'Search uses the selected Nara city on the transfer day.',
-          );
-        }
-        place_request_count++;
-        const payload = {
-          type: 'FeatureCollection',
-          features: [
-            {
-              type: 'Feature',
-              properties: geoapify
-                ? {
-                    name: 'Nara test inn',
-                    city: 'Nara',
-                    place_id: 'fixture-inn',
-                    categories: ['accommodation.hotel'],
-                  }
-                : {
-                    name: 'Nara test inn',
-                    city: 'Nara',
-                    osm_type: 'N',
-                    osm_id: 1234,
-                    osm_key: 'tourism',
-                    osm_value: 'hotel',
-                  },
-              geometry: { type: 'Point', coordinates: [135.828, 34.682] },
-            },
-          ],
-        };
-        return {
-          status: place_request_count === 1 ? 503 : 200,
-          headers: [{ name: 'Content-Type', value: 'application/json' }],
-          body: Array.from(new TextEncoder().encode(JSON.stringify(payload))),
-        };
-      }
+      if (url.origin === 'https://photon.komoot.io' || url.origin === 'https://api.geoapify.com')
+        return placeResponse(url);
       assert.equal(
         url.origin,
         'https://tile.openstreetmap.org',
@@ -961,35 +977,86 @@ try {
     assert.deepEqual(journal(), sample, 'Browsing a fixture must preserve its saved itinerary.');
   }
   // The last fixture is open on the first Kansai transfer, with name-only legacy cities.
-  search_test_active = true;
   const add_stop = frame.getByRole('button', { name: 'Add stop', exact: true });
+  const add_hotel = frame.getByRole('button', { name: 'Add hotel', exact: true });
   const place_search = dialog.getByRole('searchbox', { name: 'Search places' });
   const search = dialog.getByRole('button', { name: 'Search', exact: true });
-  const save_stop = dialog.getByRole('button', { name: 'Save stop' });
-  async function searchNaraHotel() {
-    await add_stop.click();
-    await dialog.getByRole('button', { name: 'Search in Nara' }).click();
-    await dialog.getByRole('button', { name: 'Hotels', exact: true }).click();
-    await place_search.fill('Nara test inn');
-    await search.click();
-  }
-  await searchNaraHotel();
+  const save_stop = dialog.getByRole('button', { name: 'Save stop', exact: true });
+  const sights = dialog.getByRole('button', { name: 'Sights', exact: true });
+  const hotels = dialog.getByRole('button', { name: 'Hotels', exact: true });
+  const kyoto = dialog.getByRole('button', { name: 'Search in Kyoto', exact: true });
+  const nara = dialog.getByRole('button', { name: 'Search in Nara', exact: true });
+  const kyoto_museum = dialog.getByRole('button', { name: /^Kyoto test museum/ });
+  const nara_museum = dialog.getByRole('button', { name: /^Nara test museum/ });
+  const nara_inn = dialog.getByRole('button', { name: /^Nara test inn/ });
+  const check_in = dialog.getByLabel('Check-in date', { exact: true });
+  const check_out = dialog.getByLabel('Check-out date', { exact: true });
+  const day_two = '2030-05-21';
+  await add_stop.click();
+  await kyoto_museum.waitFor();
+  assert.equal(await sights.getAttribute('aria-pressed'), 'true');
+  assert.equal(await kyoto.getAttribute('aria-pressed'), 'true');
+  await nara.click();
+  await nara_museum.waitFor();
+  assert.equal(await kyoto_museum.count(), 0);
+  await hotels.click();
+  await nara_inn.waitFor();
+  await sights.click();
+  await nara_museum.waitFor();
+  assert.equal(await nara.getAttribute('aria-pressed'), 'true');
+  await nara_museum.click();
+  assert.equal(await dialog.getByLabel('Category').inputValue(), 'sight');
+  await save_stop.click();
+  await dialog.waitFor({ state: 'hidden' });
+
+  await add_hotel.click();
+  await nara_inn.waitFor();
+  assert.equal(await hotels.getAttribute('aria-pressed'), 'true');
+  assert.equal(await nara.getAttribute('aria-pressed'), 'true');
+  await kyoto.click();
+  await dialog.getByRole('button', { name: /^Kyoto test inn/ }).waitFor();
+  assert.equal(await nara_inn.count(), 0);
+  await nara.click();
+  await nara_inn.waitFor();
+  await place_search.fill('Unavailable inn');
+  await search.click();
   await dialog.getByRole('alert').waitFor();
   await dialog.getByRole('button', { name: 'Enter manually' }).click();
-  assert.equal(await dialog.getByLabel('Stop name').inputValue(), 'Nara test inn');
+  assert.equal(await dialog.getByLabel('Stop name').inputValue(), 'Unavailable inn');
+  assert.equal(await dialog.getByLabel('Category').inputValue(), 'stay');
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
   await dialog.getByRole('button', { name: 'Discard changes' }).click();
-  await searchNaraHotel();
-  const result = dialog.getByRole('button', { name: /Nara test inn/ });
-  await result.waitFor();
+  await add_hotel.click();
+  await nara_inn.waitFor();
+  const before_named = place_requests.length;
+  await place_search.fill('test inn');
+  assert.equal(place_requests.length, before_named, 'Typing a name waits for submit.');
+  await search.click();
+  await nara_inn.waitFor();
+  assert.deepEqual(place_requests.at(-1), { city: 'Nara', query: 'test inn' });
+  await nara_inn.click();
+  assert.equal(await dialog.getByLabel('Category').inputValue(), 'stay');
+  assert.equal(await check_in.inputValue(), day_two);
+  assert.equal(await check_out.inputValue(), '2030-05-22');
+  await dialog.getByRole('button', { name: 'Change place', exact: true }).click();
+  await nara_inn.waitFor();
+  assert.equal(await hotels.getAttribute('aria-pressed'), 'true');
+  assert.equal(await nara.getAttribute('aria-pressed'), 'true');
+  assert.equal(await place_search.inputValue(), 'test inn');
   await page
     .locator('#applet')
     .screenshot({ path: resolve(qa_directory, 'native-transfer-place-search.png') });
-  await result.click();
-  assert.equal(await dialog.getByLabel('Category').inputValue(), 'stay');
+  await nara_inn.click();
+  await check_out.fill('2030-05-23');
   await save_stop.click();
   await dialog.waitFor({ state: 'hidden' });
-  assert.equal(place_request_count, 2, 'Typing and changing filters do not contact the provider.');
+
+  // Reload the applet to empty its search caches, with packaged assets still
+  // available through the local host as they are on the device when offline.
+  await native_frame.goto(native_frame.url());
+  await frame.getByRole('button', { name: 'Open trip Kansai by rail' }).click();
+  await frame.getByRole('button', { name: 'Day 2, 21 May' }).click();
+  await native_frame.evaluate(() => Object.defineProperty(navigator, 'onLine', { value: false }));
   const http_before_airport = calls.filter((method) => method === 'http.request').length;
   await add_stop.click();
   await dialog.getByRole('button', { name: 'Airports', exact: true }).click();
@@ -1001,20 +1068,29 @@ try {
   await dialog.waitFor({ state: 'hidden' });
   assert.equal(calls.filter((method) => method === 'http.request').length, http_before_airport);
   const persisted = journal();
+  const museum = persisted.stops.find((stop) => stop.title === 'Nara test museum');
   const inn = persisted.stops.find((stop) => stop.title === 'Nara test inn');
   const airport = persisted.stops.find((stop) => stop.title === 'Kansai International Airport');
+  assert(museum?.directory_ref && museum.kind === 'sight');
+  assert.equal(museum.day, day_two);
   assert(
     inn && (inn.directory_ref?.provider === 'osm' || inn.directory_ref?.provider === 'geoapify'),
   );
   assert(airport?.directory_ref?.provider === 'ourairports');
   assert.deepEqual(inn.position, { latitude: 34.682, longitude: 135.828 });
-  assert.equal(inn.day, '2030-05-21');
+  assert.equal(inn.day, day_two);
+  assert.equal(inn.checkout_date, '2030-05-23');
+  assert.equal(inn.directory_ref.subtitle, 'Nara');
   assert.equal(airport.day, inn.day);
   assert(airport.position);
   await native_frame.goto(native_frame.url());
   await frame.getByRole('button', { name: 'Open trip Kansai by rail' }).click();
   await frame.getByRole('button', { name: 'Day 2, 21 May' }).click();
-  await frame.getByRole('button', { name: 'Edit Nara test inn' }).waitFor();
+  await frame.getByRole('button', { name: 'Edit Nara test museum' }).waitFor();
+  await frame.getByRole('button', { name: 'Edit Nara test inn' }).click();
+  assert.equal(await check_in.inputValue(), day_two);
+  assert.equal(await check_out.inputValue(), '2030-05-23');
+  await dialog.getByRole('button', { name: 'Close dialog' }).click();
   await frame.getByRole('button', { name: 'Edit Kansai International Airport' }).click();
   assert.equal(
     await dialog.getByLabel('Stop latitude').inputValue(),
@@ -1022,7 +1098,29 @@ try {
   );
   await dialog.getByRole('button', { name: 'Close dialog' }).click();
   assert.deepEqual(journal(), persisted);
-  search_test_active = false;
+  await add_stop.click();
+  await nara.click();
+  await nara_museum.getByText('On this day', { exact: true }).waitFor();
+  await nara_museum.click();
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  const discard_stop = dialog.getByRole('button', { name: 'Discard changes' });
+  assert(
+    await discard_stop.evaluate((button) => {
+      const rect = button.getBoundingClientRect();
+      return button.contains(
+        document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2),
+      );
+    }),
+    'Discard must be reachable before any scrolling by the traveler or the test.',
+  );
+  await discard_stop.click();
+  await frame.getByRole('button', { name: 'Day 3, 22 May' }).click();
+  await frame.getByRole('button', { name: 'Staying at Nara test inn' }).click();
+  assert.equal(await check_in.inputValue(), day_two);
+  await dialog.getByRole('button', { name: 'Close dialog' }).click();
+  await frame.getByRole('button', { name: 'Next day', exact: true }).click();
+  await frame.getByRole('button', { name: 'Check out of Nara test inn' }).waitFor();
+  assert.deepEqual(journal(), persisted);
   assert.deepEqual(errors, [], 'The native applet should not produce uncaught browser errors.');
   for (const method of [
     'photos.pick',
@@ -1062,7 +1160,8 @@ try {
           'multi-photo EXIF grouping, title request privacy, editable AI and manual titles',
           'atomic event batch retry, edit and reopen with photos',
           'three example journals, including a city transfer day and its ordered stops',
-          'city-scoped place search, manual fallback, offline airport search and saved map pins',
+          'transfer-day sight and hotel browsing, named place selection, manual fallback and restored search',
+          'overnight dates after reopening, cold offline airport selection and persisted map pins',
         ],
       },
       null,

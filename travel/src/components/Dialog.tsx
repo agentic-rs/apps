@@ -85,11 +85,17 @@ export function DiscardPrompt({
   onDiscard(): void;
   disabled?: boolean;
 }) {
+  const prompt = useRef<HTMLDivElement>(null);
+  const keep = useRef<HTMLButtonElement>(null);
+  useLayoutEffect(() => {
+    prompt.current?.scrollIntoView({ block: 'center' });
+    keep.current?.focus({ preventScroll: true });
+  }, []);
   return (
-    <div className="discard-prompt" role="alert">
+    <div ref={prompt} className="discard-prompt" role="alert">
       <p>Discard your unsaved changes?</p>
       <div className="button-row">
-        <button type="button" className="secondary" disabled={disabled} onClick={onKeep}>
+        <button ref={keep} type="button" className="secondary" disabled={disabled} onClick={onKeep}>
           Keep editing
         </button>
         <button type="button" className="danger" disabled={disabled} onClick={onDiscard}>

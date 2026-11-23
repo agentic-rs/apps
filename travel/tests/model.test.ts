@@ -410,6 +410,24 @@ describe('trip cities', () => {
 });
 
 describe('planned stops', () => {
+  test('stay dates and the selected place address survive save and reopen', () => {
+    const stay: PlannedStop = {
+      ...stop,
+      kind: 'stay',
+      checkout_date: '2026-05-15',
+      directory_ref: { provider: 'osm', id: 'N12', subtitle: 'Nara, Japan' },
+    };
+    const next = upsertStop(populated(), stay);
+    expect(parseJournal(JSON.parse(JSON.stringify(next))).stops).toEqual([stay]);
+    for (const checkout_date of [stay.day, '2026-05-01', '2026-02-30']) {
+      expect(() => parseStop({ ...stay, checkout_date })).toThrow('check-out');
+    }
+    expect(() => parseStop({ ...stay, kind: 'sight' })).toThrow('check-out');
+    const old_stay: PlannedStop = { ...stop, kind: 'stay' };
+    expect(parseJournal({ ...next, schema_version: 6, stops: [old_stay] }).stops).toEqual([
+      old_stay,
+    ]);
+  });
   test('migrates schema 1 visits, photo events, exact coordinates and original photo references', () => {
     const old_event: CheckIn = {
       ...check_in,
