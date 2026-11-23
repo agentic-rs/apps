@@ -102,6 +102,8 @@ export interface CheckIn {
   title?: string;
   visited_at: string;
   utc_offset_minutes: number;
+  /** IANA rules used for city-local time. The recorded offset preserves the original wall clock. */
+  time_zone?: string;
   actual_location: VisitLocation | null;
   notes: string;
   photos: PhotoAsset[];
@@ -109,7 +111,7 @@ export interface CheckIn {
   updated_at: string;
 }
 
-export const journal_schema_version = 8;
+export const journal_schema_version = 9;
 
 export interface Journal {
   schema_version: typeof journal_schema_version;

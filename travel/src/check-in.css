@@ -150,6 +150,10 @@
   color: var(--apell-danger);
   font-size: 0.82rem;
 }
+.check-in-form .visit-time-error {
+  color: var(--apell-danger);
+  font-size: 0.82rem;
+}
 .dialog:has(.check-in-form) .discard-prompt .button-row {
   flex-wrap: wrap;
 }

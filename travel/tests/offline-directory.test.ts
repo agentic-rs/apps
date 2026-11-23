@@ -18,6 +18,7 @@ test('the shipped records match the source manifest and have distinct public pla
   expect(cities).toHaveLength(manifest.city_count);
   expect(airports).toHaveLength(manifest.airport_count);
   expect(new Set(cities.map(([id]) => id)).size).toBe(cities.length);
+  expect(cities.every((row) => typeof row[6] === 'string' && row[6].length > 0)).toBe(true);
   expect(new Set(airports.map(([id]) => id)).size).toBe(airports.length);
   expect(airports.every((row) => /^[A-Z]{3}$/.test(row[4]))).toBe(true);
 });
@@ -60,6 +61,49 @@ test('same-name cities retain distinct IDs, states and coordinates', async () =>
     'geonames:1857910',
   ]);
   expect(cities_by_id.map((city) => city.name)).toEqual(['Singapore', 'Kyoto']);
+});
+
+test('city time zones use saved IDs and distinguish older namesakes by their stop pin', async () => {
+  expect(await directory.resolveCityTimeZone('custom label', 'geonames:1857910')).toBe(
+    'Asia/Tokyo',
+  );
+  expect(await directory.resolveCityTimeZone('Singapore', 'geonames:1')).toBeUndefined();
+  expect(await directory.resolveCityTimeZone('京都')).toBe('Asia/Tokyo');
+  expect(await directory.resolveCityTimeZone('Singapore')).toBe('Asia/Singapore');
+  expect(await directory.resolveCityTimeZone('Kathmandu')).toBe('Asia/Kathmandu');
+  expect(await directory.resolveCityTimeZone('Kathm')).toBeUndefined();
+  expect(await directory.resolveCityTimeZone('Nara')).toBeUndefined();
+  expect(
+    await directory.resolveCityTimeZone('Nara', undefined, { latitude: 34.68, longitude: 135.8 }),
+  ).toBe('Asia/Tokyo');
+  expect(
+    await directory.resolveCityTimeZone('Springfield', undefined, {
+      latitude: 42.1,
+      longitude: -72.59,
+    }),
+  ).toBe('America/New_York');
+  expect(
+    await directory.resolveCityTimeZone('Springfield', undefined, { latitude: 0, longitude: 0 }),
+  ).toBeUndefined();
+});
+
+test('time zone agreement includes candidates beyond the picker limit', async () => {
+  const rows: CityRow[] = Array.from({ length: 41 }, (_, index) => [
+    index + 1,
+    'Town',
+    'US',
+    '',
+    39,
+    -90,
+    index < 40 ? 'America/Chicago' : 'America/New_York',
+  ]);
+  const lookup = createOfflineDirectory(async (path) =>
+    path === 'cities' ? rows : [['town', rows.map((_, index) => index * 4)]],
+  );
+  expect((await lookup.searchDirectoryCities('town')).length).toBe(40);
+  expect(await lookup.resolveCityTimeZone('town')).toBeUndefined();
+  rows[40][6] = 'America/Chicago';
+  expect(await lookup.resolveCityTimeZone('town')).toBe('America/Chicago');
 });
 
 test('airports support IATA and ICAO codes, municipality, and name words', async () => {

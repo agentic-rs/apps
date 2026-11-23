@@ -131,14 +131,14 @@ export function searchPlannedStops(
   type_filter?: PlaceTypeFilter,
   origin?: Coordinates,
 ) {
-  const browse_type = Boolean(type_filter) && !query.trim();
+  const browse = !query.trim() && (category === 'sight' || category === 'stay');
   const matches = placeNameMatcher(query);
   const custom_key = directoryKey(custom_city);
   return stops.filter(
     (stop) =>
       (category === 'all' || stop.kind === category) &&
       (!type_filter || matchesPlaceType(stop.directory_ref?.place_type, type_filter)) &&
-      (browse_type || matches(stop.title)) &&
+      (browse || matches(stop.title)) &&
       (origin
         ? stop.position && distanceKm(origin, stop.position) <= planned_place_radius_km
         : selected !== undefined

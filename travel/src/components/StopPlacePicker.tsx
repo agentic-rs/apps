@@ -269,8 +269,9 @@ export function StopPlacePicker({
   const selected_id = map_selections[selection_key];
   const current_place = results?.find(({ place }) => place.id === selected_id) ?? results?.[0];
   const other_cities = named_term ? (scoped?.other_cities ?? []) : [];
+  const browse_saved = is_browsable && !loading && !places?.length;
   const planned =
-    onEditPlanned && city && (query.trim() || type_filter) && !airports
+    onEditPlanned && city && (query.trim() || type_filter || browse_saved) && !airports
       ? searchPlannedStops(
           day_stops,
           query,

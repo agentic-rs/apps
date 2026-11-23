@@ -39,7 +39,7 @@ From a stop’s review, **View on map** previews the day in the proposed order. 
 
 An overnight or checkout hotel appears with a bed pin on the day map and on the maps used to compare places. Tap it to see whether you are staying or checking out. The day map also lets you reopen the original stay. These pins keep the day's stop numbering and route order intact.
 
-When a search result says **On this day**, tap it to edit the saved visit or stay, or choose **Add another visit** or **Add another stay**. Typing also searches the day's saved stops in the selected city. If the directory uses a different pin for a sight, you can reopen your original stop under **On this day**. Saved stops remain searchable offline. Hotel stays appear on each night from check-in through the night before check-out.
+When a search result says **On this day**, tap it to edit the saved visit or stay, or choose **Add another visit** or **Add another stay**. Typing also searches the day's saved stops in the selected city. If the directory uses a different pin for a sight, you can reopen your original stop under **On this day**. If the directory is unavailable or has no nearby results, the picker shows the city's saved sights or stays even before you type. Hotel stays appear on each night from check-in through the night before check-out.
 
 When your plans expand, tap **Add a city**, pick the destination and choose the day you travel. On the transfer day, the itinerary shows both cities, such as **Tokyo → Kyoto**. The following days show **Kyoto** until the next transfer. On a trip with no dates or entries, scheduling a later transfer keeps the day you were planning as Day 1. If the transfer falls after an existing end date, the app shows the new end date before you save.
 
@@ -49,6 +49,8 @@ The **Journal** tab brings together all the trip’s entries and lets you search
 
 Choose **Check in** at a planned stop to start an entry with its name, city and available map position. For older stops, Fieldnotes fills the city when the itinerary identifies it. You can change the place, add notes and attach photos. **Use current location** records the device’s present position. You can also enter coordinates for an earlier visit. All coordinates use WGS84.
 
+The visit opens on the itinerary date, with the clock set to the stop’s city. An unplanned visit or a stop whose time zone cannot be identified starts in device time. Under **Visit time zone**, you can choose a fixed UTC offset. For a repeated hour, the form shows both offsets. For an hour skipped by daylight saving, choose another time or set an explicit offset.
+
 On an overnight or checkout day, **Add entry** beside a hotel opens a check-in for that day. The saved entry appears beside the hotel and in the trip journal. The arrival day keeps the full history for the stay.
 
 ## Place search
@@ -57,7 +59,7 @@ Use **Search near** in the list or map to choose a mapped stop or hotel in that 
 
 Tap the filter beside the results heading or in the map header to choose museums and galleries, parks and gardens, places of worship, hotels, hostels or guest houses. The directory searches the selected area for that type. Each city remembers its sight and lodging choices while the picker is open. The type also applies when you search by name. Choose **All sights** or **All lodging** to clear it. When the directory identifies a venue’s type, Fieldnotes shows it beside the address and saves it with the stop. Typed stops on the day can also be found offline by filtering.
 
-The app package includes searchable names and alternate spellings for 34,247 cities and 9,053 airports. City results show country and region for namesakes. Airport search works by name, municipality, IATA code such as `KIX`, or ICAO code. Both directories work from first launch without a network connection. The app reads local compressed indexes on demand. [GeoNames city data, CC BY 4.0](https://www.geonames.org/export/) · [OurAirports, public domain](https://ourairports.com/data/)
+The app package includes searchable names and alternate spellings for 34,247 cities and 9,053 airports. Each city has a time-zone identifier, and results show country and region for namesakes. Airport search works by name, municipality, IATA code such as `KIX`, or ICAO code. Both directories work from first launch without a network connection. The app reads local compressed indexes on demand. [GeoNames city data, CC BY 4.0](https://www.geonames.org/export/) · [OurAirports, public domain](https://ourairports.com/data/)
 
 **Sights** and **Hotels** open with places within 10 km of the selected city centre. As you type, nearby names and saved stops appear immediately. After you pause on two or more letters or numbers, Fieldnotes sends the partial name and search area to the place provider for suggestions within 40 km of a known city centre, or within 3 km of a selected stop. For a stop-based search, the provider receives the search coordinates. Its itinerary title, notes and stay dates stay on the device. Chinese and Japanese input waits until you confirm the characters. Tap **Search** or press Return to submit immediately. Airport suggestions come from the bundled directory as you type.
 
@@ -130,9 +132,9 @@ For initial shell setup, run `apell dev --target 'Apell iPhone 16 Pro'` from the
 
 ## Editing and storage
 
-- Journals from schemas 1 through 7 open with their trips, stops, travel dates, visits, photos and toolbox data intact. The next save writes schema 8. Newly picked stops can store the selected planning city and its directory ID. Older stops retain their existing place information.
+- Journals from schemas 1 through 8 open with their trips, stops, travel dates, visits, photos and toolbox data intact. The next save writes schema 9. Newly picked stops can store the selected planning city and its directory ID. Older stops retain their existing place information.
 - Trips have a name, cities, an optional date range, and a description. Check-ins have a visit date/time, saved UTC offset, notes, and up to 20 photos of up to 32 MiB each.
-- Visit times preserve the recorded local time even after the device changes time zones. Select the time zone in effect during a past visit, including any daylight-saving adjustment.
+- Visit times keep their recorded offset when the device changes time zones. A check-in saved in its city’s time zone also remembers that zone, so correcting its visit date uses the daylight-saving rules for that date. Earlier journal entries and manually selected offsets keep their recorded time.
 - Supported imports are JPEG, PNG, GIF, WebP, HEIC, HEIF, and AVIF. Originals are retained. Preview support depends on the browser/device codec; unsupported images display a clear fallback. Photos load near the viewport and release their object URLs offscreen.
 - Drafts stay open after a failed save and can be retried. Closing a form with edits asks before discarding them. Save before closing/reloading the app; unsaved text is not recovered after termination. Closing the native applet during an import can leave unreferenced private photo files.
 - Native metadata is an atomically replaced JSON snapshot, limited to 16 MiB, with photos stored separately in the applet’s private image directory. The browser saves newly included photo originals and journal changes in one IndexedDB transaction. It rejects stale writes from another tab. Corrupt metadata is reported without replacing it with an empty journal.

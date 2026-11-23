@@ -6,6 +6,7 @@ export type CityRow = [
   admin1: string,
   latitude: number,
   longitude: number,
+  time_zone: string,
 ];
 
 export type AirportRow = [

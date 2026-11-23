@@ -285,6 +285,19 @@ describe('journal data integrity', () => {
     expect(() => parseCheckIn({ ...check_in, utc_offset_minutes: 840.5 })).toThrow('offset');
   });
 
+  test('round-trips city time and the recorded offset independently, including on older devices', () => {
+    const original = populated();
+    const zoned = { ...check_in, time_zone: 'America/Argentina/Buenos_Aires' };
+    const saved = saveCheckIn(original, zoned, place);
+    expect(parseJournal(JSON.parse(JSON.stringify(saved))).check_ins[0]).toEqual(zoned);
+    expect(parseJournal({ ...original, schema_version: 8 }).check_ins[0]).toEqual(check_in);
+    expect(parseCheckIn({ ...check_in, time_zone: 'Future/City' }).utc_offset_minutes).toBe(
+      check_in.utc_offset_minutes,
+    );
+    for (const time_zone of ['', '   ', '/City', 'Area//City', {}, 540, 'A'.repeat(129)])
+      expect(() => parseCheckIn({ ...check_in, time_zone })).toThrow('zone');
+  });
+
   test('canonicalizes UTC timestamps for chronological ordering and rejects local year overflow', () => {
     const whole_second = parseCheckIn({ ...check_in, visited_at: '2026-05-12T14:20:00Z' });
     const fractional_second = parseCheckIn({ ...check_in, visited_at: '2026-05-12T14:20:00.123Z' });

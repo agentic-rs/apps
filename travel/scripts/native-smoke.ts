@@ -7,7 +7,7 @@ import { firefox, type Browser, type Locator, type Page } from 'playwright-core'
 import sharp from 'sharp';
 import type { LlmRequest } from '@apell/sdk';
 import { directoryShard } from '../src/lib/directory-format';
-import type { Journal } from '../src/lib/types';
+import { journal_schema_version, type Journal } from '../src/lib/types';
 
 // No device APIs or existing journal data are accessed. The real production
 // SDK speaks to an in-memory host over its ordinary MessageChannel bridge.
@@ -71,7 +71,7 @@ let cancel_location = true;
 let fail_next_write = false;
 let journal_writes = 0;
 let fail_map_tiles = false;
-let fail_place_search = false;
+let place_response_mode: 'normal' | 'unavailable' | 'empty' = 'normal';
 let fail_visitor_details = false;
 let image_sequence = 0;
 
@@ -114,7 +114,7 @@ function placeResponse(url: URL) {
   place_requests.push({ city: cities[city_index]?.name ?? '', query });
   // A named 40 km search around Kyoto can include hotels in Nara.
   const venue_city = query === 'Nara test inn' ? 1 : city_index;
-  const city = cities[venue_city];
+  const city = place_response_mode === 'empty' ? undefined : cities[venue_city];
   const categories = params.get('categories')?.split(',') ?? [];
   const tags = params.getAll('osm_tag');
   const city_venues = [
@@ -237,7 +237,10 @@ function placeResponse(url: URL) {
       })
     : [];
   return {
-    status: fail_place_search || query === 'Unavailable inn' || query === 'Nara Park' ? 503 : 200,
+    status:
+      place_response_mode === 'unavailable' || query === 'Unavailable inn' || query === 'Nara Park'
+        ? 503
+        : 200,
     headers: [{ name: 'Content-Type', value: 'application/json' }],
     body: Array.from(
       // Model a short provider page. Narrowing by type can surface venues beyond the first page.
@@ -485,7 +488,10 @@ const errors: string[] = [];
 const browser_messages: string[] = [];
 try {
   browser = await firefox.launch({ executablePath: firefox_path, headless: true });
-  page = await browser.newPage({ viewport: { width: 1100, height: 850 } });
+  page = await browser.newPage({
+    viewport: { width: 1100, height: 850 },
+    timezoneId: 'America/Los_Angeles',
+  });
   page.setDefaultTimeout(15_000);
   page.on('pageerror', (error) => errors.push(error.message));
   page.on('console', (message) => {
@@ -731,6 +737,11 @@ try {
   assert.equal(http_urls.length, 0, 'Planning a stop must not request map tiles.');
 
   await frame.getByRole('button', { name: 'Check in at Lakeside park', exact: true }).click();
+  const visit_zone = dialog.getByLabel('Visit time zone');
+  await visit_zone
+    .getByRole('option', { name: /Tokyo.*UTC\+09:00/ })
+    .waitFor({ state: 'attached' });
+  assert.equal(await visit_zone.inputValue(), 'auto');
   const place_details = dialog.locator('summary[aria-label="Place details"]');
   const place_name = dialog.getByLabel('Place name', { exact: true });
   const place_city = dialog.getByLabel('City or area');
@@ -748,7 +759,7 @@ try {
   );
   await planned_stop.selectOption(park_stop.id);
   await dialog.getByLabel('Visit date & time').fill('2026-05-12T18:30');
-  await dialog.getByLabel('Visit time zone').selectOption('480');
+  await visit_zone.selectOption('480');
   await dialog
     .getByRole('textbox', { name: 'Notes', exact: true })
     .fill('A native photo and a separate visit position.');
@@ -801,6 +812,8 @@ try {
   assert.equal(saved.places[0].locality, 'North district');
   assert.equal(saved.check_ins[0].photos.length, 2);
   assert.equal(saved.check_ins[0].visited_at, '2026-05-12T10:30:00.000Z');
+  assert.equal(saved.check_ins[0].utc_offset_minutes, 480);
+  assert.equal(saved.check_ins[0].time_zone, undefined, 'A manually selected offset is fixed.');
   assert.deepEqual(saved.places[0].position, { latitude: 12, longitude: 34 });
   assert.deepEqual(saved.check_ins[0].actual_location, {
     latitude: 12.34567,
@@ -816,6 +829,10 @@ try {
 
   await frame.getByRole('button', { name: 'New check-in', exact: true }).click();
   assert.equal(await place_city.inputValue(), '', 'An unplanned visit starts with a blank city.');
+  await visit_zone
+    .getByRole('option', { name: /Device time.*UTC−07:00/ })
+    .waitFor({ state: 'attached' });
+  assert.equal(await visit_zone.inputValue(), 'auto');
   await dialog.getByLabel('Choose a saved place').selectOption(saved.places[0].id);
   await dialog.getByLabel('Visit date & time').fill('2026-05-12T19:30');
   await dialog
@@ -1249,6 +1266,9 @@ try {
       await itinerary.getByRole('button', { name: `Check in at ${title}`, exact: true }).click();
       await place_details.getByText(title, { exact: true }).waitFor();
       await place_details.getByText(expected_city, { exact: true }).waitFor();
+      const local_zone = transfer ? /Nara.*UTC\+09:00/ : /Singapore.*UTC\+08:00/;
+      await visit_zone.getByRole('option', { name: local_zone }).waitFor({ state: 'attached' });
+      assert.equal(await visit_zone.inputValue(), 'auto', 'Name-only trip cities resolve offline.');
       assert(!(await place_name.isVisible()), 'The known place is summarized on entry.');
       await place_details.click();
       assert.equal(await place_city.inputValue(), expected_city);
@@ -2108,6 +2128,8 @@ try {
   assert((await dialog.getByLabel('Visit date & time').inputValue()).startsWith('2030-05-23T'));
   assert.equal(await place_city.inputValue(), 'Nara');
   assert.equal(await planned_stop.inputValue(), inn.id);
+  await visit_zone.getByRole('option', { name: /Nara.*UTC\+09:00/ }).waitFor({ state: 'attached' });
+  await dialog.getByLabel('Visit date & time').fill('2030-05-23T00:10');
   await dialog
     .getByRole('textbox', { name: 'Notes', exact: true })
     .fill('Left the keys at reception.');
@@ -2115,6 +2137,10 @@ try {
   await dialog.waitFor({ state: 'hidden' });
   const checkout_entry = journal().check_ins.find((entry) => entry.stop_id === inn.id);
   assert(checkout_entry && checkout_entry.actual_location === null);
+  assert.equal(checkout_entry.time_zone, 'Asia/Tokyo');
+  assert.equal(journal().schema_version, journal_schema_version);
+  assert.equal(checkout_entry.utc_offset_minutes, 540);
+  assert.equal(checkout_entry.visited_at, '2030-05-22T15:10:00.000Z');
   assert.equal(
     journal().places.find((place) => place.id === checkout_entry.place_id)?.locality,
     'Nara',
@@ -2740,26 +2766,52 @@ try {
     writes_before_filter + 1,
     'Comparing types and fallback never write a second stop.',
   );
-  // A relaunch drops the directory cache. The saved type still identifies the park
-  // even when its name says nothing about its type and the provider is unavailable.
-  fail_place_search = true;
+  // Relaunch without the directory cache and browse each transfer city without typing.
+  place_response_mode = 'unavailable';
   await native_frame.goto(native_frame.url());
   await frame.getByRole('button', { name: 'Open trip Kansai by rail', exact: true }).click();
   await frame.getByRole('button', { name: 'Day 2, 21 May', exact: true }).click();
   await add_stop.click();
+  const saved_places = dialog.getByRole('list', { name: 'On this day', exact: true });
+  const saved_result = (name: string) =>
+    saved_places.getByRole('button', { name: `Edit planned stop ${name}`, exact: true });
+  await dialog.getByRole('alert').waitFor();
+  assert.equal(await place_search.inputValue(), '');
+  await saved_result('Kyoto test museum').waitFor();
+  assert.equal(await saved_result('Kyoto test inn').count(), 0);
+  assert.equal(await saved_result('Nara Park').count(), 0);
+  await nara.click();
+  await saved_result('Nara Park').waitFor();
+  await saved_result('Nara Canal Walk').waitFor();
+  assert.equal(await saved_result('Kyoto test museum').count(), 0);
+  assert.equal(await saved_result('JR Nara Station').count(), 0);
+
+  // A successful empty hotel response should leave the city's saved stay accessible.
+  place_response_mode = 'empty';
+  await hotels.click();
+  await kyoto.click();
+  await dialog.getByText('No additional matches from place search.', { exact: true }).waitFor();
+  assert.deepEqual(await saved_places.locator('strong').allTextContents(), ['Kyoto test inn']);
+  await saved_result('Kyoto test inn').click();
+  assert.equal(await dialog.getByLabel('Stop name').inputValue(), 'Kyoto test inn');
+  assert.equal(await shellBack(), true);
+  await nara.click();
+  await dialog.getByRole('status').filter({ hasText: 'No nearby places found.' }).waitFor();
+  assert.equal(await saved_places.count(), 0);
+
+  // The saved type identifies the park even when its name omits the word "park".
+  place_response_mode = 'unavailable';
+  await sights.click();
   await nara.click();
   await chooseType(dialog, 'Sight', 'Parks & gardens');
   await dialog.getByRole('alert').waitFor();
   assert.equal(await place_search.inputValue(), '');
-  const saved_parks = dialog.getByRole('list', { name: 'On this day', exact: true });
-  await saved_parks
-    .getByRole('button', { name: 'Edit planned stop Nara Canal Walk', exact: true })
-    .click();
+  await saved_result('Nara Canal Walk').click();
   assert.equal(await park_editor.getByLabel('Stop name').inputValue(), 'Nara Canal Walk');
   assert.equal(await shellBack(), true);
   assert.equal(await shellBack(), true);
   assert.equal(journal_writes, writes_before_filter + 1);
-  fail_place_search = false;
+  place_response_mode = 'normal';
   assert.equal(await shellBack(), true, 'Back from the trip itinerary returns to the library.');
   await frame.getByRole('heading', { name: 'Your trips', exact: true }).waitFor();
   assert.equal(await shellBack(), false);
@@ -3926,6 +3978,7 @@ try {
           'returning to the last saved stop, continuing stay or checkout in the day timeline',
           'comparing a sight to an unnumbered checkout hotel in both maps without occupying another night',
           'scoped sight and lodging types across the list, map, quick add and hotel review',
+          'saved sights and hotels by city when a transfer-day directory search fails or returns no places',
           'departure-city sights in trip order from review, list and map, explicit overrides and stable overnight stops',
           'an immediate manual save waits for bundled city centers and writes once in transfer order',
           'whole-day reordering from itinerary and map with drag, tap, cancel, persistence and retry',

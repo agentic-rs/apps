@@ -6,6 +6,9 @@ import {
   type CityRow,
   type TermIndex,
 } from './directory-format';
+import { distanceKm } from './distance';
+import { placeSearchRadiusKm } from './place-providers';
+import type { Coordinates } from './types';
 
 interface DirectoryPlace {
   id: string;
@@ -18,6 +21,7 @@ interface DirectoryPlace {
 
 export interface DirectoryCity extends DirectoryPlace {
   admin1: string;
+  time_zone?: string;
 }
 
 export interface DirectoryAirport extends DirectoryPlace {
@@ -38,7 +42,7 @@ async function readPackageFile(path: string): Promise<unknown> {
 }
 
 /** Sorted at build time using the same UTF-16 ordering as this lower-bound search. */
-function prefixMatches(index: TermIndex, query: string): Map<number, number> {
+function firstTerm(index: TermIndex, query: string): number {
   let low = 0;
   let high = index.length;
   while (low < high) {
@@ -46,8 +50,12 @@ function prefixMatches(index: TermIndex, query: string): Map<number, number> {
     if (index[middle][0] < query) low = middle + 1;
     else high = middle;
   }
+  return low;
+}
+
+function prefixMatches(index: TermIndex, query: string): Map<number, number> {
   const matches = new Map<number, number>();
-  for (let i = low; i < index.length; i++) {
+  for (let i = firstTerm(index, query); i < index.length; i++) {
     const [key, postings] = index[i];
     if (!key.startsWith(query)) break;
     for (const posting of postings) {
@@ -63,10 +71,19 @@ function prefixMatches(index: TermIndex, query: string): Map<number, number> {
 }
 
 function cityFromRow(
-  [id, name, country_code, admin1, latitude, longitude]: CityRow,
+  [id, name, country_code, admin1, latitude, longitude, time_zone]: CityRow,
   exact_match: boolean,
 ): DirectoryCity {
-  return { id: `geonames:${id}`, name, country_code, admin1, latitude, longitude, exact_match };
+  return {
+    id: `geonames:${id}`,
+    name,
+    country_code,
+    admin1,
+    latitude,
+    longitude,
+    exact_match,
+    time_zone: time_zone || undefined,
+  };
 }
 
 /** Both browser and Apell read the same prebuilt index from their own package. */
@@ -123,6 +140,19 @@ export function createOfflineDirectory(read = readPackageFile) {
     return results.slice(0, max_results);
   }
 
+  async function getDirectoryCitiesById(ids: readonly string[]): Promise<DirectoryCity[]> {
+    if (!ids.length) return [];
+    const rows = await getRecords<CityRow>('cities');
+    const wanted = new Set(ids);
+    const found = new Map<string, DirectoryCity>();
+    for (const row of rows) {
+      const id = `geonames:${row[0]}`;
+      if (wanted.has(id)) found.set(id, cityFromRow(row, true));
+      if (wanted.size === found.size) break;
+    }
+    return ids.flatMap((id) => found.get(id) ?? []);
+  }
+
   return {
     async searchDirectoryCities(query: string): Promise<DirectoryCity[]> {
       if (!directoryKey(query)) return [];
@@ -132,17 +162,28 @@ export function createOfflineDirectory(read = readPackageFile) {
       ]);
       return matches.map(({ row, exact_match }) => cityFromRow(rows[row], exact_match));
     },
-    async getDirectoryCitiesById(ids: readonly string[]): Promise<DirectoryCity[]> {
-      if (!ids.length) return [];
+    getDirectoryCitiesById,
+    async resolveCityTimeZone(
+      city_name: string,
+      city_id?: string,
+      position?: Coordinates | null,
+    ): Promise<string | undefined> {
+      if (city_id !== undefined) return (await getDirectoryCitiesById([city_id]))[0]?.time_zone;
+      const key = directoryKey(city_name);
+      if (!key) return undefined;
+      const index = await getShard('cities', key);
+      const term = index[firstTerm(index, key)];
+      if (!term || term[0] !== key) return undefined;
+      // Every exact name and alias matters, including records beyond the picker result limit.
       const rows = await getRecords<CityRow>('cities');
-      const wanted = new Set(ids);
-      const found = new Map<string, DirectoryCity>();
-      for (const row of rows) {
-        const id = `geonames:${row[0]}`;
-        if (wanted.has(id)) found.set(id, cityFromRow(row, true));
-        if (wanted.size === found.size) break;
-      }
-      return ids.flatMap((id) => found.get(id) ?? []);
+      const candidates = term[1]
+        .filter((posting) => posting % 4 <= term_kinds.alias)
+        .map((posting) => cityFromRow(rows[Math.floor(posting / 4)], true));
+      const nearby =
+        position &&
+        candidates.filter((city) => distanceKm(position, city) <= placeSearchRadiusKm(''));
+      const zones = new Set((nearby?.length ? nearby : candidates).map((city) => city.time_zone));
+      return zones.size === 1 ? zones.values().next().value : undefined;
     },
     async searchDirectoryAirports(query: string): Promise<DirectoryAirport[]> {
       if (!directoryKey(query)) return [];
@@ -169,5 +210,9 @@ export function createOfflineDirectory(read = readPackageFile) {
   };
 }
 
-export const { searchDirectoryCities, getDirectoryCitiesById, searchDirectoryAirports } =
-  createOfflineDirectory();
+export const {
+  searchDirectoryCities,
+  getDirectoryCitiesById,
+  searchDirectoryAirports,
+  resolveCityTimeZone,
+} = createOfflineDirectory();

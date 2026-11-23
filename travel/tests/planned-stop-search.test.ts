@@ -78,6 +78,8 @@ test('the name-only Kansai fixture yields its saved Day 2 Nara Park only in Nara
   expect(searchPlannedStops(day, 'park na', 'sight', cities, 1, park.day)).toEqual([park]);
   expect(searchPlannedStops(day, 'Nara Park', 'sight', cities, 0, park.day)).toEqual([]);
   expect(searchPlannedStops(day, 'Nara Park', 'stay', cities, 1, park.day)).toEqual([]);
+  expect(searchPlannedStops(day, '', 'sight', cities, 1, park.day)).toContain(park);
+  expect(searchPlannedStops(day, '', 'sight', cities, 0, park.day)).not.toContain(park);
   const other_pin: StopSearchResult = {
     id: 'W123',
     kind: 'sight',
@@ -191,7 +193,12 @@ test('offline lodging filters use the saved place type within the selected city'
   expect(
     searchPlannedStops(stays, '  ', 'stay', [], undefined, park.day, 'Kyoto', 'hostels'),
   ).toEqual([kyoto_hostel]);
-  expect(searchPlannedStops(stays, '', 'stay', cities, 1, park.day)).toEqual([]);
+  expect(searchPlannedStops(stays, '', 'stay', cities, 1, park.day)).toEqual([
+    hostel,
+    hotel,
+    legacy,
+  ]);
+  expect(searchPlannedStops(stays, '', 'stay', cities, 0, park.day)).toEqual([kyoto_hostel]);
   expect(searchPlannedStops(stays, 'house', 'stay', cities, 1, park.day, '', 'hostels')).toEqual([
     hostel,
   ]);

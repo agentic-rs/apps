@@ -1,9 +1,9 @@
 {
-  "format_version": 1,
+  "format_version": 2,
   "source_city_count": 34248,
   "city_count": 34247,
   "airport_count": 9053,
-  "adaptation": "Selected public place fields, normalized names and built offline search indexes.",
+  "adaptation": "Selected public place fields and IANA city time zones, normalized names and built offline search indexes.",
   "sources": [
     {
       "name": "cities15000.zip",

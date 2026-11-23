@@ -55,8 +55,11 @@ function collectCityData(directory: string, admin_names: ReadonlyMap<string, str
     .trimEnd()
     .split('\n')
     .map((line) => {
+      const fields = line.split('\t');
       const [id, name, ascii, aliases, lat, lon, , , country, , admin_code, , , , population] =
-        line.split('\t');
+        fields;
+      // Column 18 is the city's IANA time zone in the GeoNames dump format.
+      const time_zone = fields[17];
       const admin =
         admin_names.get(`${country}.${admin_code}`) ?? (admin_code === '00' ? '' : admin_code);
       // GeoNames labels the Japanese city "Nara-shi". Keep Fieldnotes' existing travel name.
@@ -64,7 +67,7 @@ function collectCityData(directory: string, admin_names: ReadonlyMap<string, str
       if (duplicate) redirects.set(Number(id), Number(duplicate[1]));
       const display = id === '1855612' ? 'Nara' : name.slice(0, duplicate?.index);
       return {
-        row: [Number(id), display, country, admin, Number(lat), Number(lon)],
+        row: [Number(id), display, country, admin, Number(lat), Number(lon), time_zone],
         names: [display],
         aliases: [name, ascii, ...aliases.split(',')],
         regions: [admin, ...countryTerms(country)],
@@ -156,8 +159,9 @@ async function writeDirectory<T extends Row>(stage: string, stem: string, entrie
   const ids = new Set<number>();
   for (const { row } of entries) {
     const [id, name, country] = row;
-    const latitude = row.at(-2);
-    const longitude = row.at(-1);
+    const coordinate_index = stem === 'cities' ? 4 : 6;
+    const latitude = row[coordinate_index];
+    const longitude = row[coordinate_index + 1];
     if (
       !Number.isSafeInteger(id) ||
       id <= 0 ||
@@ -240,11 +244,12 @@ try {
   await writeDirectory(next, 'cities', cities);
   await writeDirectory(next, 'airports', airports);
   const manifest = {
-    format_version: 1,
+    format_version: 2,
     source_city_count: source_count,
     city_count: cities.length,
     airport_count: airports.length,
-    adaptation: 'Selected public place fields, normalized names and built offline search indexes.',
+    adaptation:
+      'Selected public place fields and IANA city time zones, normalized names and built offline search indexes.',
     sources: source_files,
     attribution: [
       {

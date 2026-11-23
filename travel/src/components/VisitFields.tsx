@@ -1,4 +1,5 @@
 import { useId, useState } from 'react';
+import { formatUtcOffset } from '../lib/visit-clock';
 
 export function CoordinateInputs({
   prefix,
@@ -62,6 +63,9 @@ export function VisitTimeFields({
   prefix,
   local_time,
   offset,
+  automatic_choices,
+  suggested_offsets = [],
+  time_error,
   offset_help,
   onTime,
   onOffset,
@@ -69,37 +73,75 @@ export function VisitTimeFields({
   prefix: string;
   local_time: string;
   offset: string;
+  automatic_choices?: { value: string; label: string }[];
+  suggested_offsets?: number[];
+  time_error?: string;
   offset_help: string;
   onTime(value: string): void;
   onOffset(value: string): void;
 }) {
-  const offsets = [
-    ...new Set([...Array.from({ length: 113 }, (_, index) => index * 15 - 840), Number(offset)]),
-  ].sort((a, b) => a - b);
+  const group_id = useId();
+  const offsets = new Set([
+    ...Array.from({ length: 113 }, (_, index) => index * 15 - 840),
+    ...suggested_offsets,
+  ]);
+  if (offset && Number.isFinite(Number(offset))) offsets.add(Number(offset));
+  const choices = [...offsets]
+    .sort((a, b) => a - b)
+    .map((value) => (
+      <option key={value} value={value}>
+        {formatUtcOffset(value)}
+      </option>
+    ));
   return (
     <div className="form-grid time-fields">
       <label>
-        {prefix} date &amp; time
+        <span id={group_id + '-date-label'}>{prefix} date &amp; time</span>
         <input
           required
           type="datetime-local"
+          aria-labelledby={group_id + '-date-label'}
+          aria-invalid={time_error ? true : undefined}
+          aria-describedby={time_error ? group_id + '-error' : undefined}
           value={local_time}
           onChange={(e) => onTime(e.target.value)}
         />
+        {time_error && (
+          <span className="visit-time-error" role="alert" id={group_id + '-error'}>
+            {time_error}
+          </span>
+        )}
       </label>
       <label>
-        {prefix} time zone
-        <select required value={offset} onChange={(e) => onOffset(e.target.value)}>
+        <span id={group_id + '-zone-label'}>{prefix} time zone</span>
+        <select
+          required
+          value={offset}
+          aria-labelledby={group_id + '-zone-label'}
+          aria-describedby={offset_help ? group_id + '-zone-help' : undefined}
+          onChange={(e) => onOffset(e.target.value)}
+        >
           {!offset && <option value="">Choose offset</option>}
-          {offsets.map((value) => (
-            <option key={value} value={value}>
-              UTC{value >= 0 ? '+' : '−'}
-              {String(Math.floor(Math.abs(value) / 60)).padStart(2, '0')}:
-              {String(Math.abs(value) % 60).padStart(2, '0')}
-            </option>
-          ))}
+          {automatic_choices ? (
+            <>
+              <optgroup label="Automatic">
+                {automatic_choices.map((choice) => (
+                  <option key={choice.value} value={choice.value}>
+                    {choice.label}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Fixed offset">{choices}</optgroup>
+            </>
+          ) : (
+            choices
+          )}
         </select>
-        <span className="field-help">{offset_help}</span>
+        {offset_help && (
+          <span className="field-help" id={group_id + '-zone-help'}>
+            {offset_help}
+          </span>
+        )}
       </label>
     </div>
   );

@@ -567,6 +567,11 @@ try {
   await button('Save changes').click();
   await waitClosed();
   await button('Check in at Old harbour').click();
+  const visit_time_zone = page.getByLabel('Visit time zone');
+  await visit_time_zone
+    .getByRole('option', { name: /Tokyo.*UTC\+09:00/ })
+    .waitFor({ state: 'attached' });
+  assert.equal(await visit_time_zone.inputValue(), 'auto');
   const place_details = page.locator('summary[aria-label="Place details"]');
   const visit_coordinates = page.locator('summary').filter({ hasText: 'Visit coordinates' });
   await place_details.click();
@@ -579,7 +584,7 @@ try {
   await page.getByRole('button', { name: 'Use current location' }).click();
   await page.getByText('Device location · ±12 m').waitFor();
   await page.getByLabel('Visit date & time').fill('2026-05-01T09:35');
-  await page.getByLabel('Visit time zone').selectOption('480');
+  await visit_time_zone.selectOption('480');
   await page
     .getByRole('textbox', { name: 'Notes', exact: true })
     .fill('Salt in the air. A good place to slow down.');
@@ -668,6 +673,11 @@ try {
     .getByRole('button', { name: 'Open check-in at Old harbour' })
     .click();
   await page.getByRole('button', { name: 'Edit check-in', exact: true }).click();
+  assert.equal(
+    await visit_time_zone.inputValue(),
+    '480',
+    'Editing preserves a recorded manual offset.',
+  );
   await place_details.click();
   await page.getByLabel('Edit this place for all its visits').check();
   await page.getByLabel('Place name', { exact: true }).fill('');
@@ -1365,6 +1375,75 @@ try {
   await addStop('Station hall', '48.88', '2.35');
   const before_stay_edit = await readJournal();
   const saved_stay = before_stay_edit.stops.find((stop) => stop.title === 'Station hotel')!;
+  await button('Add journal entry at Station hotel').click();
+  const visit_date_time = page.getByLabel('Visit date & time');
+  const automatic_zone = visit_time_zone.locator('option:checked');
+  await visit_time_zone
+    .getByRole('option', { name: /Paris.*UTC\+01:00/ })
+    .waitFor({ state: 'attached' });
+  assert.match(await automatic_zone.innerText(), /Paris.*UTC\+01:00/);
+  await visit_date_time.fill('2031-07-15T09:30');
+  assert.match(await automatic_zone.innerText(), /Paris.*UTC\+02:00/);
+  await visit_time_zone.selectOption('345');
+  await visit_date_time.fill('2031-03-12T09:30');
+  assert.equal(
+    await visit_time_zone.inputValue(),
+    '345',
+    'Changing the date preserves a manual offset.',
+  );
+  await visit_time_zone.selectOption('auto');
+  assert.match(await automatic_zone.innerText(), /Paris.*UTC\+01:00/);
+  assert.equal(await visit_date_time.inputValue(), '2031-03-12T09:30');
+  await button('Save check-in').click();
+  await waitClosed();
+  const paris_entry = (await readJournal()).check_ins.find(
+    (entry) => entry.stop_id === saved_stay.id,
+  )!;
+  assert.equal(paris_entry.visited_at, '2031-03-12T08:30:00.000Z');
+  assert.equal(paris_entry.utc_offset_minutes, 60);
+  assert.equal(paris_entry.time_zone, 'Europe/Paris');
+  await page.reload();
+  await button('Open trip Paris trip').click();
+  await chooseDay('2031-03-12');
+  await button('Open check-in at Station hotel').click();
+  await page
+    .getByRole('dialog', { name: 'Check-in', exact: true })
+    .getByText(/09:30 UTC\+01:00 · Europe\/Paris/)
+    .waitFor();
+  await button('Edit check-in').click();
+  assert.equal(await visit_time_zone.inputValue(), 'auto');
+  assert.equal(await visit_date_time.inputValue(), '2031-03-12T09:30');
+  await visit_date_time.fill('2031-10-26T02:30');
+  assert.equal(await visit_time_zone.inputValue(), 'auto-first');
+  assert.match(await automatic_zone.innerText(), /First.*UTC\+02:00/);
+  await visit_time_zone.selectOption('auto-second');
+  assert.match(await automatic_zone.innerText(), /Second.*UTC\+01:00/);
+  await button('Save check-in').click();
+  await page
+    .getByRole('dialog', { name: 'Check-in', exact: true })
+    .getByText(/02:30 UTC\+01:00 · Europe\/Paris/)
+    .waitFor();
+  const repeated_entry = (await readJournal()).check_ins.find(
+    (entry) => entry.id === paris_entry.id,
+  )!;
+  assert.equal(repeated_entry.visited_at, '2031-10-26T01:30:00.000Z');
+  assert.equal(repeated_entry.utc_offset_minutes, 60);
+  assert.equal(repeated_entry.time_zone, 'Europe/Paris');
+  await button('Edit check-in').click();
+  assert.equal(await visit_time_zone.inputValue(), 'auto-second');
+  assert.equal(await visit_date_time.inputValue(), '2031-10-26T02:30');
+  await visit_date_time.fill('2031-07-15T09:30');
+  assert.equal(await visit_time_zone.inputValue(), 'auto');
+  assert.match(await automatic_zone.innerText(), /UTC\+02:00/);
+  await button('Save check-in').click();
+  await button('Close dialog').click();
+  const summer_entry = (await readJournal()).check_ins.find(
+    (entry) => entry.id === paris_entry.id,
+  )!;
+  assert.equal(summer_entry.visited_at, '2031-07-15T07:30:00.000Z');
+  assert.equal(summer_entry.utc_offset_minutes, 120);
+  assert.equal(summer_entry.time_zone, 'Europe/Paris');
+  await chooseDay('2031-03-12');
   await goTo('Map');
   const overnight_pin = route_map.getByRole('button', {
     name: 'Stop 1, Station hall · Staying at Station hotel',

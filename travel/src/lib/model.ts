@@ -339,6 +339,14 @@ export function parseCheckIn(value: unknown): CheckIn {
   const visited_at = timestamp(row.visited_at, 'Visit time');
   const utc_offset_minutes = validateOffset(row.utc_offset_minutes);
   toVisitInput(visited_at, utc_offset_minutes);
+  // A journal may come from a newer OS with additional IANA names. Keep its recorded offset.
+  if (
+    row.time_zone !== undefined &&
+    (typeof row.time_zone !== 'string' ||
+      row.time_zone.length > 128 ||
+      !/^[A-Za-z][A-Za-z0-9_+-]*(?:\/[A-Za-z][A-Za-z0-9_+-]*)*$/.test(row.time_zone))
+  )
+    throw new Error('The visit time zone identifier is invalid.');
   const title =
     row.title === undefined
       ? ''
@@ -353,6 +361,7 @@ export function parseCheckIn(value: unknown): CheckIn {
     ...(title && { title }),
     visited_at,
     utc_offset_minutes,
+    ...(row.time_zone !== undefined && { time_zone: row.time_zone }),
     actual_location: row.actual_location === null ? null : parseVisitLocation(row.actual_location),
     notes: text(row.notes, 'Check-in notes', text_limits.check_in_notes),
     photos,

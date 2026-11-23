@@ -1,5 +1,6 @@
 import { formatCoordinates, visitTitle } from '../lib/model';
 import { formatVisitDate, formatVisitTime } from '../lib/dates';
+import { formatUtcOffset } from '../lib/visit-clock';
 import type { CheckIn, PhotoAsset, Place, TravelPlatform, Trip } from '../lib/types';
 import { Icon } from './Icon';
 import { Photo } from './Photo';
@@ -51,6 +52,13 @@ export function VisitCard({
               </>
             )}
             {formatVisitTime(visit.visited_at, visit.utc_offset_minutes)}
+            {detail && (
+              <>
+                {' '}
+                {formatUtcOffset(visit.utc_offset_minutes)}
+                {visit.time_zone && <> · {visit.time_zone.replaceAll('_', ' ')}</>}
+              </>
+            )}
           </p>
         </div>
       </header>

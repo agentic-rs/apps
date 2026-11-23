@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type {
   CheckIn,
   PhotoAsset,
@@ -8,7 +8,7 @@ import type {
   Trip,
   VisitLocation,
 } from '../lib/types';
-import { currentOffsetMinutes, fromVisitInput, isCalendarDate, toVisitInput } from '../lib/dates';
+import { fromVisitInput, isCalendarDate, toVisitInput } from '../lib/dates';
 import {
   readCoordinates,
   max_photos_per_check_in,
@@ -17,6 +17,7 @@ import {
 } from '../lib/model';
 import { createId } from '../lib/identity';
 import { usePlannedCheckInPlace } from '../lib/check-in-place';
+import { formatUtcOffset, visitClock, type VisitOccurrence } from '../lib/visit-clock';
 import { Dialog, DiscardPrompt } from './Dialog';
 import { Icon } from './Icon';
 import { DraftPhotos } from './DraftPhotos';
@@ -69,14 +70,14 @@ export function CheckInForm({
   const [place_draft, setPlaceDraft] = useState<ReturnType<typeof placeFields> | null>(null);
   const [place_expanded, setPlaceExpanded] = useState(!stop && !check_in);
   const [edit_place, setEditPlace] = useState(false);
-  const [visited, setVisited] = useState(() => {
-    if (check_in) return toVisitInput(check_in.visited_at, check_in.utc_offset_minutes);
-    const now = new Date();
-    return day + 'T' + toVisitInput(now.toISOString(), currentOffsetMinutes(now)).slice(11);
-  });
-  const [offset, setOffset] = useState(() =>
-    String(check_in?.utc_offset_minutes ?? currentOffsetMinutes(new Date(visited))),
+  const [opened_at] = useState(() => Date.now());
+  const [entered_time, setEnteredTime] = useState(() =>
+    check_in ? toVisitInput(check_in.visited_at, check_in.utc_offset_minutes) : undefined,
   );
+  const [offset_choice, setOffsetChoice] = useState(() =>
+    check_in && !check_in.time_zone ? String(check_in.utc_offset_minutes) : 'auto',
+  );
+  const [occurrence, setOccurrence] = useState<VisitOccurrence>();
   const [notes, setNotes] = useState(check_in?.notes ?? '');
   const [latitude, setLatitude] = useState(check_in?.actual_location?.latitude.toString() ?? '');
   const [longitude, setLongitude] = useState(check_in?.actual_location?.longitude.toString() ?? '');
@@ -92,15 +93,90 @@ export function CheckInForm({
   const [discard, setDiscard] = useState(false);
   const selected_place = places.find((place) => place.id === place_id);
   const selected_stop = stops.find((item) => item.id === stop_id);
-  const { place: planned_place, loading: resolving_place } = usePlannedCheckInPlace(
-    trip,
-    check_in || selected_place || place_draft ? undefined : selected_stop,
+  const {
+    place: planned_place,
+    loading,
+    time_zone,
+    resolving_zone,
+  } = usePlannedCheckInPlace(trip, selected_stop);
+  const resolving_place = !check_in && !selected_place && !place_draft && loading;
+  const proposed = placeFields(
+    selected_place ?? (check_in ? { name: '', locality: '', position: null } : planned_place),
   );
-  const proposed = placeFields(selected_place ?? planned_place);
   // Once the traveler edits a named place, changing its itinerary link preserves the whole place.
   const fields = selected_place && !edit_place ? proposed : (place_draft ?? proposed);
   const { name, locality, place_latitude, place_longitude } = fields;
+  const clock = useMemo(
+    () => visitClock(day, opened_at, entered_time, time_zone, check_in, occurrence),
+    [day, opened_at, entered_time, time_zone, check_in, occurrence],
+  );
+  const visited = clock.local_time;
   const visit_day = visited.slice(0, 10);
+  const automatic = offset_choice === 'auto';
+  const offset = automatic ? clock.offset : Number(offset_choice);
+  const waiting_for_zone = !check_in?.time_zone && resolving_zone;
+  const pending_time = automatic && waiting_for_zone;
+  const zone_label = clock.unavailable_recorded_zone
+    ? 'Saved offset'
+    : clock.time_zone
+      ? (time_zone === clock.time_zone && planned_place.locality) || clock.time_zone
+      : 'Device time';
+  const repeated_time =
+    !waiting_for_zone &&
+    !clock.unavailable_recorded_zone &&
+    clock.offsets.length === 2 &&
+    clock.offset !== undefined &&
+    clock.offsets.includes(clock.offset);
+  const automatic_choices = repeated_time
+    ? [
+        { value: 'auto-first', label: `First · ${formatUtcOffset(clock.offsets[0])}` },
+        { value: 'auto-second', label: `Second · ${formatUtcOffset(clock.offsets[1])}` },
+      ]
+    : [
+        {
+          value: 'auto',
+          label: waiting_for_zone
+            ? 'Finding local time…'
+            : [zone_label, clock.offset !== undefined && formatUtcOffset(clock.offset)]
+                .filter(Boolean)
+                .join(' · '),
+        },
+      ];
+  let selected_offset = offset_choice;
+  if (automatic && repeated_time)
+    selected_offset = clock.offset === clock.offsets[0] ? 'auto-first' : 'auto-second';
+  let time_error = '';
+  let offset_help = '';
+  if (automatic && !pending_time) {
+    if (clock.unavailable_recorded_zone) {
+      offset_help = `Time-zone rules for ${check_in?.time_zone} are unavailable on this device.`;
+    } else if (clock.issue === 'gap') {
+      time_error = 'Clocks skipped this local time. Choose another time or a fixed UTC offset.';
+    } else if (clock.issue === 'unsupported') {
+      time_error = 'This historical time zone needs a fixed UTC offset.';
+    } else if (repeated_time) {
+      offset_help = clock.time_zone
+        ? `This time occurs twice in ${zone_label}.`
+        : 'This time occurs twice in the device time zone.';
+    }
+  }
+
+  function chooseOffset(value: string) {
+    const offset =
+      value === 'auto-first'
+        ? clock.offsets[0]
+        : value === 'auto-second'
+          ? clock.offsets[1]
+          : undefined;
+    setOccurrence(
+      offset === undefined
+        ? undefined
+        : { local_time: visited, time_zone: clock.time_zone, offset },
+    );
+    // Lock the visible wall time when choosing an occurrence or a fixed offset.
+    setEnteredTime(visited);
+    setOffsetChoice(value.startsWith('auto') ? 'auto' : value);
+  }
 
   useEffect(() => {
     if (error) error_message.current?.focus();
@@ -176,7 +252,7 @@ export function CheckInForm({
     }
   }
   async function submit() {
-    if (busy || resolving_place) return;
+    if (busy || resolving_place || pending_time || offset === undefined) return;
     setDiscard(false);
     setBusy(true);
     setError('');
@@ -212,11 +288,12 @@ export function CheckInForm({
         ...(editing_event && { title: title.trim() }),
         visited_at:
           check_in &&
-          Number(offset) === check_in.utc_offset_minutes &&
+          offset === check_in.utc_offset_minutes &&
           visited === toVisitInput(check_in.visited_at, check_in.utc_offset_minutes)
             ? check_in.visited_at
-            : fromVisitInput(visited, Number(offset)),
-        utc_offset_minutes: Number(offset),
+            : fromVisitInput(visited, offset),
+        utc_offset_minutes: offset,
+        ...(automatic && clock.time_zone && { time_zone: clock.time_zone }),
         actual_location,
         notes: notes.trim(),
         photos,
@@ -486,10 +563,16 @@ export function CheckInForm({
                 <VisitTimeFields
                   prefix="Visit"
                   local_time={visited}
-                  offset={offset}
-                  offset_help="Local time at the visit."
-                  onTime={setVisited}
-                  onOffset={setOffset}
+                  offset={selected_offset}
+                  automatic_choices={automatic_choices}
+                  suggested_offsets={clock.offsets}
+                  time_error={time_error}
+                  offset_help={offset_help}
+                  onTime={(value) => {
+                    setEnteredTime(value);
+                    setOccurrence(undefined);
+                  }}
+                  onOffset={chooseOffset}
                 />
                 <div className="check-in-position">
                   <button type="button" className="secondary" onClick={() => void locate()}>
@@ -551,6 +634,8 @@ export function CheckInForm({
                 disabled={
                   busy ||
                   resolving_place ||
+                  pending_time ||
+                  offset === undefined ||
                   (editing_event ? !title.trim() : (!selected_place || edit_place) && !name.trim())
                 }
               >
