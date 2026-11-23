@@ -58,9 +58,13 @@ button svg {
 }
 button:focus-visible,
 a:focus-visible,
-summary:focus-visible {
+summary:focus-visible,
+:root[data-focus-input='keyboard'] :is(button, a, summary):focus {
   outline: 3px solid var(--apell-focus);
   outline-offset: 3px;
+}
+:root[data-focus-input='pointer'] :is(button, a, summary):focus {
+  outline: none;
 }
 input:focus,
 textarea:focus,

@@ -498,6 +498,70 @@ describe('planned stops', () => {
     ]);
   });
 
+  test('inserts before a stop in a legacy, interleaved itinerary and can replay the same save', () => {
+    const other_trip = { ...legacy_trip, id: 'other-trip' };
+    const unrelated = { ...stop, id: 'unrelated', trip_id: other_trip.id };
+    const tomorrow = { ...stop, id: 'tomorrow', day: '2026-05-13' };
+    const lunch = { ...stop, id: 'lunch', title: 'Lunch' };
+    const museum = { ...stop, id: 'museum', title: 'Museum' };
+    const original = parseJournal({
+      ...populated(),
+      schema_version: 2,
+      trips: [legacy_trip, other_trip],
+      stops: [stop, tomorrow, lunch, unrelated],
+    });
+    const inserted = upsertStop(original, museum, lunch.id);
+    expect(inserted.stops).toEqual([stop, tomorrow, museum, lunch, unrelated]);
+    expect(upsertStop(inserted, museum, lunch.id)).toEqual(inserted);
+    expect(original.stops).toEqual([stop, tomorrow, lunch, unrelated]);
+
+    const renamed = { ...museum, title: 'City museum' };
+    const first = upsertStop(inserted, renamed, stop.id);
+    expect(first.stops).toEqual([renamed, stop, tomorrow, lunch, unrelated]);
+    expect(upsertStop(first, renamed, renamed.id)).toEqual(first);
+    const last = upsertStop(first, renamed, null);
+    expect(last.stops).toEqual([stop, tomorrow, lunch, unrelated, renamed]);
+    expect(upsertStop(last, renamed, null)).toEqual(last);
+    expect(parseJournal(JSON.parse(JSON.stringify(last)))).toEqual(last);
+  });
+
+  test('moves a linked stop to a chosen position on another day and keeps its visit', () => {
+    const first = { ...stop, id: 'first', day: '2026-05-13' };
+    const second = { ...first, id: 'second' };
+    const original = parseJournal({
+      ...populated(),
+      stops: [first, stop, second],
+      check_ins: [{ ...check_in, stop_id: stop.id }],
+    });
+    const moved = { ...stop, day: first.day };
+    const next = upsertStop(original, moved, second.id);
+    expect(next.stops).toEqual([first, moved, second]);
+    expect(next.check_ins).toEqual(original.check_ins);
+    expect(upsertStop(next, moved, second.id)).toEqual(next);
+    expect(upsertStop(original, moved).stops).toEqual([first, second, moved]);
+    expect(upsertStop(original, moved, moved.id).stops).toEqual([first, second, moved]);
+  });
+
+  test('a deleted anchor or one on another day or trip requires a fresh choice', () => {
+    const other_trip = { ...trip, id: 'other-trip' };
+    const anchor = { ...stop, id: 'anchor' };
+    const edited = { ...stop, title: 'Updated stop' };
+    const original = parseJournal({
+      ...populated(),
+      trips: [trip, other_trip],
+      stops: [anchor, stop],
+    });
+    for (const changed of [
+      removeStop(original, anchor.id),
+      upsertStop(original, { ...anchor, day: '2026-05-13' }),
+      upsertStop(original, { ...anchor, trip_id: other_trip.id }),
+    ]) {
+      expect(() => upsertStop(changed, edited, anchor.id)).toThrow('Choose another position');
+      expect(changed.stops.find((item) => item.id === stop.id)).toEqual(stop);
+      expect(upsertStop(changed, edited, null).stops.at(-1)).toEqual(edited);
+    }
+  });
+
   test('validates stop links and retains recorded visits when a planned stop is removed', () => {
     const other_trip = { ...trip, id: 'trip-2' };
     const other_stop = { ...stop, id: 'stop-2', trip_id: other_trip.id };

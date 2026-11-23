@@ -143,12 +143,12 @@
   transform: rotate(-45deg);
   background: var(--apell-accent);
 }
-.place-candidate-tip::after {
-  content: '';
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--apell-accent-ink);
+.place-candidate-tip > span {
+  color: var(--apell-accent-ink);
+  transform: rotate(45deg);
+  font:
+    700 14px/1 system-ui,
+    sans-serif;
 }
 .place-map-controls,
 .place-map-status {

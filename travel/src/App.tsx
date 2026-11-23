@@ -536,9 +536,9 @@ export function App() {
           initial_category={editor.initial_category}
           onCancel={() => setEditor(null)}
           onDelete={(stop) => confirmRemoval({ kind: 'stop', stop })}
-          onSave={async (stop) => {
+          onSave={async (stop, before_stop_id) => {
             const original = stops.find((item) => item.id === stop.id);
-            await persist((snapshot) => upsertStop(snapshot, stop));
+            await persist((snapshot) => upsertStop(snapshot, stop, before_stop_id));
             if (!original || original.day === day || !isContinuingStay(stop, day))
               setChosenDay(stop.day);
             setEditor(null);

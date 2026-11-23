@@ -117,14 +117,18 @@ export function groupPins(points: MapPoint[]): PinGroup[] {
   return [...groups.values()];
 }
 
-/** Keep the itinerary's numbering even when an edited or unlocated stop has no preview pin. */
+/** Number every stop in the proposed route, including places without coordinates. */
 export function previewDayStops(
   position: Coordinates,
   stops: readonly PlannedStop[],
+  insertion_index: number,
   editing_id?: string,
 ) {
-  const numbers = new Map(stops.map((stop, index) => [stop.id, index + 1]));
   const others = stops.filter((stop) => stop.id !== editing_id);
+  const slot = Math.max(0, Math.min(insertion_index, others.length));
+  const numbers = new Map(others.map((stop, i) => [stop.id, i < slot ? i + 1 : i + 2]));
+  const route: Pick<PlannedStop, 'position'>[] = [...others];
+  route.splice(slot, 0, { position });
   const { points } = mapStops(others);
   const groups = groupPins(points);
   let closest: { title: string; number: number; km: number } | undefined;
@@ -134,7 +138,7 @@ export function previewDayStops(
       closest = { title: point.label, number: numbers.get(point.id)!, km };
     }
   }
-  return { groups, numbers, closest, other_count: others.length };
+  return { groups, numbers, closest, route, candidate_number: slot + 1 };
 }
 
 export function normalizeLongitude(value: number): number {

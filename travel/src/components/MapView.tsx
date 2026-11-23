@@ -1,15 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { divIcon, layerGroup, marker, polyline, type Point, type Marker } from 'leaflet';
+import { divIcon, layerGroup, marker, type Point, type Marker } from 'leaflet';
 import { formatVisitDate, formatVisitTime } from '../lib/dates';
+import { groupPins, mapPoints, mapStops, visiblePosition, type MapMode } from '../lib/map';
 import {
-  groupPins,
-  mapPoints,
-  mapStops,
-  routeLines,
-  visiblePosition,
-  type MapMode,
-} from '../lib/map';
-import { useLeafletMap, useMapFit, useMapTiles, type MapPadding } from '../lib/leaflet-map';
+  useDayRouteLine,
+  useLeafletMap,
+  useMapFit,
+  useMapTiles,
+  type MapPadding,
+} from '../lib/leaflet-map';
 import '../map.css';
 import { formatCoordinates, formatEntryCount, visitTitle } from '../lib/model';
 import { type CheckIn, type Place, type PlannedStop, type TravelPlatform } from '../lib/types';
@@ -123,22 +122,7 @@ export default function MapView({
   const fitPins = useMapFit(map, active, fit_key, data.points, dayMapPadding);
   const { tile_failures, retryTiles } = useMapTiles(map, platform.native, active);
 
-  useEffect(() => {
-    if (!map || !active || mode !== 'stops' || stops.length < 2) return;
-    const path = polyline(routeLines(stops, map.getCenter().lng), {
-      className: 'map-route-line',
-      interactive: false,
-      weight: 3,
-      opacity: 0.92,
-      dashArray: '6 7',
-    }).addTo(map);
-    const wrapRoute = () => path.setLatLngs(routeLines(stops, map.getCenter().lng));
-    map.on('moveend', wrapRoute);
-    return () => {
-      map.off('moveend', wrapRoute);
-      path.remove();
-    };
-  }, [map, active, mode, stops]);
+  useDayRouteLine(map, stops, active && mode === 'stops');
 
   useEffect(() => {
     if (!map) return;

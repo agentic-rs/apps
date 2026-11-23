@@ -210,9 +210,6 @@
   background: var(--apell-accent);
   color: var(--apell-accent-ink);
 }
-.map-route-line {
-  stroke: var(--apell-primary);
-}
 .journal-map-pin.stops .map-pin-bubble {
   border-radius: 50%;
   transform: none;

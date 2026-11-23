@@ -47,21 +47,44 @@ describe('daily route', () => {
       stop('two', 180),
       stop('far', 170),
     ];
-    const preview = previewDayStops({ latitude: 10, longitude: 180 }, stops, 'edited');
+    const preview = previewDayStops({ latitude: 10, longitude: 180 }, stops, 1, 'edited');
     expect(preview.closest).toEqual({ title: 'Stop one', number: 3, km: 0 });
     expect(preview.groups.map((group) => group.entry_ids)).toEqual([['one', 'two'], ['far']]);
     expect(preview.numbers.get('two')).toBe(4);
-    expect(preview.other_count).toBe(4);
+    expect(preview.route).toHaveLength(5);
+    expect(preview.candidate_number).toBe(2);
+  });
+
+  test('a draft slot updates pin numbers and only connects consecutive located stops', () => {
+    const stops = [stop('station', 11), stop('park', 14), stop('lunch', null), stop('stay', 17)];
+    const place = { latitude: 10, longitude: 13 };
+    const preview = previewDayStops(place, stops, 1);
+    expect(preview.candidate_number).toBe(2);
+    expect([...preview.numbers.values()]).toEqual([1, 3, 4, 5]);
+    expect(routeLines(preview.route, 13)).toEqual([
+      [
+        [10, 11],
+        [10, 13],
+      ],
+      [
+        [10, 13],
+        [10, 14],
+      ],
+    ]);
+    const moved = previewDayStops(place, stops, 0, 'stay');
+    expect(moved.candidate_number).toBe(1);
+    expect(moved.closest?.number).toBe(3);
+    expect(moved.route.map((stop) => stop.position?.longitude)).toEqual([13, 11, 14, undefined]);
   });
 
   test('preview distinguishes an empty day from a day with no other located stops', () => {
     const position = { latitude: 0, longitude: 0 };
     const stops = [stop('edited', 7), stop('unlocated', null)];
     for (const day of [[], stops]) {
-      const preview = previewDayStops(position, day, 'edited');
+      const preview = previewDayStops(position, day, 0, 'edited');
       expect(preview.closest).toBeUndefined();
       expect(preview.groups).toHaveLength(0);
-      expect(preview.other_count).toBe(day.length ? 1 : 0);
+      expect(preview.route.length).toBe(day.length || 1);
     }
   });
   test('keeps stop identities and itinerary order, including a return to a shared position', () => {

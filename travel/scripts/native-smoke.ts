@@ -107,9 +107,17 @@ function placeResponse(url: URL) {
   const venues = [
     { name: 'test museum', kind: 'museum', category: 'entertainment.museum' },
     { name: 'test inn', kind: 'hotel', category: 'accommodation' },
+    {
+      name: 'National Museum',
+      kind: 'museum',
+      category: 'entertainment.museum',
+      city: 'Nara',
+      coordinates: [135.838, 34.683],
+    },
   ];
   const features = city
     ? venues.flatMap((venue, index) => {
+        if (venue.city && venue.city !== city.name) return [];
         const name = `${city.name} ${venue.name}`;
         const include = geoapify
           ? categories.some(
@@ -131,7 +139,10 @@ function placeResponse(url: URL) {
                   osm_key: 'tourism',
                   osm_value: venue.kind,
                 },
-            geometry: { type: 'Point', coordinates: [city.longitude, city.latitude] },
+            geometry: {
+              type: 'Point',
+              coordinates: venue.coordinates ?? [city.longitude, city.latitude],
+            },
           },
         ];
       })
@@ -1477,6 +1488,149 @@ try {
   assert.equal(await kyoto.getAttribute('aria-pressed'), 'true');
   assert.equal(await shellBack(), true);
   await dialog.getByRole('button', { name: 'Close dialog' }).click();
+
+  // Pick an actual Kansai sight through the provider, insert it into a transfer day,
+  // then move its saved record after linking a journal entry to it.
+  await frame.getByRole('button', { name: 'Day 2, 21 May', exact: true }).click();
+  const before_insert = journal();
+  const museum_name = 'Nara National Museum';
+  const route_position = dialog.getByRole('button', { name: 'Route position', exact: true });
+  const position_sheet = frame.getByRole('dialog', { name: 'Route position', exact: true });
+  const before_park = position_sheet.getByRole('button', {
+    name: /^Position 2 of \d+, Before Nara Park$/,
+  });
+  const day_titles = (snapshot: Journal, selected_day: string) =>
+    snapshot.stops
+      .filter((stop) => stop.trip_id === 'example-kansai' && stop.day === selected_day)
+      .map((stop) => stop.title);
+  const planned_list = frame.getByRole('list', { name: 'Planned stops', exact: true });
+  await add_stop.click();
+  await nara.click();
+  await place_search.fill(museum_name);
+  await search.click();
+  await dialog.getByRole('button', { name: /^Nara National Museum/ }).click();
+  await route_position.click();
+  const last_slot = position_sheet.getByRole('button', { name: /^Position .*?, After / });
+  assert.equal(await last_slot.getAttribute('aria-pressed'), 'true');
+  await before_park.click();
+  await route_position.click();
+  assert.equal(await before_park.getAttribute('aria-pressed'), 'true');
+  await page
+    .locator('#applet')
+    .screenshot({ path: resolve(qa_directory, 'native-transfer-position.png') });
+  assert.equal(await shellBack(), true);
+  await route_position.waitFor();
+  assert.equal(await dialog.getByLabel('Stop name').inputValue(), museum_name);
+  await view_on_map.click();
+  await candidate_pin.waitFor();
+  assert.equal(
+    await candidate_pin.getAttribute('aria-description'),
+    `Stop 2 of ${day_titles(before_insert, day_two).length + 1}`,
+  );
+  await preview_map.getByRole('button', { name: 'Stop 3, Nara Park', exact: true }).waitFor();
+  await preview_map.locator('.map-route-line').first().waitFor();
+  await map_preview.getByRole('button', { name: 'Back to stop', exact: true }).click();
+  assert.deepEqual(journal(), before_insert, 'Selecting a position only edits the draft.');
+  fail_next_write = true;
+  await save_stop.click();
+  await dialog.getByRole('alert').filter({ hasText: 'Simulated storage failure' }).waitFor();
+  assert.deepEqual(journal(), before_insert);
+  await route_position.click();
+  assert.equal(
+    await before_park.getAttribute('aria-pressed'),
+    'true',
+    'A failed save keeps the chosen slot.',
+  );
+  await position_sheet.getByRole('button', { name: 'Back to stop', exact: true }).click();
+  await save_stop.click();
+  await dialog.waitFor({ state: 'hidden' });
+  const inserted = journal();
+  const new_museum = inserted.stops.find((stop) => stop.title === museum_name);
+  assert(new_museum?.directory_ref && new_museum.kind === 'sight' && new_museum.city === 'Nara');
+  const expected_day = day_titles(before_insert, day_two);
+  expected_day.splice(1, 0, museum_name);
+  assert.deepEqual(day_titles(inserted, day_two), expected_day);
+  assert.deepEqual(
+    { ...inserted, stops: inserted.stops.filter((stop) => stop.id !== new_museum.id) },
+    before_insert,
+  );
+  assert.deepEqual(
+    await planned_list.getByRole('button', { name: /^Edit / }).allTextContents(),
+    expected_day,
+  );
+  await day_map.click();
+  if ((await map_order_toggle.getAttribute('aria-expanded')) === 'false')
+    await map_order_toggle.click();
+  await frame.getByRole('button', { name: 'Stop 2, Nara National Museum', exact: true }).waitFor();
+  assert.deepEqual(
+    await map_order
+      .getByRole('button', { name: /^Edit / })
+      .evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label'))),
+    expected_day.map((title) => 'Edit ' + title),
+  );
+  await mainView('Itinerary').click();
+  await frame
+    .getByRole('button', { name: 'Check in at Nara National Museum', exact: true })
+    .click();
+  await dialog.getByLabel('Visit date & time').fill(day_two + 'T13:00');
+  await dialog.getByRole('button', { name: 'Save check-in', exact: true }).click();
+  await dialog.waitFor({ state: 'hidden' });
+  const before_move = journal();
+  assert(before_move.check_ins.some((entry) => entry.stop_id === new_museum.id));
+  await native_frame.goto(native_frame.url());
+  await frame.getByRole('button', { name: 'Open trip Kansai by rail', exact: true }).click();
+  await frame.getByRole('button', { name: 'Day 2, 21 May', exact: true }).click();
+  await planned_list
+    .getByRole('button', { name: 'Edit Nara National Museum', exact: true })
+    .click();
+  await route_position.click();
+  assert.equal(
+    await before_park.getAttribute('aria-pressed'),
+    'true',
+    'Reopening an edit selects its saved slot.',
+  );
+  const first_slot = position_sheet.getByRole('button', {
+    name: /^Position 1 of \d+, Before JR Nara Station$/,
+  });
+  await first_slot.click();
+  assert.equal(await shellBack(), true);
+  await dialog.getByRole('button', { name: 'Keep editing', exact: true }).click();
+  assert.deepEqual(
+    journal(),
+    before_move,
+    'Back from a position-only edit protects the unsaved change.',
+  );
+  await route_position.click();
+  assert.equal(await first_slot.getAttribute('aria-pressed'), 'true');
+  await position_sheet.getByRole('button', { name: 'Back to stop', exact: true }).click();
+  const day_three = '2030-05-22';
+  await dialog.getByLabel('Day', { exact: true }).fill(day_three);
+  await route_position.click();
+  assert.equal(
+    await last_slot.getAttribute('aria-pressed'),
+    'true',
+    'Changing the date uses the new day’s slots.',
+  );
+  await position_sheet
+    .getByRole('button', { name: /^Position 2 of \d+, Before Osaka Castle$/ })
+    .click();
+  await save_stop.click();
+  await dialog.waitFor({ state: 'hidden' });
+  const after_move = journal();
+  const expected_move = day_titles(before_move, day_three);
+  expected_move.splice(1, 0, museum_name);
+  assert.deepEqual(day_titles(after_move, day_three), expected_move);
+  assert.deepEqual(day_titles(after_move, day_two), day_titles(before_insert, day_two));
+  assert.deepEqual(
+    after_move.stops.find((stop) => stop.id === new_museum.id),
+    { ...new_museum, day: day_three },
+  );
+  assert.deepEqual(
+    after_move.stops.filter((stop) => stop.id !== new_museum.id),
+    before_insert.stops,
+  );
+  assert.deepEqual(after_move.check_ins, before_move.check_ins);
+  assert.deepEqual(after_move.places, before_move.places);
   assert.equal(await shellBack(), true, 'Back from the trip itinerary returns to the library.');
   await frame.getByRole('heading', { name: 'Your trips', exact: true }).waitFor();
   assert.equal(await shellBack(), false);
@@ -1523,6 +1677,7 @@ try {
           'transfer-day sight and hotel browsing, named place selection, manual fallback and restored search',
           'on-demand place preview, day pins, tile failure and retry, both returns to the unsaved stay, and saved day route',
           'overnight dates after reopening, cold offline airport selection and persisted map pins',
+          'day-position selection, failed-save retry, matching route and map order, cross-day move with original check-in links',
         ],
       },
       null,

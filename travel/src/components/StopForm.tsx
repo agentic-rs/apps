@@ -14,6 +14,7 @@ import {
 import { CoordinateInputs } from './VisitFields';
 import { Dialog, DiscardPrompt } from './Dialog';
 import { EditorForm } from './EditorForm';
+import { RoutePosition } from './RoutePosition';
 import { Icon } from './Icon';
 import { StopPlacePicker } from './StopPlacePicker';
 import { isContinuingStay } from '../lib/hotel-stays';
@@ -28,7 +29,7 @@ interface StopFormProps {
   stop?: PlannedStop;
   native: boolean;
   lookup: StopLookup;
-  onSave(stop: PlannedStop): Promise<void>;
+  onSave(stop: PlannedStop, before_stop_id?: string | null): Promise<void>;
   onCancel(): void;
   onDelete?(stop: PlannedStop): void;
 }
@@ -140,6 +141,7 @@ function StopEditor({
   onEditPlanned,
   native,
 }: StopFormProps & { onEditPlanned?(stop: PlannedStop): void }) {
+  const [draft_id] = useState(() => stop?.id ?? createId());
   const [picking, setPicking] = useState<'initial' | 'change' | null>(stop ? null : 'initial');
   const [picker_day, setPickerDay] = useState<string | null>(stop ? null : day);
   const [directory_ref, setDirectoryRef] = useState(stop?.directory_ref);
@@ -147,6 +149,7 @@ function StopEditor({
   const [city_id, setCityId] = useState(stop?.city_id);
   const [title, setTitle] = useState(stop?.title ?? '');
   const [stop_day, setDay] = useState(stop?.day ?? day);
+  const [chosen_before, setChosenBefore] = useState<string | null>();
   const [checkout, setCheckout] = useState(stop?.checkout_date ?? '');
   const [kind, setKind] = useState<StopKind>(stop?.kind ?? 'sight');
   const [picker_category, setPickerCategory] = useState<StopSearchCategory>(
@@ -175,6 +178,15 @@ function StopEditor({
     () => trip_stops.filter((item) => item.day === stop_day),
     [trip_stops, stop_day],
   );
+  const other_stops = preview_stops.filter((item) => item.id !== draft_id);
+  const existing_index = preview_stops.findIndex((item) => item.id === draft_id);
+  const default_index = existing_index < 0 ? other_stops.length : existing_index;
+  const chosen_index =
+    chosen_before === null
+      ? other_stops.length
+      : other_stops.findIndex((item) => item.id === chosen_before);
+  const insertion_index = chosen_index < 0 ? default_index : chosen_index;
+  const before_stop_id = insertion_index === default_index ? undefined : chosen_before;
   const last_pick = useRef<HTMLElement | null>(null);
   const change_place = useRef<HTMLButtonElement>(null);
   useLayoutEffect(() => {
@@ -189,6 +201,7 @@ function StopEditor({
       ? daysBetween(stop_day, checkout)
       : 0;
   const dirty =
+    before_stop_id !== undefined ||
     city !== stop?.city ||
     city_id !== stop?.city_id ||
     title !== (stop?.title ?? '') ||
@@ -215,6 +228,7 @@ function StopEditor({
   }
 
   function changeDay(value: string) {
+    if (value !== stop_day) setChosenBefore(undefined);
     if (kind === 'stay' && isCalendarDate(value) && isCalendarDate(checkout)) {
       const nights = isCalendarDate(stop_day) ? Math.max(1, daysBetween(stop_day, checkout)) : 1;
       setCheckout(checkoutAfter(value, nights));
@@ -274,20 +288,23 @@ function StopEditor({
     setError('');
     setDiscard(false);
     try {
-      await onSave({
-        id: stop?.id ?? createId(),
-        trip_id: trip.id,
-        day: stop_day,
-        ...(city && { city }),
-        ...(city_id && { city_id }),
-        ...(kind === 'stay' && checkout && { checkout_date: checkout }),
-        title: title.trim(),
-        kind,
-        time,
-        notes: notes.trim(),
-        position: readCoordinates(latitude, longitude),
-        ...(directory_ref && { directory_ref }),
-      });
+      await onSave(
+        {
+          id: draft_id,
+          trip_id: trip.id,
+          day: stop_day,
+          ...(city && { city }),
+          ...(city_id && { city_id }),
+          ...(kind === 'stay' && checkout && { checkout_date: checkout }),
+          title: title.trim(),
+          kind,
+          time,
+          notes: notes.trim(),
+          position: readCoordinates(latitude, longitude),
+          ...(directory_ref && { directory_ref }),
+        },
+        before_stop_id,
+      );
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not save this stop.');
     } finally {
@@ -442,6 +459,17 @@ function StopEditor({
                       />
                     )}
                     <ScheduleField label="Time" type="time" value={time} onChange={setTime} />
+                    <RoutePosition
+                      stops={other_stops}
+                      index={insertion_index}
+                      title={title.trim() || (kind === 'stay' ? 'New hotel stay' : 'New stop')}
+                      context={place_context}
+                      onChange={(id) =>
+                        setChosenBefore(
+                          id === (other_stops[default_index]?.id ?? null) ? undefined : id,
+                        )
+                      }
+                    />
                   </div>
                   <label className="stop-notes">
                     <span>
@@ -530,7 +558,8 @@ function StopEditor({
               position={position}
               context={place_context}
               stops={preview_stops}
-              editing_id={stop?.id}
+              editing_id={draft_id}
+              insertion_index={insertion_index}
               native={native}
             />
           </Suspense>

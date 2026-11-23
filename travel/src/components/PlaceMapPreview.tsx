@@ -1,7 +1,13 @@
 import { useEffect, useMemo } from 'react';
 import { divIcon, layerGroup, marker, type Marker } from 'leaflet';
 import { formatDistance } from '../lib/distance';
-import { useLeafletMap, useMapFit, useMapTiles, type MapPadding } from '../lib/leaflet-map';
+import {
+  useDayRouteLine,
+  useLeafletMap,
+  useMapFit,
+  useMapTiles,
+  type MapPadding,
+} from '../lib/leaflet-map';
 import { normalizeLongitude, previewDayStops, visiblePosition } from '../lib/map';
 import type { Coordinates, PlannedStop } from '../lib/types';
 import { Icon } from './Icon';
@@ -16,6 +22,7 @@ export default function PlaceMapPreview({
   title,
   position,
   stops,
+  insertion_index,
   native,
   context,
   editing_id,
@@ -23,21 +30,24 @@ export default function PlaceMapPreview({
   title: string;
   position: Coordinates;
   stops: PlannedStop[];
+  insertion_index: number;
   native: boolean;
   context?: string;
   editing_id?: string;
 }) {
   const { container, map, zoom } = useLeafletMap(0);
-  const { groups, numbers, closest, other_count } = useMemo(
-    () => previewDayStops(position, stops, editing_id),
-    [position, stops, editing_id],
+  const { groups, numbers, closest, route, candidate_number } = useMemo(
+    () => previewDayStops(position, stops, insertion_index, editing_id),
+    [position, stops, insertion_index, editing_id],
   );
   const points = useMemo(() => [{ position }, ...groups], [position, groups]);
   const candidate_key = `${position.latitude}/${normalizeLongitude(position.longitude)}`;
   const fit_key = [candidate_key, ...groups.map((group) => group.key)].join(';');
   const fitPins = useMapFit(map, true, fit_key, points, previewPadding);
   const { tile_failures, retryTiles } = useMapTiles(map, native, true);
+  useDayRouteLine(map, route, true);
   const name = title.trim() || 'Selected place';
+  const order = `Stop ${candidate_number} of ${route.length}`;
 
   useEffect(() => {
     if (!map) return;
@@ -101,8 +111,12 @@ export default function PlaceMapPreview({
     }
     const tip = document.createElement('span');
     tip.className = 'place-candidate-tip';
+    const numeral = document.createElement('span');
+    numeral.textContent = String(candidate_number);
+    tip.append(numeral);
     const candidate = addPin(position, [`Selected place, ${name}`], tip, 'candidate', 44, 1000);
     candidate.dataset.candidatePin = '';
+    candidate.setAttribute('aria-description', order);
 
     const wrapPins = () => {
       for (const entry of anchored)
@@ -113,12 +127,12 @@ export default function PlaceMapPreview({
       map.off('moveend', wrapPins);
       pins.remove();
     };
-  }, [map, groups, numbers, candidate_key, position, name]);
+  }, [map, groups, numbers, candidate_key, position, name, candidate_number, order]);
 
   return (
     <section className="place-map-preview">
       <header className="place-map-detail">
-        {context && <span className="place-map-context">{context}</span>}
+        <span className="place-map-context">{[context, order].filter(Boolean).join(' · ')}</span>
         <div className="place-map-title">
           <Icon name="pin" size={22} />
           <h3>{name}</h3>
@@ -133,7 +147,7 @@ export default function PlaceMapPreview({
           </p>
         ) : (
           <p>
-            {other_count
+            {route.length > 1
               ? 'The other stops on this day have no map coordinates.'
               : 'No other stops on this day.'}
           </p>

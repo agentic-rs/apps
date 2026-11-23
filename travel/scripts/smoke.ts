@@ -251,6 +251,26 @@ try {
     assert(layout.footer_height >= 44, 'Bottom navigation needs a usable touch target.');
   };
   await page.goto(`http://127.0.0.1:${server.port}`);
+  const touch = await browser.newPage({ hasTouch: true, viewport: { width: 390, height: 730 } });
+  await touch.goto(page.url());
+  const touch_new = touch.getByRole('button', { name: 'New trip', exact: true });
+  const touch_close = touch.getByRole('button', { name: 'Close dialog', exact: true });
+  const focusStyle = (element: HTMLElement) => ({
+    focused: element === document.activeElement,
+    outlined: getComputedStyle(element).outlineStyle !== 'none',
+  });
+  await touch_new.tap();
+  await touch_close.waitFor();
+  assert.deepEqual(await touch_close.evaluate(focusStyle), { focused: true, outlined: false });
+  await touch.keyboard.press('Escape');
+  await touch_new.press('Enter');
+  await touch_close.waitFor();
+  assert.deepEqual(await touch_close.evaluate(focusStyle), { focused: true, outlined: true });
+  await touch_close.press('Enter');
+  await touch_new.tap();
+  await touch_close.waitFor();
+  assert.deepEqual(await touch_close.evaluate(focusStyle), { focused: true, outlined: false });
+  await touch.close();
   await page.getByRole('heading', { name: 'Fieldnotes', exact: true }).waitFor();
   assert.equal(tile_requests, 0, 'Opening the trip library must not fetch map tiles.');
   await page.screenshot({ path: resolve(output, 'desktop-empty.png'), fullPage: true });
@@ -947,6 +967,23 @@ try {
   await addStop('Pavilion', '30', '100.04');
   await addStop('Tea garden', '', '');
   await addStop('Inn', '30', '100.06');
+  await button('Edit Pavilion').click();
+  const position = button('Route position');
+  await position.click();
+  const positions = page.getByRole('dialog', { name: 'Route position', exact: true });
+  const selected_position = positions.getByRole('button', { pressed: true });
+  await positions.getByText('Pavilion', { exact: true }).waitFor();
+  assert.deepEqual(await selected_position.evaluate(focusStyle), {
+    focused: true,
+    outlined: false,
+  });
+  await page.keyboard.press('Escape');
+  await position.press('Enter');
+  await selected_position.waitFor();
+  assert.deepEqual(await selected_position.evaluate(focusStyle), { focused: true, outlined: true });
+  await page.keyboard.press('Escape');
+  await button('Cancel').click();
+  await waitClosed();
   const optimizer = page.getByRole('button', { name: /optimize.*route/i });
   const route_sheet = page.getByRole('dialog', { name: 'Optimize day route' });
   await goTo('Map');

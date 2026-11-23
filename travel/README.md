@@ -8,12 +8,12 @@ The mobile interaction reference is QYER’s 穷游行程助手. Its separate da
 
 1. Select **New trip** and tap a city in the offline picker, or enter your own city name. Fieldnotes saves a one-city trip and opens its itinerary. Use **Edit trip** whenever you want to rename it or set dates.
 2. Open a day in **Itinerary**. **Add stop** opens sights near the first city of the day. **Add hotel** opens lodging near the last city. On a transfer day, tap a city to browse there. The picker remembers each city and category’s search while you compare. Tap a place to review its address and day, or use **Change place** to return to the list. For a hotel, set the check-in and check-out dates. Tap **Add to Day 2** on the second day of a dated trip, or **Add to itinerary** on an undated trip. **Enter manually** works for any stop.
-3. Use a stop’s arrows to change the visit order. Edit its date to move it to the end of another day’s plan. The stop order also determines the numbering on the day’s map.
+3. When the day already has stops, tap **Route position** in the stop review to place a sight or hotel before another stop or at the end. New stops start at the end. A saved stop keeps its place until you change its position or day. The itinerary’s arrows also let you move a stop one place.
 4. Select **Check in** at a stop to attach an entry and photos, or **New check-in** to record an unplanned visit. The entry keeps its own local date even when the plan changes.
 
 Open **Overview** to see the cities and planned stops for each day. Tap a day to open it. **Add day** extends the itinerary by one calendar day and opens that day.
 
-From a stop’s review, **View on map** shows its pin alongside the day’s numbered stops. The closest stop and straight-line distance help you compare locations before saving. Use **Back** to return to the same dates and notes. The map action is available for directory results and manually entered coordinates.
+From a stop’s review, **View on map** previews the day in the proposed order. The highlighted pin carries the stop’s proposed number. Dashed lines connect consecutive stops with coordinates. The closest stop and straight-line distance help you compare locations before saving. Use **Back** to return to the same route position, dates and notes. The map action is available for directory results and manually entered coordinates.
 
 When a search result says **On this day**, tap it to edit the saved visit or stay, or choose **Add another visit** or **Add another stay**. Typing also searches the day's saved stops in the selected city. If the directory uses a different pin for a sight, you can reopen your original stop under **On this day**. Saved stops remain searchable offline. Hotel stays appear on each night from check-in through the night before check-out.
 

@@ -419,13 +419,30 @@ function sameRouteDay(first: PlannedStop, second: PlannedStop): boolean {
   return first.trip_id === second.trip_id && first.day === second.day;
 }
 
-export function upsertStop(journal: Journal, value: PlannedStop): Journal {
+/** Omit placement to keep a same-day edit in place. An explicit null places the stop last. */
+export function upsertStop(
+  journal: Journal,
+  value: PlannedStop,
+  before_stop_id?: string | null,
+): Journal {
   const stop = parseStop(value);
-  const previous = journal.stops.find((row) => row.id === stop.id);
-  const stops =
-    previous && !sameRouteDay(previous, stop)
-      ? [...journal.stops.filter((row) => row.id !== stop.id), stop]
-      : upsert(journal.stops, stop);
+  const stops = [...journal.stops];
+  const previous_index = stops.findIndex((row) => row.id === stop.id);
+  const previous = stops[previous_index];
+  if (previous) stops.splice(previous_index, 1);
+
+  let index = stops.length;
+  if (typeof before_stop_id === 'string' && before_stop_id !== stop.id) {
+    index = stops.findIndex((row) => row.id === before_stop_id && sameRouteDay(row, stop));
+    if (index === -1) {
+      throw new Error(
+        'The chosen stop is no longer on this day. Choose another position and save again.',
+      );
+    }
+  } else if (before_stop_id !== null && previous && sameRouteDay(previous, stop)) {
+    index = previous_index;
+  }
+  stops.splice(index, 0, stop);
   return parseJournal({ ...journal, stops });
 }
 

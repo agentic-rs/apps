@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   GridLayer,
   map as createMap,
+  polyline,
   type Coords,
   type DoneCallback,
   type Map as LeafletMap,
@@ -11,8 +12,8 @@ import {
 } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { createTileSource, type MapTileSource } from './map-tiles';
-import { fitCoordinates } from './map';
-import type { Coordinates } from './types';
+import { fitCoordinates, routeLines } from './map';
+import type { Coordinates, PlannedStop } from './types';
 
 type TileState = { controller: AbortController; object_url: string; failed: boolean };
 /** Native tiles use the host HTTP bridge; images only see private blob URLs. */
@@ -145,6 +146,30 @@ export function useMapTiles(map: LeafletMap | null, native: boolean, active: boo
   }, [map, active, native]);
 
   return { tile_failures, retryTiles: () => tile_layer.current?.redraw() };
+}
+
+export function useDayRouteLine(
+  map: LeafletMap | null,
+  stops: readonly Pick<PlannedStop, 'position'>[],
+  active: boolean,
+) {
+  useEffect(() => {
+    if (!map || !active || stops.length < 2) return;
+    const path = polyline(routeLines(stops, map.getCenter().lng), {
+      className: 'map-route-line',
+      color: 'var(--apell-primary)',
+      interactive: false,
+      weight: 3,
+      opacity: 0.92,
+      dashArray: '6 7',
+    }).addTo(map);
+    const wrapRoute = () => path.setLatLngs(routeLines(stops, map.getCenter().lng));
+    map.on('moveend', wrapRoute);
+    return () => {
+      map.off('moveend', wrapRoute);
+      path.remove();
+    };
+  }, [map, active, stops]);
 }
 
 export function fitMapPoints(
