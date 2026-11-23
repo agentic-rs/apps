@@ -247,7 +247,7 @@ export function CheckInForm({
       <EditorForm onSave={submit} onChange={() => setDirty(true)}>
         {(save) => (
           <>
-            <fieldset disabled={busy} className="form-body check-in-form">
+            <fieldset disabled={busy || discard} className="form-body check-in-form">
               <p className="muted">{trip.title}</p>
               {stops.length > 0 && (
                 <label>
@@ -491,7 +491,7 @@ export function CheckInForm({
                 onDiscard={() => void cancel()}
               />
             )}
-            <footer className="dialog-footer">
+            <footer className="dialog-footer" inert={discard}>
               <button type="button" className="secondary" disabled={busy} onClick={dismiss}>
                 Cancel
               </button>

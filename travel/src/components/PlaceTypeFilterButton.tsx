@@ -17,15 +17,22 @@ export function PlaceTypeFilterButton({
 }) {
   const [open, setOpen] = useState(false);
   const selected = useRef<HTMLButtonElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const restore_focus = useRef(false);
   const all = category === 'sight' ? 'All sights' : 'All lodging';
   const options = [{ id: undefined, label: all }, ...placeTypeFilters(category)];
   const title = category === 'sight' ? 'Sight type' : 'Lodging type';
   useLayoutEffect(() => {
     if (open) selected.current?.focus();
+    else if (restore_focus.current) {
+      trigger.current?.focus({ preventScroll: true });
+      restore_focus.current = false;
+    }
   }, [open]);
   return (
     <>
       <button
+        ref={trigger}
         type="button"
         className="place-type-filter"
         data-filtered={value ? '' : undefined}
@@ -35,7 +42,10 @@ export function PlaceTypeFilterButton({
         aria-expanded={open}
         title={title}
         disabled={disabled}
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          restore_focus.current = true;
+          setOpen(true);
+        }}
       >
         <Icon name="filter" size={20} />
       </button>

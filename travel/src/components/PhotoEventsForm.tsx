@@ -171,7 +171,7 @@ export function PhotoEventsForm({
       <EditorForm onSave={drafts ? save : async () => review()}>
         {(submit) => (
           <>
-            <fieldset className="form-body photo-events-form" disabled={busy}>
+            <fieldset className="form-body photo-events-form" disabled={busy || discard}>
               <p className="muted">
                 In <strong>{trip.title}</strong>
               </p>
@@ -259,7 +259,7 @@ export function PhotoEventsForm({
                 onDiscard={() => void cancel()}
               />
             )}
-            <footer className="dialog-footer">
+            <footer className="dialog-footer" inert={discard}>
               {generation_status ? (
                 <>
                   <span className="generation-status" role="status">

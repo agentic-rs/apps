@@ -371,7 +371,7 @@
   font-size: 0.77rem;
   font-weight: 600;
 }
-@media (max-width: 360px) and (orientation: portrait) {
+@media (max-width: 360px) {
   .full-screen:has(> .stop-picker-pane:not([hidden])) > .dialog-header h2 {
     font-size: 1.32rem;
   }
@@ -453,6 +453,38 @@
 .stop-picker-footer button {
   flex: 1;
   justify-content: center;
+}
+@media (max-height: 520px) {
+  .stop-picker-section-title {
+    margin-top: 4px;
+  }
+}
+@media (max-width: 499px) and (max-height: 520px) {
+  .stop-picker-controls {
+    padding-bottom: 5px;
+  }
+  .stop-picker-content {
+    /* Even a single match leaves room to scroll the focused field above it. */
+    min-height: calc(100% - 52px);
+    padding-block: 6px 12px;
+  }
+  .stop-results-heading {
+    gap: 6px;
+  }
+  .stop-picker-content h3 {
+    font-size: 1rem;
+  }
+  .stop-picker-footer {
+    padding-block: 4px calc(4px + var(--safe-area-bottom));
+  }
+}
+@media (min-width: 500px) and (max-height: 300px) {
+  .stop-picker-content {
+    padding-block: 4px;
+  }
+  .stop-picker-footer {
+    padding-block: 3px calc(3px + var(--safe-area-bottom));
+  }
 }
 .stop-form-heading {
   flex-wrap: wrap;

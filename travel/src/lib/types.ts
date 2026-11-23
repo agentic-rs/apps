@@ -14,6 +14,8 @@ export interface TripCityLocation extends Coordinates {
 export interface DirectoryRef {
   subtitle?: string;
   place_type?: PlaceType;
+  /** The underlying OSM element when a service uses a different ID for the same place. */
+  osm_ref?: string;
   provider: 'ourairports' | 'osm' | 'geoapify';
   id: string;
 }

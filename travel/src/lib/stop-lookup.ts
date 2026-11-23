@@ -17,12 +17,15 @@ export interface StopSearchRequest {
   location?: TripCityLocation | null;
   category: StopSearchCategory;
   type_filter?: PlaceTypeFilter;
+  suggest?: boolean;
 }
 export interface StopSearchResult {
   id: string;
   title: string;
   subtitle: string;
   source: DirectoryRef['provider'];
+  /** Source object shared by Geoapify endpoints even when their place IDs differ. */
+  osm_ref?: string;
   kind: StopKind;
   place_type?: PlaceType;
   position: Coordinates;
@@ -145,7 +148,7 @@ export function createStopLookup(
   const cache = new Map<string, { expires_at: number; places: StopSearchResult[] }>();
   return {
     attribution: public_key ? 'Geoapify' : 'Photon',
-    async search({ query, category, type_filter, city, location }, signal) {
+    async search({ query, category, type_filter, city, location, suggest }, signal) {
       query = query.trim();
       signal.throwIfAborted();
       if (!query && category !== 'sight' && category !== 'stay') return [];
@@ -168,6 +171,10 @@ export function createStopLookup(
           position: { latitude: airport.latitude, longitude: airport.longitude },
         }));
       }
+      // Photon uses the same scoped name search for a prefix and an explicit submit.
+      const autocomplete = Boolean(
+        public_key && suggest && query && (category === 'sight' || category === 'stay'),
+      );
       const key = JSON.stringify([
         category,
         type_filter,
@@ -176,6 +183,7 @@ export function createStopLookup(
         location?.latitude,
         location?.longitude,
         query,
+        autocomplete,
       ]);
       const cached = cache.get(key);
       if (cached && cached.expires_at > Date.now()) return cached.places;
@@ -185,17 +193,30 @@ export function createStopLookup(
       // retain the city text in the remote query if it is a custom location.
       const center = location ?? (await resolveSearchCity(city));
       signal.throwIfAborted();
-      const url = placeSearchUrl(query, category, city, center, public_key, type_filter);
+      if (autocomplete && !center) return [];
+      const url = placeSearchUrl(
+        query,
+        category,
+        city,
+        center,
+        public_key,
+        type_filter,
+        autocomplete,
+      );
       const payload = await requestPlaces(url, signal, native);
       signal.throwIfAborted();
       const radius_km = placeSearchRadiusKm(query);
-      const places = readPlaceResults(payload, Boolean(public_key), category, type_filter).flatMap(
-        (place) => {
-          if (!center) return [place];
-          const distance_km = distanceKm(center, place.position);
-          return distance_km <= radius_km ? [{ ...place, distance_km }] : [];
-        },
-      );
+      const places = readPlaceResults(
+        payload,
+        Boolean(public_key),
+        category,
+        type_filter,
+        autocomplete,
+      ).flatMap((place) => {
+        if (!center) return [place];
+        const distance_km = distanceKm(center, place.position);
+        return distance_km <= radius_km ? [{ ...place, distance_km }] : [];
+      });
       cache.delete(key);
       if (cache.size >= 40) cache.delete(cache.keys().next().value!);
       cache.set(key, { expires_at: Date.now() + 5 * 60_000, places });

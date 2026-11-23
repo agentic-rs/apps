@@ -5,6 +5,7 @@ import { createId } from '../lib/identity';
 import { placeTypeLabel } from '../lib/place-types';
 import {
   plannedStopCityIndex,
+  sameDirectoryPlace,
   searchCityLabel,
   suggestRouteAnchor,
 } from '../lib/planned-stop-search';
@@ -109,6 +110,7 @@ function directoryReference(place: StopSearchResult) {
   return {
     provider: place.source,
     id: place.id,
+    ...(place.osm_ref && { osm_ref: place.osm_ref }),
     ...(place.place_type && { place_type: place.place_type }),
     ...(place.subtitle && { subtitle: place.subtitle.slice(0, text_limits.place_locality) }),
   };
@@ -340,6 +342,7 @@ function StopEditor({
   const source_changed =
     directory_ref?.id !== stop?.directory_ref?.id ||
     directory_ref?.provider !== stop?.directory_ref?.provider ||
+    directory_ref?.osm_ref !== stop?.directory_ref?.osm_ref ||
     directory_ref?.place_type !== stop?.directory_ref?.place_type ||
     directory_ref?.subtitle !== stop?.directory_ref?.subtitle;
   const place_description = [
@@ -413,8 +416,7 @@ function StopEditor({
     last_pick.current = origin;
     if (
       picking === 'initial' &&
-      directory_ref?.provider === place.source &&
-      directory_ref.id === place.id &&
+      sameDirectoryPlace(directory_ref, place) &&
       city === draft.city &&
       city_id === draft.city_id
     ) {
@@ -465,7 +467,7 @@ function StopEditor({
     if (busy) return;
     if (picking === 'change') {
       setPicking(null);
-    } else if (dirty || source_changed) {
+    } else if ((dirty || source_changed) && !onlyInspectedPlace()) {
       setPicking(null);
       setDiscard(true);
     } else {
@@ -669,7 +671,7 @@ function StopEditor({
           <EditorForm onSave={submit}>
             {(save) => (
               <>
-                <fieldset className="form-body stop-form" disabled={busy}>
+                <fieldset className="form-body stop-form" disabled={busy || discard}>
                   <div className="stop-form-heading">
                     <p className="stop-form-trip">
                       <Icon name="book" size={17} />

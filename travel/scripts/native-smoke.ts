@@ -1,4 +1,5 @@
 import { strict as assert } from 'node:assert';
+import { once } from 'node:events';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -87,6 +88,7 @@ async function eventImage(local_time: string, latitude: number): Promise<number[
 // independently so a stale city, category or name produces different visible rows.
 function placeResponse(url: URL) {
   const geoapify = url.origin === 'https://api.geoapify.com';
+  const autocomplete = geoapify && url.pathname === '/v1/geocode/autocomplete';
   const params = url.searchParams;
   const [longitude, latitude] = geoapify
     ? (params.get('filter') ?? '').replace('circle:', '').split(',').map(Number)
@@ -100,7 +102,7 @@ function placeResponse(url: URL) {
     (city) =>
       Math.abs(city.latitude - latitude) < 0.08 && Math.abs(city.longitude - longitude) < 0.08,
   );
-  const query = params.get(geoapify ? 'name' : 'q') ?? '';
+  const query = params.get(geoapify ? (autocomplete ? 'text' : 'name') : 'q') ?? '';
   place_requests.push({ city: cities[city_index]?.name ?? '', query });
   // A named 40 km search around Kyoto can include hotels in Nara.
   const venue_city = query === 'Nara test inn' ? 1 : city_index;
@@ -126,9 +128,10 @@ function placeResponse(url: URL) {
   const features = city
     ? venues.flatMap((venue, index) => {
         if (venue.city && venue.city !== city.name) return [];
-        const name = `${city.name} ${venue.name}`;
+        const name = `${city.name} ${query === 'Late inn' && venue.name === 'test inn' ? 'Late inn' : venue.name}`;
         const include = geoapify
-          ? categories.some(
+          ? autocomplete ||
+            categories.some(
               (value) => venue.category === value || venue.category.startsWith(value + '.'),
             )
           : tags.length === 0 || tags.includes(`${venue.key ?? 'tourism'}:${venue.kind}`);
@@ -138,7 +141,16 @@ function placeResponse(url: URL) {
           {
             type: 'Feature',
             properties: geoapify
-              ? { name, city: city.name, place_id: 'fixture-' + id, categories: [venue.category] }
+              ? {
+                  name,
+                  city: city.name,
+                  country_code: 'jp',
+                  place_id: (autocomplete ? 'suggestion-' : 'fixture-') + id,
+                  datasource: { sourcename: 'openstreetmap', raw: { osm_type: 'n', osm_id: id } },
+                  ...(autocomplete
+                    ? { category: venue.category, result_type: 'amenity' }
+                    : { categories: [venue.category] }),
+                }
               : {
                   name,
                   city: city.name,
@@ -349,12 +361,16 @@ try {
   });
   let pending_write: Promise<void> | undefined;
   let pending_place: Promise<void> | undefined;
+  const delayed_place = new EventTarget();
   await page.exposeFunction('__travel_host_call', async (request: BridgeRequest) => {
     if (request.method === 'fs.write' && pending_write) await pending_write;
     const result = hostCall(request);
     if (request.method === 'http.request' && pending_place) {
       const params = new URL(String(request.params.url)).searchParams;
-      if ((params.get('q') ?? params.get('name')) === 'Late inn') await pending_place;
+      if ((params.get('q') ?? params.get('name') ?? params.get('text')) === 'Late inn') {
+        delayed_place.dispatchEvent(new Event('requested'));
+        await pending_place;
+      }
     }
     return result;
   });
@@ -1135,6 +1151,16 @@ try {
   await nara.click();
   await nara_museum.waitFor();
   assert.equal(await kyoto_museum.count(), 0);
+  await place_search.fill('Nara N');
+  const first_named_sight = dialog
+    .getByRole('list', { name: 'Place results' })
+    .locator('strong')
+    .first();
+  assert.equal(
+    await first_named_sight.innerText(),
+    'Nara National Museum',
+    'A contiguous venue name takes precedence over separate tokens in other nearby names.',
+  );
   const original_park = journal().stops.find((stop) => stop.title === 'Nara Park');
   assert(original_park?.position);
   await place_search.fill('Nara Park');
@@ -1219,6 +1245,57 @@ try {
   await dialog.getByRole('button', { name: 'Discard changes' }).click();
   await add_hotel.click();
   await nara_inn.waitFor();
+  await kyoto.click();
+  await dialog.getByRole('button', { name: /^Kyoto test inn/ }).waitFor();
+  const before_composition = place_requests.length;
+  await place_search.fill('W');
+  // Both pauses deliberately exceed the debounce while the query is ineligible.
+  await Bun.sleep(800);
+  assert.equal(place_requests.length, before_composition);
+  await place_search.evaluate((input) => {
+    input.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(
+      input,
+      'West Ann',
+    );
+    input.dispatchEvent(
+      new InputEvent('input', {
+        bubbles: true,
+        data: 'West Ann',
+        inputType: 'insertCompositionText',
+        isComposing: true,
+      }),
+    );
+  });
+  await Bun.sleep(800);
+  assert.equal(
+    place_requests.length,
+    before_composition,
+    'Composing a name must not query the provider.',
+  );
+  await place_search.evaluate((input) =>
+    input.dispatchEvent(
+      new CompositionEvent('compositionend', { bubbles: true, data: 'West Ann' }),
+    ),
+  );
+  const suggested_hotel = dialog.getByRole('button', {
+    name: 'Choose stay dates for Kyoto West Annex',
+    exact: true,
+  });
+  await suggested_hotel.waitFor();
+  assert.deepEqual(place_requests.slice(before_composition), [
+    { city: 'Kyoto', query: 'West Ann' },
+  ]);
+  assert(
+    await place_search.evaluate((input) => input === document.activeElement),
+    'Live suggestions keep typing focus.',
+  );
+  await suggested_hotel.click();
+  await stay_dates.getByRole('heading', { name: 'Kyoto West Annex', exact: true }).waitFor();
+  await cancel_dates.click();
+  await dialog.getByRole('button', { name: 'Clear search', exact: true }).click();
+  await nara.click();
+  await nara_inn.waitFor();
   const before_named = place_requests.length;
   await place_search.fill('est in');
   await nara_inn.waitFor();
@@ -1228,13 +1305,17 @@ try {
     'Partial names match already loaded nearby rows.',
   );
   await place_search.fill('no such inn');
-  await dialog.getByText('No nearby matches.', { exact: false }).waitFor();
+  await nara_inn.waitFor({ state: 'hidden' });
   assert.equal(await nara_inn.count(), 0);
   await dialog.getByRole('button', { name: 'Clear search' }).click();
   assert(await place_search.evaluate((input) => input === document.activeElement));
   await nara_inn.waitFor();
   await place_search.fill('test inn');
-  assert.equal(place_requests.length, before_named, 'Typing a name waits for submit.');
+  assert.equal(
+    place_requests.length,
+    before_named,
+    'Submitting immediately bypasses the debounce.',
+  );
   await search.click();
   await nara_inn.waitFor();
   assert.deepEqual(place_requests.at(-1), { city: 'Nara', query: 'test inn' });
@@ -1263,9 +1344,11 @@ try {
     release_place = resolve;
   });
   await kyoto.click();
+  const late_request = once(delayed_place, 'requested', { signal: AbortSignal.timeout(15_000) });
   await place_search.fill('Late inn');
-  await search.click();
   await dialog.getByText('Searching…', { exact: true }).waitFor();
+  await late_request;
+  assert.deepEqual(place_requests.at(-1), { city: 'Kyoto', query: 'Late inn' });
   assert.equal(await dialog.getByRole('button', { name: /^Choose stay dates for / }).count(), 0);
   await nara.click();
   await nara_inn.waitFor();
@@ -1432,7 +1515,6 @@ try {
   await add_stop.click();
   await dialog.getByRole('button', { name: 'Airports', exact: true }).click();
   await dialog.getByRole('searchbox', { name: 'Search airports' }).fill('KIX');
-  await search.click();
   await dialog.getByRole('button', { name: /Kansai International Airport.*KIX/ }).click();
   assert.equal(await dialog.getByLabel('Category').inputValue(), 'transport');
   await save_stop.click();
@@ -1530,10 +1612,31 @@ try {
     persisted,
     'Opening a scheduled visit keeps its record and itinerary intact.',
   );
-  await dialog.getByRole('button', { name: 'Add another visit', exact: true }).click();
+  const another_visit = dialog.getByRole('button', { name: 'Add another visit', exact: true });
+  const cancel_review = dialog.getByRole('button', { name: 'Cancel', exact: true });
+  const writes_before_inspecting = journal_writes;
+  await another_visit.click();
   await dialog.getByRole('button', { name: 'Add to Day 2', exact: true }).waitFor();
-  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await cancel_review.click();
+  await dialog.waitFor({ state: 'hidden' });
+  assert.equal(
+    journal_writes,
+    writes_before_inspecting,
+    'Inspecting a place creates no draft to save.',
+  );
+  await add_stop.click();
+  await nara.click();
+  await nara_museum.click();
+  await another_visit.click();
+  const visit_notes = dialog.getByLabel('Notes');
+  await visit_notes.fill('Return for the evening opening.');
+  await cancel_review.click();
   const discard_stop = dialog.getByRole('button', { name: 'Discard changes' });
+  await discard_stop.waitFor();
+  const visit_time = dialog.getByLabel('Time', { exact: true });
+  const visit_title = dialog.getByLabel('Stop name', { exact: true });
+  assert(await visit_time.isDisabled(), 'The time wheel cannot open behind the discard prompt.');
+  assert(await visit_title.isDisabled(), 'Discard confirmation locks the stop name.');
   assert(
     await discard_stop.evaluate((button) => {
       const rect = button.getBoundingClientRect();
@@ -1543,7 +1646,13 @@ try {
     }),
     'Discard must be reachable before any scrolling by the traveler or the test.',
   );
+  await dialog.getByRole('button', { name: 'Keep editing', exact: true }).click();
+  assert(await visit_time.isEnabled());
+  assert(await visit_title.isEnabled());
+  assert.equal(await visit_notes.inputValue(), 'Return for the evening opening.');
+  await cancel_review.click();
   await discard_stop.click();
+  assert.equal(journal_writes, writes_before_inspecting);
   await frame.getByRole('button', { name: 'Day 3, 22 May' }).click();
   await add_hotel.click();
   await nara.click();
@@ -2769,6 +2878,46 @@ try {
     'Request a quiet room.',
   );
   assert.equal(journal_writes, writes_before_booking + 4);
+  await dialog.getByRole('button', { name: 'Done', exact: true }).click();
+  await frame.getByRole('button', { name: 'Day 2, 21 May', exact: true }).click();
+  await add_stop.click();
+  await kyoto_museum.waitFor();
+  const canal_title = 'Kyoto Canal Works';
+  const canal_add = dialog.getByRole('button', {
+    name: 'Add ' + canal_title + ' to day',
+    exact: true,
+  });
+  assert.equal(await canal_add.count(), 0);
+  const before_suggestions = place_requests.length;
+  await place_search.fill('Canal W');
+  await canal_add.waitFor();
+  assert.deepEqual(place_requests.slice(before_suggestions), [{ city: 'Kyoto', query: 'Canal W' }]);
+  await canal_add.click();
+  const named_canal = results.getByRole('button', { name: /^Kyoto Canal Works/ });
+  await named_canal.getByText('On this day', { exact: true }).waitFor();
+  const added_suggestion = journal().stops.find((stop) => stop.title === canal_title);
+  assert.equal(added_suggestion?.city, 'Kyoto');
+  assert.equal(added_suggestion.city_id, city_locations[0].id);
+  assert.equal(added_suggestion.day, day_two);
+  const geoapify = added_suggestion.directory_ref?.provider === 'geoapify';
+  assert.equal(added_suggestion.directory_ref?.id, geoapify ? 'suggestion-105' : 'N105');
+  await place_search.press('Enter');
+  await dialog
+    .getByRole('heading', { name: 'Sights near Kyoto', exact: true })
+    .and(dialog.locator(':focus'))
+    .waitFor();
+  await named_canal.getByText('On this day', { exact: true }).waitFor();
+  assert.equal(
+    place_requests.length - before_suggestions,
+    geoapify ? 2 : 1,
+    'Full Geoapify search uses Places; Photon reuses the settled named search.',
+  );
+  assert.equal(
+    await canal_add.count(),
+    0,
+    'Submitting a suggested place cannot offer a duplicate visit by default.',
+  );
+  assert.equal(journal_writes, writes_before_booking + 5);
   assert.deepEqual(errors, [], 'The native applet should not produce uncaught browser errors.');
   for (const method of [
     'photos.pick',
@@ -2825,6 +2974,7 @@ try {
           'whole-day reordering from itinerary and map with drag, tap, cancel, persistence and retry',
           'paired hotel dates, preserved nights, saved booking moves, and finding places after a day change',
           'scheduling named hotel results from list and map, and adding named sights with their city and directory identity',
+          'city-scoped live sight and hotel suggestions, IME composition, explicit search and offline airport completion',
         ],
       },
       null,

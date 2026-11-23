@@ -4,7 +4,7 @@ import { distanceKm } from './distance';
 import { placeSearchRadiusKm } from './place-providers';
 import { matchesPlaceType, type PlaceTypeFilter } from './place-types';
 import { placeNameMatcher, type StopSearchCategory, type StopSearchResult } from './stop-lookup';
-import type { PlannedStop, TripCityLocation } from './types';
+import type { DirectoryRef, PlannedStop, TripCityLocation } from './types';
 
 export interface SearchCity {
   index: number;
@@ -22,8 +22,19 @@ export function searchCityLabel(cities: readonly SearchCity[], index: number): s
   return [city.name, city.location?.country_code, `City ${index + 1}`].filter(Boolean).join(' · ');
 }
 
+export function sameDirectoryPlace(
+  ref: DirectoryRef | undefined,
+  place: StopSearchResult,
+): boolean {
+  if (!ref) return false;
+  if (ref.provider === place.source && ref.id === place.id) return true;
+  const osm_id = ref.provider === 'osm' ? ref.id : ref.osm_ref;
+  return Boolean(osm_id && osm_id === (place.source === 'osm' ? place.id : place.osm_ref));
+}
+
 export function matchesPlannedPlace(stop: PlannedStop, place: StopSearchResult): boolean {
-  if (stop.directory_ref?.provider === place.source) return stop.directory_ref.id === place.id;
+  if (sameDirectoryPlace(stop.directory_ref, place)) return true;
+  if (stop.directory_ref?.provider === place.source) return false;
   return Boolean(
     stop.position &&
       stop.kind === place.kind &&

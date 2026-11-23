@@ -224,6 +224,9 @@ function parseDirectoryRef(value: unknown): DirectoryRef {
   return {
     provider: row.provider,
     id: text(row.id, 'Place source ID', 512, true),
+    ...(row.provider === 'geoapify' &&
+      typeof row.osm_ref === 'string' &&
+      /^[NWR][1-9]\d{0,18}$/.test(row.osm_ref) && { osm_ref: row.osm_ref }),
     ...(isPlaceType(row.place_type) && { place_type: row.place_type }),
     ...(row.subtitle !== undefined && {
       subtitle: text(row.subtitle, 'Place description', text_limits.place_locality),

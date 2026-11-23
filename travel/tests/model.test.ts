@@ -438,6 +438,12 @@ describe('planned stops', () => {
     for (const source of [directory_ref, { ...directory_ref, place_type: 'unrecognized' }]) {
       expect(parseStop({ ...stop, directory_ref: source }).directory_ref).toEqual(directory_ref);
     }
+    const geo_ref = { provider: 'geoapify' as const, id: 'place-12' };
+    const identified = { ...geo_ref, osm_ref: 'R12' };
+    expect(parseStop({ ...stop, directory_ref: identified }).directory_ref).toEqual(identified);
+    expect(
+      parseStop({ ...stop, directory_ref: { ...geo_ref, osm_ref: '12' } }).directory_ref,
+    ).toEqual(geo_ref);
   });
 
   test('migrates schema 1 visits, photo events, exact coordinates and original photo references', () => {

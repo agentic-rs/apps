@@ -87,6 +87,35 @@ try {
   await context.route('**/*', async (route) => {
     const url = new URL(route.request().url());
     if (url.hostname === '127.0.0.1') return route.continue();
+    const photon =
+      url.origin === 'https://photon.komoot.io' && url.searchParams.get('q') === 'Lantern';
+    const geo_suggestion =
+      url.origin === 'https://api.geoapify.com' &&
+      url.pathname === '/v1/geocode/autocomplete' &&
+      url.searchParams.get('text') === 'Lantern';
+    if (photon || geo_suggestion) {
+      const properties = photon
+        ? { osm_type: 'N', osm_id: 431, osm_key: 'tourism', osm_value: 'museum' }
+        : { place_id: 'fixture-lantern', category: 'entertainment.museum', result_type: 'amenity' };
+      return route.fulfill({
+        json: {
+          type: 'FeatureCollection',
+          features: [
+            {
+              type: 'Feature',
+              properties: {
+                ...properties,
+                name: 'Tokyo Lantern Museum',
+                city: 'Tokyo',
+                country_code: 'jp',
+              },
+              geometry: { type: 'Point', coordinates: [139.7, 35.69] },
+            },
+          ],
+        },
+        headers: { 'Access-Control-Allow-Origin': '*' },
+      });
+    }
     if (
       (url.origin === 'https://photon.komoot.io' && url.pathname === '/reverse') ||
       (url.origin === 'https://api.geoapify.com' &&
@@ -300,6 +329,26 @@ try {
   assert.deepEqual(initial_trips[0].cities, ['Tokyo']);
   assert.equal(initial_trips[0].city_locations?.[0]?.id, 'geonames:1850147');
   await page.screenshot({ path: resolve(output, 'mobile-single-city.png') });
+  await button('Add stop').click();
+  const place_picker = page.getByRole('dialog');
+  const place_input = place_picker.getByRole('searchbox', { name: 'Search places' });
+  await place_input.fill('Lantern');
+  await place_picker
+    .getByRole('button', { name: 'Add Tokyo Lantern Museum to day', exact: true })
+    .waitFor();
+  assert(await place_input.evaluate((input) => document.activeElement === input));
+  await place_picker.getByRole('button', { name: 'Airports', exact: true }).click();
+  const airport_input = place_picker.getByRole('searchbox', { name: 'Search airports' });
+  await airport_input.fill('H');
+  await place_picker
+    .getByRole('list', { name: 'Place results' })
+    .getByRole('button')
+    .first()
+    .waitFor();
+  await airport_input.fill('HND');
+  await place_picker.getByRole('button', { name: /Haneda.*HND/i }).waitFor();
+  await place_picker.getByRole('button', { name: 'Close dialog', exact: true }).click();
+  await waitClosed();
   await button('Edit trip').click();
   assert.equal(await page.getByLabel('Trip name').inputValue(), 'Tokyo trip');
   await page.getByLabel('Trip name').fill('Coastal days');
@@ -530,6 +579,12 @@ try {
   await page.getByLabel('Notes').fill('Salt in the air. The best kind of morning.');
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   await page.getByText('Discard your unsaved changes?').waitFor();
+  assert(await page.getByLabel('Visit date & time').isDisabled());
+  await page.getByRole('button', { name: 'Keep editing', exact: true }).click();
+  assert.equal(
+    await page.getByLabel('Notes').inputValue(),
+    'Salt in the air. The best kind of morning.',
+  );
   await page.getByRole('button', { name: 'Save check-in' }).click();
   await page.getByRole('dialog', { name: 'Check-in', exact: true }).waitFor();
   await closeDetail();
@@ -625,6 +680,7 @@ try {
     await editor.getByLabel('Trip name').fill('Unsaved travel idea');
     await page.keyboard.press('Escape');
     await editor.getByText('Discard your unsaved changes?').waitFor();
+    assert(await editor.getByLabel('Trip name').isDisabled());
     await editor.getByRole('button', { name: 'Keep editing', exact: true }).click();
     assert.equal(await editor.getByLabel('Trip name').inputValue(), 'Unsaved travel idea');
     await editor.getByRole('button', { name: 'Cancel', exact: true }).click();
@@ -930,6 +986,7 @@ try {
   await discard_import.getByRole('article').nth(1).waitFor();
   assert.equal(await readPhotoCount(), initial_photo_count + 4);
   await discard_import.getByRole('button', { name: 'Cancel', exact: true }).click();
+  assert(await discard_import.getByLabel('Event date & time').first().isDisabled());
   await discard_import.getByRole('button', { name: 'Discard changes', exact: true }).click();
   await waitClosed();
   assert.equal(await readPhotoCount(), initial_photo_count + 4);

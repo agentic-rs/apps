@@ -106,7 +106,7 @@ export function TripForm({
         <EditorForm onSave={submit}>
           {(save) => (
             <>
-              <fieldset disabled={busy} className="form-body">
+              <fieldset disabled={busy || discard} className="form-body">
                 <TripCities
                   legs={legs}
                   start_date={start_date}
@@ -172,7 +172,7 @@ export function TripForm({
                   }}
                 />
               )}
-              <footer className="dialog-footer">
+              <footer className="dialog-footer" inert={discard}>
                 <button
                   type="button"
                   className="secondary"

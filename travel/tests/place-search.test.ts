@@ -466,6 +466,120 @@ test('Geoapify filters use the matching activity when a venue serves several pur
   });
   expect(readPlaceResults(payload, true, 'stay', 'guest_houses')).toBeEmpty();
   expect(readPlaceResults(payload, true, 'all')[0].kind).toBe('food');
+  expect(readPlaceResults(payload, true, 'sight')[0].place_type).toBe('museum');
+});
+
+test('Geoapify suggests named amenities in the chosen city and type, with provider and OSM identity', async () => {
+  const lookup = createStopLookup(false, 'test');
+  const signal = new AbortController().signal;
+  const request = {
+    category: 'stay',
+    type_filter: 'hotels',
+    query: 'Nar',
+    city: 'Nara',
+    location: nara,
+  } as const;
+  const raw = { osm_type: 'w', osm_id: '1234' };
+  const base = {
+    name: 'Nara Hotel',
+    place_id: 'autocomplete-id',
+    category: 'accommodation.hotel',
+    city: 'Nara',
+    country_code: 'jp',
+    result_type: 'amenity',
+    datasource: { sourcename: 'openstreetmap', raw },
+  };
+  const features = [
+    base,
+    base,
+    { ...base, place_id: 'park', category: 'leisure.park' },
+    { ...base, place_id: 'hostel', category: 'accommodation.hostel' },
+    { ...base, place_id: 'street', result_type: 'street' },
+    { ...base, place_id: '', name: 'No provider identity' },
+  ].map((properties) => ({ properties, geometry: point }));
+  features.push({
+    properties: { ...base, place_id: 'too-far' },
+    geometry: { type: 'Point', coordinates: [135, 35.5] },
+  });
+  const fetch_spy = spyOn(globalThis, 'fetch')
+    .mockResolvedValueOnce(Response.json({ features }))
+    .mockResolvedValueOnce(
+      Response.json({
+        features: [
+          {
+            geometry: point,
+            properties: { ...base, place_id: 'places-id', categories: ['accommodation.hotel'] },
+          },
+        ],
+      }),
+    );
+  try {
+    const suggestions = await lookup.search({ ...request, suggest: true }, signal);
+    expect(suggestions).toHaveLength(1);
+    expect(suggestions[0]).toMatchObject({
+      source: 'geoapify',
+      id: 'autocomplete-id',
+      osm_ref: 'W1234',
+      kind: 'stay',
+      place_type: 'hotel',
+      locality: 'Nara',
+    });
+    const url = new URL(String(fetch_spy.mock.calls[0][0]));
+    expect(url.pathname).toBe('/v1/geocode/autocomplete');
+    expect(url.searchParams.get('text')).toBe('Nar');
+    expect(url.searchParams.get('type')).toBe('amenity');
+    expect(url.searchParams.get('filter')).toBe('circle:135.833,34.685,40000');
+    expect(url.searchParams.get('bias')).toBe('proximity:135.833,34.685');
+    expect(url.searchParams.has('categories')).toBe(false);
+    const explicit = await lookup.search(request, signal);
+    expect(explicit[0]).toMatchObject({ id: 'places-id', osm_ref: 'W1234' });
+    expect(new URL(String(fetch_spy.mock.calls[1][0])).pathname).toBe('/v2/places');
+    expect(await lookup.search({ ...request, suggest: true }, signal)).toBe(suggestions);
+    expect(await lookup.search(request, signal)).toBe(explicit);
+    expect(fetch_spy).toHaveBeenCalledTimes(2);
+  } finally {
+    fetch_spy.mockRestore();
+  }
+});
+
+test('unresolved Geoapify suggestions stay empty while manual submission explains the missing center', async () => {
+  const lookup = createStopLookup(false, 'test');
+  const signal = new AbortController().signal;
+  const request = { category: 'sight', query: 'temple', city: '' } as const;
+  const fetch_spy = spyOn(globalThis, 'fetch');
+  try {
+    expect(await lookup.search({ ...request, suggest: true }, signal)).toBeEmpty();
+    await expect(lookup.search(request, signal)).rejects.toThrow('directory');
+    expect(fetch_spy).not.toHaveBeenCalled();
+  } finally {
+    fetch_spy.mockRestore();
+  }
+});
+
+test('Photon suggestions reuse the submitted query and scoped type even for partial names', async () => {
+  const lookup = createStopLookup(false, '');
+  const request = {
+    city: 'Nara',
+    location: nara,
+    category: 'stay',
+    type_filter: 'hotels',
+    query: 'Nar',
+  } as const;
+  const signal = new AbortController().signal;
+  const fetch_spy = spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+    Response.json({ features: [{ geometry: point, properties: hotel }] }),
+  );
+  try {
+    const suggestions = await lookup.search({ ...request, suggest: true }, signal);
+    const url = new URL(String(fetch_spy.mock.calls[0][0]));
+    expect(url.pathname).toBe('/api/');
+    expect(url.searchParams.get('q')).toBe('Nar');
+    expect(url.searchParams.getAll('osm_tag')).toEqual(['tourism:hotel']);
+    expect(await lookup.search(request, signal)).toBe(suggestions);
+    expect(fetch_spy).toHaveBeenCalledTimes(1);
+  } finally {
+    fetch_spy.mockRestore();
+  }
 });
 
 test('a type search has its own cache entry, including when its response is empty', async () => {

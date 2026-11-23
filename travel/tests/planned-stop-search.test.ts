@@ -58,6 +58,30 @@ test('the name-only Kansai fixture yields its saved Day 2 Nara Park only in Nara
   ).toBe(false);
 });
 
+test('links suggested, searched and saved places by their shared OSM object', () => {
+  const saved: PlannedStop = {
+    ...park,
+    directory_ref: { provider: 'geoapify', id: 'autocomplete-id', osm_ref: 'W123' },
+  };
+  const place: StopSearchResult = {
+    source: 'geoapify',
+    id: 'places-id',
+    osm_ref: 'W123',
+    title: 'Alternate name',
+    kind: 'sight',
+    position: park.position!,
+    subtitle: '',
+  };
+  expect(matchesPlannedPlace(saved, place)).toBe(true);
+  expect(
+    matchesPlannedPlace(saved, { ...place, source: 'osm', id: 'W123', osm_ref: undefined }),
+  ).toBe(true);
+  expect(matchesPlannedPlace(saved, { ...place, id: 'autocomplete-id', osm_ref: undefined })).toBe(
+    true,
+  );
+  expect(matchesPlannedPlace(saved, { ...place, title: park.title, osm_ref: 'N123' })).toBe(false);
+});
+
 test('uses an explicitly assigned city for hotels and never guesses between close day cities', () => {
   const hotel = {
     ...park,

@@ -99,6 +99,7 @@ export function placeSearchUrl(
   center: Coordinates | undefined,
   public_key: string,
   type_filter?: PlaceTypeFilter,
+  autocomplete = false,
 ): URL {
   const radius_km = placeSearchRadiusKm(query);
   const types = type_filter && providerTypeFilter(type_filter, category);
@@ -112,15 +113,24 @@ export function placeSearchUrl(
       throw new Error(
         'Choose a city from the directory to search nearby, or enter the stop manually.',
       );
-    const url = new URL('https://api.geoapify.com/v2/places');
+    const url = new URL(
+      autocomplete
+        ? 'https://api.geoapify.com/v1/geocode/autocomplete'
+        : 'https://api.geoapify.com/v2/places',
+    );
     url.search = new URLSearchParams({
-      categories: types ? types.geoapify.join(',') : categories[category],
       limit: '12',
       lang: 'en',
       filter: `circle:${center.longitude},${center.latitude},${radius_km * 1000}`,
       bias: `proximity:${center.longitude},${center.latitude}`,
       apiKey: public_key,
     }).toString();
+    if (autocomplete) {
+      url.searchParams.set('type', 'amenity');
+      url.searchParams.set('text', query);
+      return url;
+    }
+    url.searchParams.set('categories', types ? types.geoapify.join(',') : categories[category]);
     if (query) url.searchParams.set('name', query);
     else url.searchParams.set('conditions', 'named');
     return url;
@@ -165,22 +175,32 @@ function osmKind(key: string, value: string): StopKind {
   return 'other';
 }
 
-function geoapifyKind(values_list: string[], filtered_category?: PlaceCategory): StopKind {
-  // The same venue may be both a museum and a café. A filtered response
-  // must still pass the matching place-type check before it is shown.
-  if (filtered_category === 'sight' || filtered_category === 'stay') return filtered_category;
-  const roots = new Set(values_list.map((value) => value.split('.')[0]));
-  if (roots.has('accommodation')) return 'stay';
-  if (roots.has('catering') || values_list.includes('commercial.food_and_drink.bakery'))
-    return 'food';
-  if (roots.has('public_transport') || roots.has('airport')) return 'transport';
-  if (
-    sight_categories.some((category) =>
-      values_list.some((value) => value === category || value.startsWith(category + '.')),
-    )
-  )
-    return 'sight';
+function geoapifyKind(values: string[], category: PlaceCategory): StopKind {
+  const has = (key: string) => values.some((value) => value === key || value.startsWith(key + '.'));
+  const kinds = {
+    stay: has('accommodation'),
+    food: has('catering') || has('commercial.food_and_drink.bakery'),
+    transport: has('public_transport') || has('airport'),
+    sight: sight_categories.some(has),
+  };
+  // One venue may be both a museum and a café. Honor the requested activity
+  // when its provider classification supports it.
+  if (category !== 'all' && kinds[category]) return category;
+  for (const kind of ['stay', 'food', 'transport', 'sight'] as const) {
+    if (kinds[kind]) return kind;
+  }
   return 'other';
+}
+
+function geoapifyOsmRef(props: Record<string, unknown>): string | undefined {
+  const source = asObject(props.datasource);
+  if (string(source.sourcename).toLowerCase() !== 'openstreetmap') return;
+  const raw = asObject(source.raw);
+  const type = string(raw.osm_type).toUpperCase();
+  const id =
+    typeof raw.osm_id === 'string' && /^\d+$/.test(raw.osm_id) ? Number(raw.osm_id) : raw.osm_id;
+  if (/^[NWR]$/.test(type) && typeof id === 'number' && Number.isSafeInteger(id) && id > 0)
+    return `${type}${id}`;
 }
 
 export function readPlaceResults(
@@ -188,6 +208,7 @@ export function readPlaceResults(
   geoapify: boolean,
   category: PlaceCategory,
   type_filter?: PlaceTypeFilter,
+  autocomplete = false,
 ): StopSearchResult[] {
   const features = asObject(payload).features;
   if (!Array.isArray(features)) throw new Error('The place service returned an unreadable result.');
@@ -207,6 +228,7 @@ export function readPlaceResults(
       continue;
     const title = string(props.name);
     if (!title || title.length > 200) continue;
+    if (autocomplete && props.result_type && props.result_type !== 'amenity') continue;
     const id = geoapify
       ? string(props.place_id)
       : /^[NWR]$/.test(string(props.osm_type)) && Number.isSafeInteger(props.osm_id)
@@ -215,10 +237,12 @@ export function readPlaceResults(
     if (!id || id.length > 512 || results.has(id)) continue;
     const osm_key = string(props.osm_key);
     const osm_value = string(props.osm_value);
-    const geo_categories = Array.isArray(props.categories) ? props.categories.map(string) : [];
-    const kind = geoapify
-      ? geoapifyKind(geo_categories, type_filter ? category : undefined)
-      : osmKind(osm_key, osm_value);
+    const geo_categories = autocomplete
+      ? [string(props.category)]
+      : Array.isArray(props.categories)
+        ? props.categories.map(string)
+        : [];
+    const kind = geoapify ? geoapifyKind(geo_categories, category) : osmKind(osm_key, osm_value);
     if (category !== 'all' && category !== kind) continue;
     const place_type = geoapify
       ? geoapifyPlaceType(geo_categories, kind, type_filter)
@@ -227,6 +251,7 @@ export function readPlaceResults(
     const locality = string(props.city) || string(props.town) || string(props.village);
     const country_code = string(geoapify ? props.country_code : props.countrycode).toUpperCase();
     const address = [string(props.street), locality, string(props.country)].filter(Boolean);
+    const osm_ref = geoapify ? geoapifyOsmRef(props) : undefined;
     results.set(id, {
       id,
       title,
@@ -234,6 +259,7 @@ export function readPlaceResults(
       ...(locality && { locality }),
       ...(/^[A-Z]{2}$/.test(country_code) && { country_code }),
       source: geoapify ? 'geoapify' : 'osm',
+      ...(osm_ref && { osm_ref }),
       kind,
       ...(place_type && { place_type }),
       position: { latitude, longitude },
