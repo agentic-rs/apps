@@ -1,4 +1,5 @@
 import type { TripExpense } from './expenses';
+import type { PlaceType } from './place-types';
 
 export interface Coordinates {
   latitude: number;
@@ -12,6 +13,7 @@ export interface TripCityLocation extends Coordinates {
 
 export interface DirectoryRef {
   subtitle?: string;
+  place_type?: PlaceType;
   provider: 'ourairports' | 'osm' | 'geoapify';
   id: string;
 }

@@ -1,5 +1,6 @@
 import { isCalendarDate, isUtcTimestamp, toVisitInput, validateOffset } from './dates';
 import { parseExpenses } from './expenses';
+import { isPlaceType } from './place-types';
 import { journal_schema_version, stop_kinds } from './types';
 import type {
   CheckIn,
@@ -223,6 +224,7 @@ function parseDirectoryRef(value: unknown): DirectoryRef {
   return {
     provider: row.provider,
     id: text(row.id, 'Place source ID', 512, true),
+    ...(isPlaceType(row.place_type) && { place_type: row.place_type }),
     ...(row.subtitle !== undefined && {
       subtitle: text(row.subtitle, 'Place description', text_limits.place_locality),
     }),

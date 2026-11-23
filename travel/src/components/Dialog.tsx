@@ -12,6 +12,7 @@ export function Dialog({
   dismiss_disabled = false,
   back_label,
   dismiss_label,
+  trailing_action,
   active = true,
 }: {
   title: string;
@@ -23,6 +24,7 @@ export function Dialog({
   dismiss_disabled?: boolean;
   back_label?: string;
   dismiss_label?: string;
+  trailing_action?: ReactNode;
   active?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -86,6 +88,7 @@ export function Dialog({
           </button>
         )}
         <h2 id={id}>{title}</h2>
+        {trailing_action && <div className="dialog-trailing-action">{trailing_action}</div>}
         {(dismiss_label || !back_label) && (
           <button
             type="button"

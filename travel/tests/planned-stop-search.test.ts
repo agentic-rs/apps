@@ -3,6 +3,7 @@ import kansai from '../fixtures/kansai.json';
 import { parseJournal } from '../src/lib/model';
 import { matchesPlannedPlace, searchPlannedStops } from '../src/lib/planned-stop-search';
 import type { StopSearchResult } from '../src/lib/stop-lookup';
+import type { PlannedStop } from '../src/lib/types';
 
 const { stops } = parseJournal(kansai);
 const park = stops.find((stop) => stop.title === 'Nara Park')!;
@@ -88,6 +89,63 @@ test('uses an explicitly assigned city for hotels and never guesses between clos
       park.day,
     ),
   ).toEqual([]);
+});
+
+test('offline lodging filters use the saved place type within the selected city', () => {
+  const hostel: PlannedStop = {
+    ...park,
+    id: 'hostel',
+    kind: 'stay',
+    city: 'Nara',
+    title: 'Deer house',
+    directory_ref: { provider: 'osm', id: 'N1', place_type: 'hostel' },
+  };
+  const hotel: PlannedStop = {
+    ...hostel,
+    id: 'hotel',
+    title: 'Lantern house',
+    directory_ref: { provider: 'osm', id: 'N2', place_type: 'hotel' },
+  };
+  const legacy: PlannedStop = {
+    ...hostel,
+    id: 'legacy',
+    title: 'Hostel house',
+    directory_ref: { provider: 'osm', id: 'N3' },
+  };
+  const kyoto_hostel = { ...hostel, id: 'other-city', city: 'Kyoto' };
+  const stays = [hostel, hotel, legacy, kyoto_hostel];
+  expect(searchPlannedStops(stays, '', 'stay', cities, 1, park.day, '', 'hostels')).toEqual([
+    hostel,
+  ]);
+  expect(
+    searchPlannedStops(stays, '  ', 'stay', [], undefined, park.day, 'Kyoto', 'hostels'),
+  ).toEqual([kyoto_hostel]);
+  expect(searchPlannedStops(stays, '', 'stay', cities, 1, park.day)).toEqual([]);
+  expect(searchPlannedStops(stays, 'house', 'stay', cities, 1, park.day, '', 'hostels')).toEqual([
+    hostel,
+  ]);
+  expect(searchPlannedStops(stays, 'house', 'stay', cities, 0, park.day, '', 'hostels')).toEqual([
+    kyoto_hostel,
+  ]);
+  expect(searchPlannedStops(stays, 'house', 'stay', cities, 1, park.day, '', 'hotels')).toEqual([
+    hotel,
+  ]);
+  expect(searchPlannedStops(stays, 'house', 'stay', cities, 1, park.day)).toEqual([
+    hostel,
+    hotel,
+    legacy,
+  ]);
+  expect(
+    matchesPlannedPlace(legacy, {
+      id: 'N3',
+      source: 'osm',
+      kind: 'stay',
+      place_type: 'hostel',
+      title: 'Renamed inn',
+      subtitle: 'Nara, Japan',
+      position: park.position!,
+    }),
+  ).toBe(true);
 });
 
 test('an unscoped earlier hotel requires nearby coordinates to appear in a later single-city day', () => {

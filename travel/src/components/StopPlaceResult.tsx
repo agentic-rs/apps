@@ -2,6 +2,7 @@ import { useId, useLayoutEffect, useRef, type Ref } from 'react';
 import { useBackLayer } from '../lib/back-navigation';
 import { formatDistance } from '../lib/distance';
 import { matchesPlannedPlace } from '../lib/planned-stop-search';
+import { placeTypeLabel } from '../lib/place-types';
 import type { StopSearchResult } from '../lib/stop-lookup';
 import type { PlannedStop } from '../lib/types';
 import { Icon } from './Icon';
@@ -90,7 +91,14 @@ export function PlannedSearchResult({
         </span>
         <span className="stop-picker-label">
           <strong>{stop.title}</strong>
-          <small>{savedSchedule(stop)}</small>
+          <small>
+            {[
+              stop.directory_ref?.place_type && placeTypeLabel(stop.directory_ref.place_type),
+              savedSchedule(stop),
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </small>
         </span>
         <Icon name="edit" size={16} />
       </button>
@@ -152,12 +160,16 @@ export function StopPlaceResult({
         </span>
         <span className="stop-picker-label">
           <strong>{place.title}</strong>
-          {(place.subtitle || place.distance_km !== undefined) && (
+          {(place.place_type || place.subtitle || place.distance_km !== undefined) && (
             <small>
-              {place.subtitle}
-              {place.subtitle && place.distance_km !== undefined && ' · '}
-              {place.distance_km !== undefined &&
-                `${formatDistance(place.distance_km)} from city center`}
+              {[
+                place.place_type && placeTypeLabel(place.place_type),
+                place.subtitle,
+                place.distance_km !== undefined &&
+                  `${formatDistance(place.distance_km)} from city center`,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
             </small>
           )}
           {planned.length > 0 && (

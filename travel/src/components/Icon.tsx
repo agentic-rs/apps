@@ -1,6 +1,13 @@
 import type { CSSProperties } from 'react';
 
 const paths = {
+  filter: (
+    <>
+      <path d="M3 7h5m5 0h8M3 17h10m5 0h3" />
+      <circle cx="10.5" cy="7" r="2.5" />
+      <circle cx="15.5" cy="17" r="2.5" />
+    </>
+  ),
   calendar: (
     <>
       <rect x="3" y="5" width="18" height="16" rx="3" />

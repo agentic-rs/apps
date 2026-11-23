@@ -1,5 +1,12 @@
 import type { Coordinates, StopKind } from './types';
 import type { StopSearchCategory, StopSearchResult } from './stop-lookup';
+import {
+  geoapifyPlaceType,
+  matchesPlaceType,
+  osmPlaceType,
+  providerTypeFilter,
+  type PlaceTypeFilter,
+} from './place-types';
 
 type PlaceCategory = Exclude<StopSearchCategory, 'airport'>;
 // The nearest individually mapped artworks, memorials and park fragments can
@@ -91,8 +98,10 @@ export function placeSearchUrl(
   city: string,
   center: Coordinates | undefined,
   public_key: string,
+  type_filter?: PlaceTypeFilter,
 ): URL {
   const radius_km = placeSearchRadiusKm(query);
+  const types = type_filter && providerTypeFilter(type_filter, category);
   if (!query && !center)
     throw new Error(
       'Choose a city from the directory to browse nearby places, or enter the stop manually.',
@@ -105,7 +114,7 @@ export function placeSearchUrl(
       );
     const url = new URL('https://api.geoapify.com/v2/places');
     url.search = new URLSearchParams({
-      categories: categories[category],
+      categories: types ? types.geoapify.join(',') : categories[category],
       limit: '12',
       lang: 'en',
       filter: `circle:${center.longitude},${center.latitude},${radius_km * 1000}`,
@@ -140,7 +149,8 @@ export function placeSearchUrl(
         ].join(','),
       );
   }
-  const requested_tags = !query && category === 'sight' ? nearby_sight_tags : tags[category];
+  const requested_tags =
+    types?.osm_tags ?? (!query && category === 'sight' ? nearby_sight_tags : tags[category]);
   for (const tag of requested_tags) url.searchParams.append('osm_tag', tag);
   return url;
 }
@@ -155,8 +165,10 @@ function osmKind(key: string, value: string): StopKind {
   return 'other';
 }
 
-function geoapifyKind(values: unknown): StopKind {
-  const values_list = Array.isArray(values) ? values.map(string) : [];
+function geoapifyKind(values_list: string[], filtered_category?: PlaceCategory): StopKind {
+  // The same venue may be both a museum and a café. A filtered response
+  // must still pass the matching place-type check before it is shown.
+  if (filtered_category === 'sight' || filtered_category === 'stay') return filtered_category;
   const roots = new Set(values_list.map((value) => value.split('.')[0]));
   if (roots.has('accommodation')) return 'stay';
   if (roots.has('catering') || values_list.includes('commercial.food_and_drink.bakery'))
@@ -175,6 +187,7 @@ export function readPlaceResults(
   payload: unknown,
   geoapify: boolean,
   category: PlaceCategory,
+  type_filter?: PlaceTypeFilter,
 ): StopSearchResult[] {
   const features = asObject(payload).features;
   if (!Array.isArray(features)) throw new Error('The place service returned an unreadable result.');
@@ -200,10 +213,17 @@ export function readPlaceResults(
         ? `${props.osm_type}${props.osm_id}`
         : '';
     if (!id || id.length > 512 || results.has(id)) continue;
+    const osm_key = string(props.osm_key);
+    const osm_value = string(props.osm_value);
+    const geo_categories = Array.isArray(props.categories) ? props.categories.map(string) : [];
     const kind = geoapify
-      ? geoapifyKind(props.categories)
-      : osmKind(string(props.osm_key), string(props.osm_value));
+      ? geoapifyKind(geo_categories, type_filter ? category : undefined)
+      : osmKind(osm_key, osm_value);
     if (category !== 'all' && category !== kind) continue;
+    const place_type = geoapify
+      ? geoapifyPlaceType(geo_categories, kind, type_filter)
+      : osmPlaceType(osm_key + ':' + osm_value);
+    if (type_filter && !matchesPlaceType(place_type, type_filter)) continue;
     const locality = string(props.city) || string(props.town) || string(props.village);
     const country_code = string(geoapify ? props.country_code : props.countrycode).toUpperCase();
     const address = [string(props.street), locality, string(props.country)].filter(Boolean);
@@ -215,6 +235,7 @@ export function readPlaceResults(
       ...(/^[A-Z]{2}$/.test(country_code) && { country_code }),
       source: geoapify ? 'geoapify' : 'osm',
       kind,
+      ...(place_type && { place_type }),
       position: { latitude, longitude },
     });
   }

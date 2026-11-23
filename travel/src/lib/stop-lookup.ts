@@ -1,6 +1,7 @@
 import { searchDirectoryAirports, searchDirectoryCities } from './offline-directory';
 import { distanceKm } from './distance';
 import { directoryKey } from './directory-format';
+import { placeTypeLabel, type PlaceType, type PlaceTypeFilter } from './place-types';
 import {
   named_search_radius_km,
   placeSearchRadiusKm,
@@ -15,6 +16,7 @@ export interface StopSearchRequest {
   city: string;
   location?: TripCityLocation | null;
   category: StopSearchCategory;
+  type_filter?: PlaceTypeFilter;
 }
 export interface StopSearchResult {
   id: string;
@@ -22,6 +24,7 @@ export interface StopSearchResult {
   subtitle: string;
   source: DirectoryRef['provider'];
   kind: StopKind;
+  place_type?: PlaceType;
   position: Coordinates;
   locality?: string;
   country_code?: string;
@@ -34,7 +37,11 @@ export interface StopLookup {
 
 export function filterNearbyPlaces(places: StopSearchResult[], query: string): StopSearchResult[] {
   const matches = placeNameMatcher(query);
-  return places.filter((place) => matches(place.title + ' ' + place.subtitle));
+  return places.filter((place) =>
+    matches(
+      [place.title, place.subtitle, place.place_type && placeTypeLabel(place.place_type)].join(' '),
+    ),
+  );
 }
 
 export function placeNameMatcher(query: string): (value: string) => boolean {
@@ -138,7 +145,7 @@ export function createStopLookup(
   const cache = new Map<string, { expires_at: number; places: StopSearchResult[] }>();
   return {
     attribution: public_key ? 'Geoapify' : 'Photon',
-    async search({ query, category, city, location }, signal) {
+    async search({ query, category, type_filter, city, location }, signal) {
       query = query.trim();
       signal.throwIfAborted();
       if (!query && category !== 'sight' && category !== 'stay') return [];
@@ -163,6 +170,7 @@ export function createStopLookup(
       }
       const key = JSON.stringify([
         category,
+        type_filter,
         city,
         location?.id,
         location?.latitude,
@@ -177,15 +185,17 @@ export function createStopLookup(
       // retain the city text in the remote query if it is a custom location.
       const center = location ?? (await resolveSearchCity(city));
       signal.throwIfAborted();
-      const url = placeSearchUrl(query, category, city, center, public_key);
+      const url = placeSearchUrl(query, category, city, center, public_key, type_filter);
       const payload = await requestPlaces(url, signal, native);
       signal.throwIfAborted();
       const radius_km = placeSearchRadiusKm(query);
-      const places = readPlaceResults(payload, Boolean(public_key), category).flatMap((place) => {
-        if (!center) return [place];
-        const distance_km = distanceKm(center, place.position);
-        return distance_km <= radius_km ? [{ ...place, distance_km }] : [];
-      });
+      const places = readPlaceResults(payload, Boolean(public_key), category, type_filter).flatMap(
+        (place) => {
+          if (!center) return [place];
+          const distance_km = distanceKm(center, place.position);
+          return distance_km <= radius_km ? [{ ...place, distance_km }] : [];
+        },
+      );
       cache.delete(key);
       if (cache.size >= 40) cache.delete(cache.keys().next().value!);
       cache.set(key, { expires_at: Date.now() + 5 * 60_000, places });

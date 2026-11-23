@@ -3,6 +3,7 @@ import { formatDistance } from '../lib/distance';
 import type { ContinuingStay } from '../lib/hotel-stays';
 import { nearestDayPlace } from '../lib/map';
 import { matchesPlannedPlace } from '../lib/planned-stop-search';
+import { placeTypeLabel } from '../lib/place-types';
 import type { StopSearchResult } from '../lib/stop-lookup';
 import type { PlannedStop } from '../lib/types';
 import { Dialog } from './Dialog';
@@ -21,6 +22,7 @@ interface PlaceResultsSheetProps {
   stays: ContinuingStay[];
   day_stops: PlannedStop[];
   cities: ReactNode;
+  type_control: ReactNode;
   places: StopSearchResult[];
   search_status: string;
   search_error: string;
@@ -43,6 +45,7 @@ export function PlaceResultsSheet({
   day_label,
   day_stops,
   cities,
+  type_control,
   places,
   search_status,
   search_error,
@@ -71,6 +74,7 @@ export function PlaceResultsSheet({
       active={active}
       full_screen
       back_label="Back to place list"
+      trailing_action={type_control}
       onDismiss={onClose}
       dismiss_disabled={saving}
     >
@@ -136,9 +140,13 @@ export function PlaceResultsSheet({
                   </button>
                 </div>
               </div>
-              {(place.subtitle || place.distance_km !== undefined || closest) && (
+              {(place.place_type ||
+                place.subtitle ||
+                place.distance_km !== undefined ||
+                closest) && (
                 <p className="result-map-address">
                   {[
+                    place.place_type && placeTypeLabel(place.place_type),
                     place.subtitle,
                     closest
                       ? `${formatDistance(closest.km)} straight line to ${closest.number === undefined ? 'hotel' : 'stop ' + closest.number} · ${closest.title}`

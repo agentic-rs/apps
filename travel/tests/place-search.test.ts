@@ -1,5 +1,11 @@
 import { expect, spyOn, test } from 'bun:test';
 import { placeSearchUrl, readPlaceResults } from '../src/lib/place-providers';
+import {
+  isPlaceType,
+  matchesPlaceType,
+  placeTypeFilters,
+  placeTypeLabel,
+} from '../src/lib/place-types';
 import { createStopLookup, filterNearbyPlaces, groupPlacesForCity } from '../src/lib/stop-lookup';
 
 const nara = { latitude: 34.685, longitude: 135.833, country_code: 'JP', id: 'geonames:1855612' };
@@ -49,6 +55,7 @@ test('validates, deduplicates and classifies map points retrieved from either pr
       id: 'W21',
       title: 'Test Inn',
       kind: 'stay',
+      place_type: 'hotel',
       source: 'osm',
       subtitle: 'Nara',
       locality: 'Nara',
@@ -330,6 +337,149 @@ test('late or unsuccessful place requests can be retried with fresh provider res
     await expect(late).rejects.toThrow();
     const signal = new AbortController().signal;
     await expect(lookup.search(request, signal)).rejects.toThrow('unavailable');
+    expect(await lookup.search(request, signal)).toHaveLength(1);
+    expect(fetch_spy).toHaveBeenCalledTimes(3);
+  } finally {
+    fetch_spy.mockRestore();
+  }
+});
+
+test('type choices narrow named and nearby requests for each provider', () => {
+  const examples = [
+    [
+      'museums',
+      'sight',
+      ['tourism:museum', 'tourism:gallery'],
+      ['entertainment.museum', 'entertainment.culture.gallery'],
+    ],
+    ['parks', 'sight', ['leisure:garden', 'leisure:park'], ['leisure.park']],
+    [
+      'worship',
+      'sight',
+      ['amenity:place_of_worship'],
+      ['religion.place_of_worship', 'tourism.sights.place_of_worship'],
+    ],
+    ['hotels', 'stay', ['tourism:hotel'], ['accommodation.hotel']],
+    ['hostels', 'stay', ['tourism:hostel'], ['accommodation.hostel']],
+    ['guest_houses', 'stay', ['tourism:guest_house'], ['accommodation.guest_house']],
+  ] as const;
+  for (const [filter, category, tags, categories] of examples) {
+    expect(placeTypeFilters(category).map(({ id }) => id)).toContain(filter);
+    for (const query of ['', '奈良']) {
+      const photon = placeSearchUrl(query, category, 'Nara', nara, '', filter);
+      expect(photon.searchParams.getAll('osm_tag')).toEqual([...tags]);
+      const geo = placeSearchUrl(query, category, 'Nara', nara, 'test', filter);
+      expect(geo.searchParams.get('categories')?.split(',')).toEqual([...categories]);
+      expect(geo.searchParams.get('conditions')).toBe(query ? null : 'named');
+      expect(geo.searchParams.get('name')).toBe(query || null);
+    }
+  }
+  expect(placeTypeFilters('food')).toEqual([]);
+  expect(() => placeSearchUrl('', 'stay', 'Nara', nara, '', 'museums')).toThrow('category');
+});
+
+test('place types come from provider classifications and remain usable with local place names', () => {
+  const rows = [
+    {
+      city: 'Nara',
+      name: '華楽園',
+      osm_key: 'leisure',
+      osm_value: 'garden',
+      categories: ['leisure.park', 'leisure.park.garden', 'tourism.attraction'],
+    },
+    {
+      city: 'Nara',
+      name: 'Heritage Garden',
+      osm_key: 'leisure',
+      osm_value: 'park',
+      categories: ['leisure.park'],
+    },
+    {
+      city: 'Kyoto',
+      name: 'Museum Inn',
+      osm_key: 'tourism',
+      osm_value: 'guest_house',
+      categories: ['accommodation.guest_house'],
+    },
+    {
+      city: 'Kyoto',
+      name: 'Museum Hotel',
+      osm_key: 'tourism',
+      osm_value: 'hotel',
+      categories: ['accommodation.hotel'],
+    },
+    {
+      city: 'Nara',
+      name: 'Temples Museum',
+      osm_key: 'tourism',
+      osm_value: 'museum',
+      categories: ['tourism.attraction', 'entertainment.museum'],
+    },
+  ];
+  const payload = {
+    features: rows.map((properties, i) => ({
+      properties: { ...properties, osm_type: 'N', osm_id: i + 1, place_id: String(i + 1) },
+      geometry: point,
+    })),
+  };
+  for (const geoapify of [false, true]) {
+    const all = readPlaceResults(payload, geoapify, 'all');
+    expect(all.map((place) => place.place_type)).toEqual([
+      'garden',
+      'park',
+      'guest_house',
+      'hotel',
+      'museum',
+    ]);
+    expect(filterNearbyPlaces(all, 'garden nara').map((place) => place.title)).toEqual([
+      '華楽園',
+      'Heritage Garden',
+    ]);
+    expect(
+      readPlaceResults(payload, geoapify, 'sight', 'parks').map((place) => place.title),
+    ).toEqual(['華楽園', 'Heritage Garden']);
+    expect(readPlaceResults(payload, geoapify, 'sight', 'worship')).toBeEmpty();
+    expect(
+      readPlaceResults(payload, geoapify, 'stay', 'guest_houses').map((place) => place.title),
+    ).toEqual(['Museum Inn']);
+  }
+  expect(matchesPlaceType(undefined, 'parks')).toBe(false);
+  expect(matchesPlaceType('guest_house', 'hotels')).toBe(false);
+  expect(isPlaceType('garden')).toBe(true);
+  expect(isPlaceType('toString')).toBe(false);
+  expect(placeTypeLabel('guest_house')).toBe('Guest house');
+});
+
+test('Geoapify filters use the matching activity when a venue serves several purposes', () => {
+  const museum_cafe = {
+    geometry: point,
+    properties: {
+      place_id: 'museum-cafe',
+      name: 'Museum and café',
+      categories: ['catering.cafe', 'entertainment.museum'],
+    },
+  };
+  const payload = { features: [museum_cafe] };
+  expect(readPlaceResults(payload, true, 'sight', 'museums')[0]).toMatchObject({
+    kind: 'sight',
+    place_type: 'museum',
+  });
+  expect(readPlaceResults(payload, true, 'stay', 'guest_houses')).toBeEmpty();
+  expect(readPlaceResults(payload, true, 'all')[0].kind).toBe('food');
+});
+
+test('a type search has its own cache entry, including when its response is empty', async () => {
+  const lookup = createStopLookup(false, '');
+  const signal = new AbortController().signal;
+  const request = { category: 'stay', query: '', city: 'Nara', location: nara } as const;
+  const payload = { features: [{ properties: hotel, geometry: point }] };
+  const fetch_spy = spyOn(globalThis, 'fetch');
+  for (let i = 0; i < 3; i++) fetch_spy.mockResolvedValueOnce(Response.json(payload));
+  try {
+    expect(await lookup.search(request, signal)).toHaveLength(1);
+    expect(await lookup.search({ ...request, type_filter: 'guest_houses' }, signal)).toBeEmpty();
+    expect(await lookup.search({ ...request, type_filter: 'hotels' }, signal)).toHaveLength(1);
+    expect(await lookup.search({ ...request, type_filter: 'guest_houses' }, signal)).toBeEmpty();
     expect(await lookup.search(request, signal)).toHaveLength(1);
     expect(fetch_spy).toHaveBeenCalledTimes(3);
   } finally {

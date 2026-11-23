@@ -1,6 +1,7 @@
 import { directoryKey } from './directory-format';
 import { distanceKm } from './distance';
 import { placeSearchRadiusKm } from './place-providers';
+import { matchesPlaceType, type PlaceTypeFilter } from './place-types';
 import { placeNameMatcher, type StopSearchCategory, type StopSearchResult } from './stop-lookup';
 import type { PlannedStop, TripCityLocation } from './types';
 
@@ -54,13 +55,16 @@ export function searchPlannedStops(
   selected: number | undefined,
   day: string,
   custom_city = '',
+  type_filter?: PlaceTypeFilter,
 ) {
+  const browse_type = Boolean(type_filter) && !query.trim();
   const matches = placeNameMatcher(query);
   const custom_key = directoryKey(custom_city);
   return stops.filter(
     (stop) =>
       (category === 'all' || stop.kind === category) &&
-      matches(stop.title) &&
+      (!type_filter || matchesPlaceType(stop.directory_ref?.place_type, type_filter)) &&
+      (browse_type || matches(stop.title)) &&
       (selected !== undefined
         ? belongsToCity(stop, cities, selected, day)
         : Boolean(custom_key && stop.city && directoryKey(stop.city) === custom_key)),

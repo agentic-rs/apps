@@ -62,6 +62,7 @@ let cancel_location = true;
 let fail_next_write = false;
 let journal_writes = 0;
 let fail_map_tiles = false;
+let fail_place_search = false;
 let image_sequence = 0;
 
 async function eventImage(local_time: string, latitude: number): Promise<number[]> {
@@ -107,7 +108,7 @@ function placeResponse(url: URL) {
   const tags = params.getAll('osm_tag');
   const venues = [
     { name: 'test museum', kind: 'museum', category: 'entertainment.museum' },
-    { name: 'test inn', kind: 'hotel', category: 'accommodation' },
+    { name: 'test inn', kind: 'hotel', category: 'accommodation.hotel' },
     {
       name: 'National Museum',
       kind: 'museum',
@@ -116,6 +117,10 @@ function placeResponse(url: URL) {
       coordinates: [135.838, 34.683],
     },
     { name: 'history museum', kind: 'museum', category: 'entertainment.museum' },
+    { name: 'Canal Walk', key: 'leisure', kind: 'park', category: 'leisure.park' },
+    { name: 'Canal Works', kind: 'museum', category: 'entertainment.museum' },
+    { name: 'East Annex', kind: 'guest_house', category: 'accommodation.guest_house' },
+    { name: 'West Annex', kind: 'hostel', category: 'accommodation.hostel' },
   ];
   const features = city
     ? venues.flatMap((venue, index) => {
@@ -125,7 +130,7 @@ function placeResponse(url: URL) {
           ? categories.some(
               (value) => venue.category === value || venue.category.startsWith(value + '.'),
             )
-          : tags.length === 0 || tags.includes(`tourism:${venue.kind}`);
+          : tags.length === 0 || tags.includes(`${venue.key ?? 'tourism'}:${venue.kind}`);
         if (!include || !name.toLowerCase().includes(query.toLowerCase())) return [];
         const id = 100 + venue_city * venues.length + index;
         return [
@@ -138,7 +143,7 @@ function placeResponse(url: URL) {
                   city: city.name,
                   osm_id: id,
                   osm_type: 'N',
-                  osm_key: 'tourism',
+                  osm_key: venue.key ?? 'tourism',
                   osm_value: venue.kind,
                 },
             geometry: {
@@ -150,10 +155,16 @@ function placeResponse(url: URL) {
       })
     : [];
   return {
-    status: query === 'Unavailable inn' || query === 'Nara Park' ? 503 : 200,
+    status: fail_place_search || query === 'Unavailable inn' || query === 'Nara Park' ? 503 : 200,
     headers: [{ name: 'Content-Type', value: 'application/json' }],
     body: Array.from(
-      new TextEncoder().encode(JSON.stringify({ type: 'FeatureCollection', features })),
+      // Model a short provider page. Narrowing by type can surface venues beyond the first page.
+      new TextEncoder().encode(
+        JSON.stringify({
+          type: 'FeatureCollection',
+          features: query ? features : features.slice(0, city?.name === 'Nara' ? 3 : 2),
+        }),
+      ),
     ),
   };
 }
@@ -1982,6 +1993,131 @@ try {
   assert.equal(rescheduled_stay?.day, day_three);
   assert.equal(rescheduled_stay.checkout_date, '2030-05-23');
   assert.equal(rescheduled_stay.city, 'Nara');
+
+  // The broad first page omits the park. The type picker must query the provider,
+  // share its scope with the map, and keep each transfer city's selection.
+  const chooseType = async (surface: Locator, type: 'Sight' | 'Lodging', option: string) => {
+    const label = type === 'Sight' ? 'Filter sights by type' : 'Filter lodging by type';
+    await surface.getByRole('button', { name: label, exact: true }).click();
+    const choices = frame.getByRole('dialog', { name: `${type} type`, exact: true });
+    const option_inset = await choices
+      .getByRole('group', { name: `${type} type` })
+      .evaluate((group) => {
+        const style = getComputedStyle(group);
+        return Math.min(parseFloat(style.paddingInlineStart), parseFloat(style.paddingInlineEnd));
+      });
+    assert(
+      option_inset >= 12,
+      'Keep space on both sides of the filter options inside the app sheet.',
+    );
+    await choices.getByRole('button', { name: option, exact: true }).click();
+    await choices.waitFor({ state: 'hidden' });
+  };
+  await frame.getByRole('button', { name: 'Day 2, 21 May', exact: true }).click();
+  await add_stop.click();
+  await kyoto_museum.waitFor();
+  await nara.click();
+  await nara_museum.waitFor();
+  assert.equal(await results.getByText('Nara Canal Walk').count(), 0);
+  const writes_before_filter = journal_writes;
+  await chooseType(dialog, 'Sight', 'Parks & gardens');
+  const garden_map = frame.getByRole('dialog', { name: 'Parks & gardens near Nara', exact: true });
+  const garden = results.getByRole('button', { name: /^Nara Canal Walk/ });
+  await garden.waitFor();
+  assert.match(await garden.innerText(), /Park · Nara/);
+  assert.deepEqual(await results.locator('strong').allTextContents(), ['Nara Canal Walk']);
+  await place_search.fill('Canal');
+  await search.click();
+  await garden.waitFor();
+  assert.equal(await results.getByText('Nara Canal Works').count(), 0);
+  await open_results_map.click();
+  await garden_map.getByText(/Park · Nara/).waitFor();
+  await garden_map
+    .getByRole('button', { name: 'Show Nara Canal Walk on map', exact: true })
+    .waitFor();
+  await page
+    .locator('#applet')
+    .screenshot({ path: resolve(qa_directory, 'native-nara-parks-map.png') });
+  await garden_map.getByRole('button', { name: 'Review place', exact: true }).click();
+  assert.equal(await dialog.getByLabel('Stop name').inputValue(), 'Nara Canal Walk');
+  await dialog.getByText('Day 2 · Nara', { exact: true }).waitFor();
+  assert.equal(await shellBack(), true);
+  await garden_map.getByRole('button', { name: 'Search in Kyoto', exact: true }).click();
+  await sight_map.getByText('Kyoto test museum', { exact: true }).waitFor();
+  await chooseType(sight_map, 'Sight', 'Places of worship');
+  const empty_map = frame.getByRole('dialog', {
+    name: 'Places of worship near Kyoto',
+    exact: true,
+  });
+  await empty_map.getByRole('status').filter({ hasText: /No / }).waitFor();
+  await chooseType(empty_map, 'Sight', 'Museums & galleries');
+  const museum_map = frame.getByRole('dialog', {
+    name: 'Museums & galleries near Kyoto',
+    exact: true,
+  });
+  await museum_map.getByRole('button', { name: 'Search in Nara', exact: true }).click();
+  await garden_map.getByRole('button', { name: 'Back to place list' }).click();
+  assert.equal(await place_search.inputValue(), 'Canal');
+  await dialog.getByRole('button', { name: 'Clear search', exact: true }).click();
+  const add_garden = results.getByRole('button', {
+    name: 'Add Nara Canal Walk to day',
+    exact: true,
+  });
+  await add_garden.click();
+  await garden.getByText('On this day').waitFor();
+  assert.equal(journal_writes, writes_before_filter + 1);
+  const saved_garden = journal().stops.find((stop) => stop.title === 'Nara Canal Walk');
+  assert(
+    saved_garden?.day === day_two && saved_garden.city === 'Nara' && saved_garden.kind === 'sight',
+  );
+  assert.equal(saved_garden.directory_ref?.place_type, 'park');
+  await hotels.click();
+  await kyoto.click();
+  await chooseType(dialog, 'Lodging', 'Guest houses');
+  const guest = results.getByRole('button', { name: /^Kyoto East Annex/ });
+  await guest.waitFor();
+  assert.deepEqual(await results.locator('strong').allTextContents(), ['Kyoto East Annex']);
+  await place_search.fill('Annex');
+  await search.click();
+  await guest.click();
+  assert.equal(await check_in.inputValue(), day_two);
+  assert.equal(await check_out.inputValue(), day_three);
+  assert.equal(await shellBack(), true);
+  await dialog.getByRole('heading', { name: 'Guest houses near Kyoto', exact: true }).waitFor();
+  assert.equal(await place_search.inputValue(), 'Annex');
+  await place_search.fill('Unavailable inn');
+  await search.click();
+  await dialog.getByRole('alert').waitFor();
+  await dialog.getByRole('button', { name: 'Enter manually', exact: true }).click();
+  assert.equal(await dialog.getByLabel('Stop name').inputValue(), 'Unavailable inn');
+  assert.equal(await dialog.getByLabel('Category').inputValue(), 'stay');
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Discard changes', exact: true }).click();
+  assert.equal(
+    journal_writes,
+    writes_before_filter + 1,
+    'Comparing types and fallback never write a second stop.',
+  );
+  // A relaunch drops the directory cache. The saved type still identifies the park
+  // even when its name says nothing about its type and the provider is unavailable.
+  fail_place_search = true;
+  await native_frame.goto(native_frame.url());
+  await frame.getByRole('button', { name: 'Open trip Kansai by rail', exact: true }).click();
+  await frame.getByRole('button', { name: 'Day 2, 21 May', exact: true }).click();
+  await add_stop.click();
+  await nara.click();
+  await chooseType(dialog, 'Sight', 'Parks & gardens');
+  await dialog.getByRole('alert').waitFor();
+  assert.equal(await place_search.inputValue(), '');
+  const saved_parks = dialog.getByRole('list', { name: 'On this day', exact: true });
+  await saved_parks
+    .getByRole('button', { name: 'Edit planned stop Nara Canal Walk', exact: true })
+    .click();
+  assert.equal(await park_editor.getByLabel('Stop name').inputValue(), 'Nara Canal Walk');
+  assert.equal(await shellBack(), true);
+  assert.equal(await shellBack(), true);
+  assert.equal(journal_writes, writes_before_filter + 1);
+  fail_place_search = false;
   assert.equal(await shellBack(), true, 'Back from the trip itinerary returns to the library.');
   await frame.getByRole('heading', { name: 'Your trips', exact: true }).waitFor();
   assert.equal(await shellBack(), false);
@@ -2035,6 +2171,7 @@ try {
           'rescheduling a new hotel, then continuing at the arrival city on the new day',
           'returning to the last saved stop, continuing stay or checkout in the day timeline',
           'comparing a sight to an unnumbered checkout hotel in both maps without occupying another night',
+          'scoped sight and lodging types across the list, map, quick add and hotel review',
         ],
       },
       null,

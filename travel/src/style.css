@@ -924,7 +924,10 @@ summary {
   color: var(--apell-primary);
   font-weight: 600;
 }
-.dialog-back-header:has(.dialog-dismiss-label) {
+.dialog-trailing-action {
+  justify-self: end;
+}
+.dialog-back-header:has(.dialog-dismiss-label, .dialog-trailing-action) {
   grid-template-columns: minmax(max-content, 1fr) minmax(0, max-content) minmax(max-content, 1fr);
 }
 .full-screen > form {

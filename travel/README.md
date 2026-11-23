@@ -35,6 +35,8 @@ A planned stop can have a map position. Check-ins can separately record the actu
 
 ## Place search
 
+Tap the filter beside the results heading or in the map header to choose museums and galleries, parks and gardens, places of worship, hotels, hostels or guest houses. The directory searches the selected city for that type. Each city remembers its sight and lodging choices while the picker is open. The type also applies when you search by name. Choose **All sights** or **All lodging** to clear it. When the directory identifies a venue’s type, Fieldnotes shows it beside the address and saves it with the stop. Typed stops on the day can also be found offline by filtering.
+
 The app package includes searchable names and alternate spellings for 34,247 cities and 9,053 airports. City results show country and region for namesakes. Airport search works by name, municipality, IATA code such as `KIX`, or ICAO code. Both directories work from first launch without a network connection. The app reads local compressed indexes on demand. [GeoNames city data, CC BY 4.0](https://www.geonames.org/export/) · [OurAirports, public domain](https://ourairports.com/data/)
 
 **Sights** and **Hotels** request places within 10 km of the selected city centre. Typing filters nearby results on the device. Tap **Search** to look up a name within 40 km. If the provider locates a match in another city on the day’s route, tap that city’s search shortcut to look there. Fieldnotes reuses successful searches in memory for five minutes. The provider receives the search area, category and any submitted text. A custom city without a known position is included in a Photon text search. Saved stops keep the selected planning city, place name, available address and coordinates offline.

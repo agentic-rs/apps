@@ -2,6 +2,7 @@ import { lazy, Suspense, useLayoutEffect, useMemo, useRef, useState } from 'reac
 import { citiesOnDay } from '../lib/city-days';
 import { daysBetween, isCalendarDate, itineraryDayLabel, offsetDay } from '../lib/dates';
 import { createId } from '../lib/identity';
+import { placeTypeLabel } from '../lib/place-types';
 import { readCoordinates, text_limits } from '../lib/model';
 import type { StopLookup, StopSearchCategory, StopSearchResult } from '../lib/stop-lookup';
 import {
@@ -87,6 +88,7 @@ function directoryReference(place: StopSearchResult) {
   return {
     provider: place.source,
     id: place.id,
+    ...(place.place_type && { place_type: place.place_type }),
     ...(place.subtitle && { subtitle: place.subtitle.slice(0, text_limits.place_locality) }),
   };
 }
@@ -271,7 +273,14 @@ function StopEditor({
   const source_changed =
     directory_ref?.id !== stop?.directory_ref?.id ||
     directory_ref?.provider !== stop?.directory_ref?.provider ||
+    directory_ref?.place_type !== stop?.directory_ref?.place_type ||
     directory_ref?.subtitle !== stop?.directory_ref?.subtitle;
+  const place_description = [
+    directory_ref?.place_type && placeTypeLabel(directory_ref.place_type),
+    directory_ref?.subtitle,
+  ]
+    .filter(Boolean)
+    .join(' · ');
   const day_label =
     trip.start_date && isCalendarDate(stop_day) ? itineraryDayLabel(stop_day, day, trip) : '';
   const place_context = [day_label, city || citiesOnDay(trip, stop_day).join(' → ') || trip.title]
@@ -545,20 +554,20 @@ function StopEditor({
                         type="button"
                         className="stop-map-action"
                         aria-label="View on map"
-                        aria-description={directory_ref?.subtitle}
+                        aria-description={place_description || undefined}
                         onClick={() => setShowMap(true)}
                       >
                         <Icon name="map" size={19} />
                         <span>
                           View on map
-                          {directory_ref?.subtitle && <small>{directory_ref.subtitle}</small>}
+                          {place_description && <small>{place_description}</small>}
                         </span>
                         <Icon name="next" size={15} />
                       </button>
                     ) : (
-                      directory_ref?.subtitle && (
+                      place_description && (
                         <p className="stop-place-address">
-                          <Icon name="pin" size={15} /> {directory_ref.subtitle}
+                          <Icon name="pin" size={15} /> {place_description}
                         </p>
                       )
                     )}
