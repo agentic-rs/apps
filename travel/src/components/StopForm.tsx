@@ -23,7 +23,7 @@ import { Dialog, DiscardPrompt } from './Dialog';
 import { EditorForm } from './EditorForm';
 import { RoutePosition } from './RoutePosition';
 import { Icon } from './Icon';
-import { StopPlacePicker } from './StopPlacePicker';
+import { StopPlacePicker, type PickerCity } from './StopPlacePicker';
 import { checkoutAfter, continuingStays } from '../lib/hotel-stays';
 import { StayDates } from './StayDates';
 
@@ -43,6 +43,23 @@ interface StopFormProps {
   onDelete?(stop: PlannedStop): void;
 }
 
+type StayDateAction =
+  | { from: 'dates'; trigger: HTMLElement }
+  | {
+      from: 'review';
+      stop: PlannedStop;
+      city_label?: string;
+      trigger: HTMLElement | null;
+      another: boolean;
+    }
+  | {
+      from: 'result';
+      stop: PlannedStop;
+      city_label: string;
+      trigger: HTMLElement;
+      row: HTMLElement;
+    };
+
 function stopDraft(day: string, stop?: PlannedStop) {
   return {
     id: stop?.id ?? createId(),
@@ -53,6 +70,7 @@ function stopDraft(day: string, stop?: PlannedStop) {
     day: stop?.day ?? day,
     before_stop_id: undefined as string | null | undefined,
     checkout: stop?.checkout_date ?? '',
+    dates_confirmed: false,
     kind: stop?.kind ?? 'sight',
     time: stop?.time ?? '',
     notes: stop?.notes ?? '',
@@ -210,8 +228,11 @@ function StopEditor({
   const [error, setError] = useState('');
   const [discard, setDiscard] = useState(false);
   const [show_map, setShowMap] = useState(false);
-  const [show_dates, setShowDates] = useState(false);
-  const date_button = useRef<HTMLButtonElement>(null);
+  const [date_action, setDateAction] = useState<StayDateAction | null>(null);
+  const hotel_to_add = date_action && date_action.from !== 'dates' ? date_action.stop : undefined;
+  const picking_dates = date_action?.from === 'result';
+  const primary_button = useRef<HTMLButtonElement>(null);
+  const another_button = useRef<HTMLButtonElement>(null);
   const date_description = useId();
   const position = useMemo(() => {
     try {
@@ -276,6 +297,7 @@ function StopEditor({
   const last_pick = useRef<HTMLElement | null>(null);
   const change_place = useRef<HTMLButtonElement>(null);
   const picker_pane = useRef<HTMLDivElement>(null);
+  const date_return_focus = useRef<Array<HTMLElement | null>>([]);
   useLayoutEffect(() => {
     if (picking && last_pick.current) {
       const target = last_pick.current.isConnected ? last_pick.current : picker_pane.current;
@@ -284,6 +306,13 @@ function StopEditor({
       change_place.current?.focus({ preventScroll: true });
     }
   }, [picking, picker_day, directory_ref, stop]);
+  useLayoutEffect(() => {
+    if (date_action || !date_return_focus.current.length) return;
+    // Child dialogs have now reopened. Focusing sooner can leave WebKit on the map's Back button.
+    const target = date_return_focus.current.find((element) => element?.isConnected);
+    date_return_focus.current = [];
+    target?.focus({ preventScroll: true });
+  }, [date_action]);
   function staySummary() {
     if (!isCalendarDate(stop_day)) return 'Choose check-in';
     const start = new Date(stop_day + 'T00:00:00Z');
@@ -332,9 +361,13 @@ function StopEditor({
   ]
     .filter(Boolean)
     .join(' · ');
+  const needs_stay_dates = kind === 'stay' && !stop && !draft.dates_confirmed;
 
-  function checkoutFor(value: StopKind) {
-    return value === 'stay' && kind !== 'stay' ? checkoutAfter(stop_day, 1) : checkout;
+  function stayDatesFor(value: StopKind) {
+    return {
+      checkout: value === 'stay' && kind !== 'stay' ? checkoutAfter(stop_day, 1) : checkout,
+      dates_confirmed: value === 'stay' && kind === 'stay' && draft.dates_confirmed,
+    };
   }
 
   function onlyInspectedPlace() {
@@ -361,9 +394,14 @@ function StopEditor({
     setPicking(mode);
   }
 
-  function closeDates() {
-    setShowDates(false);
-    requestAnimationFrame(() => date_button.current?.focus({ preventScroll: true }));
+  function closeDates(applied = false) {
+    if (!date_action) return;
+    // A saved result replaces its calendar button. A different check-in day replaces the results.
+    date_return_focus.current =
+      date_action.from === 'result'
+        ? [applied ? null : date_action.trigger, date_action.row, picker_pane.current]
+        : [date_action.trigger];
+    setDateAction(null);
   }
 
   function choosePlace(
@@ -389,7 +427,7 @@ function StopEditor({
       city,
       city_id,
       kind: place.kind,
-      checkout: checkoutFor(place.kind),
+      ...stayDatesFor(place.kind),
       latitude: String(place.position.latitude),
       longitude: String(place.position.longitude),
       directory_ref: directoryReference(place),
@@ -415,7 +453,7 @@ function StopEditor({
       city,
       city_id,
       kind: suggested_kind,
-      checkout: checkoutFor(suggested_kind),
+      ...stayDatesFor(suggested_kind),
       directory_ref: undefined,
       ...((picking !== 'change' || (name && name !== title)) && { latitude: '', longitude: '' }),
     });
@@ -452,11 +490,16 @@ function StopEditor({
     setPicking('initial');
   }
 
-  async function quickAdd(place: StopSearchResult, city?: string, city_id?: string) {
-    const value: PlannedStop = {
+  function pickedStop(
+    place: StopSearchResult,
+    date: string,
+    city?: string,
+    city_id?: string,
+  ): PlannedStop {
+    return {
       id: draft_id,
       trip_id: trip.id,
-      day: picker_day ?? day,
+      day: date,
       title: place.title,
       kind: place.kind,
       city,
@@ -466,6 +509,18 @@ function StopEditor({
       position: place.position,
       directory_ref: directoryReference(place),
     };
+  }
+
+  function scheduleStay(place: StopSearchResult, row: HTMLElement, scope: PickerCity) {
+    const hotel = pickedStop(place, picker_day ?? day, scope.name, scope.id);
+    hotel.checkout_date = checkoutAfter(hotel.day, 1) || undefined;
+    const trigger =
+      document.activeElement instanceof HTMLButtonElement ? document.activeElement : row;
+    setDateAction({ from: 'result', stop: hotel, city_label: scope.label, row, trigger });
+  }
+
+  async function quickAdd(place: StopSearchResult, city?: string, city_id?: string) {
+    const value = pickedStop(place, picker_day ?? day, city, city_id);
     setBusy(true);
     try {
       const cities = day_cities.loading ? await day_cities.resolve() : day_cities.cities;
@@ -479,7 +534,6 @@ function StopEditor({
 
   async function submit(another = false) {
     if (busy) return;
-    setBusy(true);
     setError('');
     setDiscard(false);
     try {
@@ -497,19 +551,54 @@ function StopEditor({
         position: readCoordinates(latitude, longitude),
         ...(directory_ref && { directory_ref }),
       };
-      const before = placement_pending
-        ? suggestRouteAnchor(await day_cities.resolve(), other_stops, value, stop_day)
-        : before_stop_id;
+      if (needs_stay_dates) {
+        const trigger = another ? another_button.current : primary_button.current;
+        setDateAction({ from: 'review', stop: value, city_label: planning_city, another, trigger });
+        return;
+      }
+      await saveReviewed(value, another);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not save this stop.');
+    }
+  }
+
+  async function saveReviewed(value: PlannedStop, another: boolean) {
+    setBusy(true);
+    try {
+      const before =
+        value.day !== stop_day
+          ? undefined
+          : placement_pending
+            ? suggestRouteAnchor(await day_cities.resolve(), other_stops, value, stop_day)
+            : before_stop_id;
       await onSave(value, before);
       if (another) {
         resumePicking(value, before);
       } else {
         onFinish();
       }
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Could not save this stop.');
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function applyDates(day: string, checkout: string) {
+    if (!date_action) return;
+    if (date_action.from === 'dates') {
+      updateDraft({
+        day,
+        checkout,
+        dates_confirmed: true,
+        ...(day !== stop_day && { before_stop_id: undefined }),
+      });
+      return;
+    }
+    const hotel = { ...date_action.stop, day, checkout_date: checkout || undefined };
+    if (date_action.from === 'review') {
+      await saveReviewed(hotel, date_action.another);
+    } else {
+      await onSave(hotel);
+      resumePicking(hotel);
     }
   }
 
@@ -541,12 +630,17 @@ function StopEditor({
         onBack={!stop && !picking && !discard ? () => openResults('initial') : dismiss}
       >
         {picker_day !== null && (
-          <div ref={picker_pane} tabIndex={-1} className="stop-picker-pane" hidden={!picking}>
+          <div
+            ref={picker_pane}
+            tabIndex={-1}
+            className="stop-picker-pane"
+            hidden={!picking || picking_dates}
+          >
             <StopPlacePicker
               key={picker_day}
               trip={trip}
               native={native}
-              active={Boolean(picking) && !covered}
+              active={Boolean(picking) && !covered && !picking_dates}
               day={picker_day}
               initial_city={city}
               initial_city_id={city_id}
@@ -560,6 +654,11 @@ function StopEditor({
               saved_message={confirmation?.message}
               saved_stop_id={confirmation?.id}
               onQuickAdd={picking === 'initial' && !dirty && !source_changed ? quickAdd : undefined}
+              onScheduleStay={
+                !stop && picking === 'initial' && !dirty && !source_changed
+                  ? scheduleStay
+                  : undefined
+              }
               onEditPlanned={
                 picking === 'initial' && !dirty && !source_changed ? onEditPlanned : undefined
               }
@@ -627,7 +726,7 @@ function StopEditor({
                           value={kind}
                           onChange={(e) => {
                             const kind = e.target.value as StopKind;
-                            updateDraft({ kind, checkout: checkoutFor(kind) });
+                            updateDraft({ kind, ...stayDatesFor(kind) });
                           }}
                         >
                           {stop_kinds.map((value) => (
@@ -647,14 +746,15 @@ function StopEditor({
                   >
                     {kind === 'stay' ? (
                       <button
-                        ref={date_button}
                         className="stop-route-position stop-stay-dates"
                         type="button"
                         aria-label="Change stay dates"
                         aria-describedby={date_description}
                         aria-haspopup="dialog"
-                        aria-expanded={show_dates}
-                        onClick={() => setShowDates(true)}
+                        aria-expanded={date_action?.from === 'dates'}
+                        onClick={(event) =>
+                          setDateAction({ from: 'dates', trigger: event.currentTarget })
+                        }
                       >
                         <span>Stay dates</span>
                         <small id={date_description}>{staySummary()}</small>
@@ -741,6 +841,7 @@ function StopEditor({
                         </button>
                       ) : (
                         <button
+                          ref={another_button}
                           type="button"
                           className="secondary"
                           disabled={busy || !title.trim() || !stop_day}
@@ -752,6 +853,7 @@ function StopEditor({
                         </button>
                       )}
                       <button
+                        ref={primary_button}
                         type="button"
                         className="primary"
                         disabled={busy || !title.trim() || !stop_day}
@@ -761,9 +863,11 @@ function StopEditor({
                           ? 'Saving…'
                           : stop
                             ? 'Save changes'
-                            : day_label.startsWith('Day ')
-                              ? `Add to ${day_label}`
-                              : 'Add to itinerary'}
+                            : needs_stay_dates
+                              ? 'Choose stay dates'
+                              : day_label.startsWith('Day ')
+                                ? `Add to ${day_label}`
+                                : 'Add to itinerary'}
                       </button>
                     </div>
                   )}
@@ -773,16 +877,19 @@ function StopEditor({
           </EditorForm>
         )}
       </Dialog>
-      {show_dates && (
+      {date_action && (
         <StayDates
           trip={trip}
           first={first}
-          check_in={stop_day}
-          check_out={checkout}
-          initial_field={isCalendarDate(stop_day) ? 'check_out' : 'check_in'}
-          onApply={(day, checkout) => {
-            updateDraft({ day, checkout, ...(day !== stop_day && { before_stop_id: undefined }) });
-          }}
+          hotel={
+            date_action.from === 'dates'
+              ? undefined
+              : { title: date_action.stop.title, city: date_action.city_label }
+          }
+          check_in={hotel_to_add?.day ?? stop_day}
+          check_out={hotel_to_add ? (hotel_to_add.checkout_date ?? '') : checkout}
+          initial_field={isCalendarDate(hotel_to_add?.day ?? stop_day) ? 'check_out' : 'check_in'}
+          onApply={applyDates}
           onClose={closeDates}
         />
       )}

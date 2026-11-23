@@ -33,6 +33,7 @@ interface PlaceResultsSheetProps {
   save_error?: { id: string; message: string };
   onPick(place: StopSearchResult, origin: HTMLElement): void;
   onQuickAdd?(place: StopSearchResult, row: HTMLElement, button: HTMLElement): void;
+  onScheduleStay?(place: StopSearchResult, origin: HTMLElement): void;
   onEditPlanned?(stop: PlannedStop): void;
   onClose(): void;
 }
@@ -57,6 +58,7 @@ export function PlaceResultsSheet({
   save_error,
   onPick,
   onQuickAdd,
+  onScheduleStay,
   onEditPlanned,
   onClose,
 }: PlaceResultsSheetProps) {
@@ -205,6 +207,20 @@ export function PlaceResultsSheet({
                       }}
                     >
                       <Icon name="plus" size={17} /> Add to day
+                    </button>
+                  )}
+                  {onScheduleStay && place.kind === 'stay' && !planned.length && (
+                    <button
+                      type="button"
+                      className="secondary"
+                      aria-label={`Choose stay dates for ${place.title}`}
+                      aria-haspopup="dialog"
+                      onClick={(event) => {
+                        event.currentTarget.focus({ preventScroll: true });
+                        if (card_title.current) onScheduleStay(place, card_title.current);
+                      }}
+                    >
+                      <Icon name="calendar" size={18} /> Choose dates
                     </button>
                   )}
                 </div>

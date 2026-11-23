@@ -248,7 +248,7 @@
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
 }
-.stop-picker-add {
+.stop-picker-quick-action {
   display: grid;
   place-items: center;
   width: 44px;
@@ -259,14 +259,19 @@
   color: var(--apell-primary);
   background: transparent;
 }
-.stop-picker-add svg {
+.stop-picker-quick-action svg {
   width: 28px;
   height: 28px;
   padding: 5px;
   border-radius: 50%;
   background: var(--apell-primary-soft);
 }
-.stop-picker-add:active svg {
+.stop-picker-calendar svg {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+}
+.stop-picker-quick-action:active svg {
   background: var(--apell-primary);
   color: var(--apell-primary-ink);
 }

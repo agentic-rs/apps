@@ -47,6 +47,12 @@ type SearchState =
 type SearchInput = { text: string; submitted: string | null; type_filter?: PlaceTypeFilter };
 const empty_search: SearchInput = { text: '', submitted: '' };
 
+export interface PickerCity {
+  name: string;
+  id?: string;
+  label: string;
+}
+
 function searchKey(
   category: StopSearchRequest['category'],
   index: number | undefined,
@@ -71,6 +77,7 @@ export function StopPlacePicker({
   onCategoryChange,
   onEditPlanned,
   onQuickAdd,
+  onScheduleStay,
   onPick,
   onManual,
 }: {
@@ -89,6 +96,7 @@ export function StopPlacePicker({
   onCategoryChange?(category: StopSearchRequest['category']): void;
   onEditPlanned?(stop: PlannedStop): void;
   onQuickAdd?(place: StopSearchResult, city?: string, city_id?: string): Promise<void>;
+  onScheduleStay?(place: StopSearchResult, origin: HTMLElement, scope: PickerCity): void;
   onPick(place: StopSearchResult, origin: HTMLElement, city?: string, city_id?: string): void;
   onManual(
     name: string,
@@ -222,9 +230,12 @@ export function StopPlacePicker({
     type_filter && placeTypeFilters(category).find(({ id }) => id === type_filter)?.label;
   const result_label = type_label ?? category_label;
   const heading = scoped_city ? `${result_label} near ${scoped_label}` : result_label;
-  const quick_sights = Boolean(
-    onQuickAdd && can_browse && !submitted_query && category === 'sight',
-  );
+  const quick_sights = category === 'sight' && Boolean(scoped_city && onQuickAdd);
+  const schedule_stay =
+    category === 'stay' && scoped_city && onScheduleStay
+      ? (place: StopSearchResult, origin: HTMLElement) =>
+          onScheduleStay(place, origin, { name: scoped_city, id: scoped_id, label: scoped_label })
+      : undefined;
 
   useLayoutEffect(() => {
     const strip = category_strip.current;
@@ -584,6 +595,11 @@ export function StopPlacePicker({
                       ? (row, button) => void addSight(place, row, button)
                       : undefined
                   }
+                  onScheduleStay={
+                    schedule_stay && place.kind === 'stay'
+                      ? (origin) => schedule_stay(place, origin)
+                      : undefined
+                  }
                   onPick={(origin) => chooseResult(place, origin)}
                 />
               ))}
@@ -687,6 +703,7 @@ export function StopPlacePicker({
           save_error={save_error}
           onPick={chooseResult}
           onQuickAdd={quick_sights ? addSight : undefined}
+          onScheduleStay={schedule_stay}
           onEditPlanned={onEditPlanned}
           onClose={() => {
             return_to_map_button.current = true;

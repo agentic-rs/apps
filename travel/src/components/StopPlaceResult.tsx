@@ -113,6 +113,7 @@ export function StopPlaceResult({
   onExpand,
   onEditPlanned,
   onQuickAdd,
+  onScheduleStay,
   adding,
   error,
   onPick,
@@ -123,6 +124,7 @@ export function StopPlaceResult({
   onExpand(expanded: boolean): void;
   onEditPlanned?(stop: PlannedStop): void;
   onQuickAdd?(row: HTMLElement, button: HTMLElement): void;
+  onScheduleStay?(origin: HTMLElement): void;
   adding: boolean;
   error?: string;
   onPick(origin: HTMLElement): void;
@@ -133,6 +135,7 @@ export function StopPlaceResult({
   const planned = day_stops.filter((stop) => matchesPlannedPlace(stop, place));
   const expandable = Boolean(planned.length && onEditPlanned);
   const can_add = !planned.length && Boolean(onQuickAdd);
+  const can_schedule = !planned.length && Boolean(onScheduleStay);
   const open = expandable && expanded;
   useBackLayer(open, collapse);
   useLayoutEffect(() => {
@@ -178,18 +181,32 @@ export function StopPlaceResult({
             </span>
           )}
         </span>
-        {!can_add && <Icon name="next" size={16} />}
+        {!can_add && !can_schedule && <Icon name="next" size={16} />}
       </button>
       {can_add && (
         <button
           type="button"
-          className="stop-picker-add"
+          className="stop-picker-quick-action"
           aria-label={adding ? `Adding ${place.title}` : `Add ${place.title} to day`}
           onClick={(event) => {
             if (row.current) onQuickAdd?.(row.current, event.currentTarget);
           }}
         >
           <Icon name="plus" size={24} />
+        </button>
+      )}
+      {can_schedule && (
+        <button
+          type="button"
+          className="stop-picker-quick-action stop-picker-calendar"
+          aria-label={`Choose stay dates for ${place.title}`}
+          aria-haspopup="dialog"
+          onClick={(event) => {
+            event.currentTarget.focus({ preventScroll: true });
+            if (row.current) onScheduleStay?.(row.current);
+          }}
+        >
+          <Icon name="calendar" size={22} />
         </button>
       )}
       {error && (

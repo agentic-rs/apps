@@ -18,6 +18,31 @@
   overflow: auto;
   overscroll-behavior: contain;
 }
+.stay-date-fields {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.stay-date-save-error {
+  width: min(100%, 640px);
+  margin: 0 auto;
+  padding: 8px clamp(12px, 4vw, 24px);
+}
+.stay-date-hotel {
+  margin-bottom: 12px;
+  overflow-wrap: anywhere;
+}
+.stay-date-hotel h3 {
+  margin: 0;
+  font-size: 1.08rem;
+  line-height: 1.25;
+}
+.stay-date-hotel p {
+  margin: 3px 0 0;
+  color: var(--apell-muted);
+  font-size: 0.85rem;
+}
 .stay-date-body {
   width: min(100%, 640px);
   margin: 0 auto;

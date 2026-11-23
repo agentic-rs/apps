@@ -1096,6 +1096,8 @@ try {
   const calendar = stay_dates.getByLabel('Choose calendar date', { exact: true });
   const apply_dates = stay_dates.getByRole('button', { name: 'Done', exact: true });
   const cancel_dates = stay_dates.getByRole('button', { name: 'Cancel', exact: true });
+  const confirm_stay = stay_dates.getByRole('button', { name: 'Add stay', exact: true });
+  const choose_stay_dates = dialog.getByRole('button', { name: 'Choose stay dates', exact: true });
   async function assertStayDates(start: string, end: string, review = dialog) {
     await review.getByRole('button', { name: 'Change stay dates', exact: true }).click();
     assert.equal(await departure.getAttribute('aria-pressed'), 'true');
@@ -1264,6 +1266,7 @@ try {
   await place_search.fill('Late inn');
   await search.click();
   await dialog.getByText('Searching…', { exact: true }).waitFor();
+  assert.equal(await dialog.getByRole('button', { name: /^Choose stay dates for / }).count(), 0);
   await nara.click();
   await nara_inn.waitFor();
   assert.deepEqual(place_requests.at(-1), { city: 'Kyoto', query: 'Late inn' });
@@ -1276,6 +1279,11 @@ try {
   await assertStayDates(day_two, '2030-05-22');
   await dialog.getByRole('button', { name: 'Change place', exact: true }).click();
   await nara_inn.waitFor();
+  assert.equal(
+    await dialog.getByRole('button', { name: /^Choose stay dates for / }).count(),
+    0,
+    'Replacing a place must return to the current draft.',
+  );
   assert.equal(await hotels.getAttribute('aria-pressed'), 'true');
   assert.equal(await nara.getAttribute('aria-pressed'), 'true');
   assert.equal(await place_search.inputValue(), 'test inn');
@@ -1906,8 +1914,6 @@ try {
   await place_search.fill('museum');
   await search.click();
   await kyoto_museum.waitFor();
-  assert.equal(await quick_museum.count(), 0, 'A named search opens its result for review.');
-  await dialog.getByRole('button', { name: 'Clear search', exact: true }).click();
   await quick_museum.waitFor();
   const writes_before_quick_add = journal_writes;
   fail_next_write = true;
@@ -1935,7 +1941,7 @@ try {
     .waitFor();
   assert.equal(await kyoto.getAttribute('aria-pressed'), 'true');
   assert.equal(await sights.getAttribute('aria-pressed'), 'true');
-  assert.equal(await place_search.inputValue(), '');
+  assert.equal(await place_search.inputValue(), 'museum');
   assert.equal(journal_writes, writes_before_quick_add + 2);
   const saved_quickly = journal();
   const previous_ids = new Set(second_save.stops.map((stop) => stop.id));
@@ -2216,10 +2222,21 @@ try {
   await dialog.getByRole('button', { name: 'Change place', exact: true }).click();
   await nara.click();
   await nara_inn.click();
-  await save_stop.click();
+  await dialog.getByLabel('Notes').fill('Ask about a luggage locker.');
+  await choose_stay_dates.click();
+  await cancel_dates.click();
+  assert.equal(await dialog.getByLabel('Notes').inputValue(), 'Ask about a luggage locker.');
+  await choose_stay_dates.click();
+  await stay_dates.getByText('Nara test inn', { exact: true }).waitFor();
+  await confirm_stay.click();
+  await stay_dates.waitFor({ state: 'hidden' });
   await dialog.waitFor({ state: 'hidden' });
   const route_with_stay = [...quick_sights, ...nara_route, 'Nara test inn'];
   assert.deepEqual(day_titles(journal(), day_two), route_with_stay);
+  assert.equal(
+    journal().stops.find((stop) => stop.title === 'Nara test inn')?.notes,
+    'Ask about a luggage locker.',
+  );
 
   // A traveler can place a departure-city sight last and edit it there on a later visit.
   const manual_sight = 'Kyoto Canal Walk';
@@ -2606,6 +2623,152 @@ try {
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
   await dialog.getByRole('button', { name: 'Discard changes', exact: true }).click();
   assert.equal(journal_writes, writes_before_dates + 2);
+
+  // Use directory-backed cities to verify the saved booking keeps its selected city ID.
+  const city_locations = [
+    { id: 'geonames:1857910', country_code: 'JP', latitude: 35.011, longitude: 135.768 },
+    { id: 'geonames:1855612', country_code: 'JP', latitude: 34.682, longitude: 135.828 },
+    { id: 'geonames:1853909', country_code: 'JP', latitude: 34.694, longitude: 135.502 },
+  ];
+  const booking_fixture = {
+    ...clean_kansai,
+    trips: [{ ...clean_kansai.trips[0], city_locations }],
+  };
+  files.set('journal/journal.json', [...new TextEncoder().encode(JSON.stringify(booking_fixture))]);
+  await native_frame.goto(native_frame.url());
+  await frame.getByRole('button', { name: 'Open trip Kansai by rail', exact: true }).click();
+  await frame.getByRole('button', { name: 'Day 2, 21 May', exact: true }).click();
+  await add_hotel.click();
+  const schedule = (surface: Locator, title: string) =>
+    surface.getByRole('button', { name: 'Choose stay dates for ' + title, exact: true });
+  const writes_before_booking = journal_writes;
+  await chooseType(dialog, 'Lodging', 'Guest houses');
+  await place_search.fill('Annex');
+  await search.click();
+  const nara_guest = 'Nara East Annex';
+  const list_schedule = schedule(dialog, nara_guest);
+  await list_schedule.click();
+  await stay_dates.getByText(nara_guest, { exact: true }).waitFor();
+  await stay_dates.getByText('Nara', { exact: true }).waitFor();
+  assert.equal(await calendar.inputValue(), day_three);
+  await stay_dates.getByRole('button', { name: 'Set check-out later', exact: true }).click();
+  assert.equal(await shellBack(), true);
+  await list_schedule.and(dialog.locator(':focus')).waitFor();
+  assert.equal(await place_search.inputValue(), 'Annex');
+  assert.equal(journal_writes, writes_before_booking);
+  await list_schedule.click();
+  assert.equal(
+    await calendar.inputValue(),
+    day_three,
+    'Cancelling leaves the default dates intact.',
+  );
+  await stay_dates.getByRole('button', { name: 'Set check-out later', exact: true }).click();
+  fail_next_write = true;
+  await confirm_stay.click();
+  await stay_dates.getByRole('alert').filter({ hasText: 'Simulated storage failure' }).waitFor();
+  assert.equal(await calendar.inputValue(), '');
+  assert.deepEqual(journal(), booking_fixture);
+  let release_booking!: () => void;
+  pending_write = new Promise<void>((resolve) => {
+    release_booking = resolve;
+  });
+  try {
+    await confirm_stay.evaluate((button) => {
+      (button as HTMLButtonElement).click();
+      (button as HTMLButtonElement).click();
+    });
+    await stay_dates.getByRole('button', { name: 'Saving…', exact: true }).waitFor();
+    assert.equal(await shellBack(), true);
+    assert.equal(await stay_dates.isVisible(), true);
+    assert.equal(journal_writes, writes_before_booking);
+  } finally {
+    pending_write = undefined;
+    release_booking();
+  }
+  await stay_dates.waitFor({ state: 'hidden' });
+  const saved_guest = results.getByRole('button', { name: /^Nara East Annex/ });
+  await saved_guest.getByText('On this day', { exact: true }).waitFor();
+  await saved_guest.and(dialog.locator(':focus')).waitFor();
+  assert.equal(await list_schedule.count(), 0);
+  await dialog.getByRole('heading', { name: 'Guest houses near Nara', exact: true }).waitFor();
+
+  await kyoto.click();
+  await chooseType(dialog, 'Lodging', 'Hostels');
+  await place_search.fill('Annex');
+  await search.click();
+  await open_results_map.click();
+  const kyoto_hostel = 'Kyoto West Annex';
+  const hostels_map = frame.getByRole('dialog', { name: 'Hostels near Kyoto', exact: true });
+  const map_schedule = schedule(hostels_map, kyoto_hostel);
+  await map_schedule.click();
+  await stay_dates.getByText(kyoto_hostel, { exact: true }).waitFor();
+  await stay_dates.getByText('Kyoto', { exact: true }).waitFor();
+  await cancel_dates.click();
+  await map_schedule.and(hostels_map.locator(':focus')).waitFor();
+  await map_schedule.click();
+  await confirm_stay.click();
+  await stay_dates.waitFor({ state: 'hidden' });
+  const hostel_card = hostels_map.getByRole('group', { name: 'Selected place', exact: true });
+  await hostel_card.getByText('On this day', { exact: true }).waitFor();
+  await hostel_card
+    .getByRole('heading', { name: kyoto_hostel, exact: true })
+    .and(hostels_map.locator(':focus'))
+    .waitFor();
+  assert.equal(await map_schedule.count(), 0);
+  await chooseType(hostels_map, 'Lodging', 'Guest houses');
+  const guest_map = frame.getByRole('dialog', { name: 'Guest houses near Kyoto', exact: true });
+  const kyoto_guest = 'Kyoto East Annex';
+  await schedule(guest_map, kyoto_guest).click();
+  await arrival.click();
+  await transfer_date.click();
+  assert.equal(await calendar.inputValue(), '2030-05-23');
+  await page
+    .locator('#applet')
+    .screenshot({ path: resolve(qa_directory, 'native-hotel-result-dates.png') });
+  await confirm_stay.click();
+  await stay_dates.waitFor({ state: 'hidden' });
+  await guest_map.waitFor({ state: 'hidden' });
+  await dialog.getByRole('heading', { name: 'Hotels near Osaka', exact: true }).waitFor();
+  assert.equal(await osaka.getAttribute('aria-pressed'), 'true');
+  assert.equal(await place_search.inputValue(), '');
+
+  const bookings = journal().stops.filter((stop) => stop.kind === 'stay');
+  assert.equal(journal_writes, writes_before_booking + 3);
+  assert.deepEqual(
+    bookings.map((stop) => [
+      stop.title,
+      stop.city,
+      stop.city_id,
+      stop.day,
+      stop.checkout_date,
+      stop.directory_ref?.place_type,
+    ]),
+    [
+      [nara_guest, 'Nara', city_locations[1].id, day_two, undefined, 'guest_house'],
+      [kyoto_hostel, 'Kyoto', city_locations[0].id, day_two, day_three, 'hostel'],
+      [kyoto_guest, 'Kyoto', city_locations[0].id, day_three, '2030-05-23', 'guest_house'],
+    ],
+  );
+  for (const [index, stop] of bookings.entries()) {
+    const ref = stop.directory_ref!;
+    const fixture_id = [114, 107, 106][index];
+    assert.equal(ref.id, ref.provider === 'osm' ? 'N' + fixture_id : 'fixture-' + fixture_id);
+    assert.equal(ref.subtitle, stop.city);
+  }
+
+  // The Osaka result also opens full review. Its untouched dates are confirmed before saving.
+  await dialog.getByRole('button', { name: /^Osaka test inn/ }).click();
+  await dialog.getByLabel('Notes').fill('Request a quiet room.');
+  await add_another.click();
+  await stay_dates.getByText('Osaka test inn', { exact: true }).waitFor();
+  await confirm_stay.click();
+  await stay_dates.waitFor({ state: 'hidden' });
+  await dialog.getByRole('heading', { name: 'Hotels near Osaka', exact: true }).waitFor();
+  assert.equal(
+    journal().stops.find((stop) => stop.title === 'Osaka test inn')?.notes,
+    'Request a quiet room.',
+  );
+  assert.equal(journal_writes, writes_before_booking + 4);
   assert.deepEqual(errors, [], 'The native applet should not produce uncaught browser errors.');
   for (const method of [
     'photos.pick',
@@ -2661,6 +2824,7 @@ try {
           'an immediate manual save waits for bundled city centers and writes once in transfer order',
           'whole-day reordering from itinerary and map with drag, tap, cancel, persistence and retry',
           'paired hotel dates, preserved nights, saved booking moves, and finding places after a day change',
+          'scheduling named hotel results from list and map, and adding named sights with their city and directory identity',
         ],
       },
       null,
