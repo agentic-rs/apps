@@ -1,5 +1,5 @@
 {
   "project_url": "https://github.com/agentic-rs/apps/tree/main/travel",
   "description": "Choose a city and plan daily routes. Add another city when your trip takes you farther. Keep track of packing, expenses, check-ins and photos. Photos stay on your device. Optional AI title suggestions use event times and coordinates.",
-  "release_notes": "On transfer days, add a sight before the next city's stops. Review its position and the city of each stop, or choose a different place in the route."
+  "release_notes": "Reorder a day's stops by dragging their handles or choosing a position. The route map updates as you move sights and hotels. Tap Done to save the order."
 }

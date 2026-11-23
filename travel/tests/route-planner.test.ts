@@ -129,27 +129,52 @@ describe('applying a reviewed order', () => {
     expect(applyDayRoute(journal, trip_id, day, original, original)).toBe(journal);
   });
 
-  test('rejects added, removed, moved, and unlocated stops after preview', () => {
+  test('manual order can move a stop without a pin and preserves its latest data and check-ins', () => {
+    const unlocated = { ...middle, notes: 'New meeting time.', position: null };
+    const latest = { ...journal, stops: [first, other_day, unlocated, other_trip, last] };
+    const changed = applyDayRoute(
+      latest,
+      trip_id,
+      day,
+      original,
+      ['middle', 'last', 'first'],
+      'manual',
+    );
+    expect(changed.stops).toEqual([unlocated, other_day, last, other_trip, first]);
+    expect(changed.stops[0]).toBe(unlocated);
+    expect(changed.check_ins).toBe(journal.check_ins);
+    expect(applyDayRoute(latest, trip_id, day, original, original, 'manual')).toBe(latest);
+    expect(() => applyDayRoute(latest, trip_id, day, original, original)).toThrow('coordinates');
+  });
+
+  test('both order modes reject a changed set or order after preview', () => {
     const snapshots = [
       { ...journal, stops: [...journal.stops, stop('new', 3)] },
       { ...journal, stops: journal.stops.slice(0, -1) },
       { ...journal, stops: [last, middle, first] },
-      { ...journal, stops: [first, middle, { ...last, position: null }] },
     ];
-    for (const snapshot of snapshots) {
-      expect(() => applyDayRoute(snapshot, trip_id, day, original, original)).toThrow();
+    for (const mode of ['manual', 'optimized'] as const) {
+      for (const snapshot of snapshots) {
+        expect(() => applyDayRoute(snapshot, trip_id, day, original, original, mode)).toThrow(
+          'changed',
+        );
+      }
     }
   });
 
   test('requires exactly one occurrence of every stop from the selected trip and day', () => {
-    for (const malformed of [
+    const invalid_orders = [
       ['first', 'middle'],
       ['first', 'middle', 'middle'],
       ['first', 'middle', 'next'],
       ['first', 'middle', 'outside'],
       ['first', 'middle', 'last', 'absent'],
-    ])
-      expect(() => applyDayRoute(journal, trip_id, day, original, malformed)).toThrow();
-    expect(() => applyDayRoute(journal, 'absent', day, [], [])).toThrow();
+    ];
+    for (const mode of ['manual', 'optimized'] as const) {
+      for (const order of invalid_orders) {
+        expect(() => applyDayRoute(journal, trip_id, day, original, order, mode)).toThrow();
+      }
+      expect(() => applyDayRoute(journal, 'absent', day, [], [], mode)).toThrow();
+    }
   });
 });

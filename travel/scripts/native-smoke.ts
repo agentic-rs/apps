@@ -2286,6 +2286,189 @@ try {
   await dialog.waitFor({ state: 'hidden' });
   assert.equal(journal_writes, writes_before_manual + 1);
   assert.deepEqual(day_titles(journal(), day_two), [manual_title, ...nara_route]);
+
+  // Reuse a journal with an overnight stay, a linked check-in and stops on other days.
+  const initial_route = before_move.stops
+    .filter((stop) => stop.trip_id === 'example-kansai' && stop.day === day_two)
+    .map((stop, index) => (index === 0 ? { ...stop, time: '09:40', position: null } : stop));
+  const timed_stop = initial_route[0];
+  const booked_stay = initial_route.find((stop) => stop.checkout_date)!;
+  assert(booked_stay && before_move.check_ins.some((entry) => entry.stop_id === new_museum.id));
+  const reorder_fixture = {
+    ...before_move,
+    stops: before_move.stops.map((stop) => (stop.id === timed_stop.id ? timed_stop : stop)),
+  };
+  files.set('journal/journal.json', [...new TextEncoder().encode(JSON.stringify(reorder_fixture))]);
+  await native_frame.goto(native_frame.url());
+  await frame.getByRole('button', { name: 'Open trip Kansai by rail', exact: true }).click();
+  await frame.getByRole('button', { name: 'Day 2, 21 May', exact: true }).click();
+
+  const open_reorder = frame.getByRole('button', { name: 'Reorder stops', exact: true });
+  const reorder_sheet = frame.getByRole('dialog', { name: 'Reorder stops', exact: true });
+  const order_list = reorder_sheet.getByRole('list', { name: 'Stop order', exact: true });
+  const draft_map = reorder_sheet.getByRole('region', { name: 'Draft route map', exact: true });
+  const moveGrip = (title: string) =>
+    order_list.getByRole('button', { name: 'Move ' + title, exact: true });
+  async function chooseSlot(title: string, slot: number) {
+    await moveGrip(title).click();
+    await position_sheet
+      .getByRole('button', { name: new RegExp(`^Position ${slot} of \\d+, (Before|After) `) })
+      .click();
+    await position_sheet.waitFor({ state: 'hidden' });
+    await moveGrip(title).and(reorder_sheet.locator(':focus')).waitFor();
+  }
+  const original_titles = initial_route.map((stop) => stop.title);
+  const gripTitles = () =>
+    order_list
+      .getByRole('button', { name: /^Move / })
+      .evaluateAll((buttons) =>
+        buttons.map((button) => button.getAttribute('aria-label')!.slice('Move '.length)),
+      );
+  const writes_before_reorder = journal_writes;
+  await open_reorder.click();
+  assert.deepEqual(await gripTitles(), original_titles);
+  await draft_map
+    .getByRole('button', { name: 'Stop 2, ' + initial_route[1].title, exact: true })
+    .waitFor();
+  assert.equal(await draft_map.getByRole('button', { name: /Stop 1, / }).count(), 0);
+  await chooseSlot(timed_stop.title, 3);
+  assert.deepEqual(await gripTitles(), [
+    original_titles[1],
+    original_titles[2],
+    original_titles[0],
+    ...original_titles.slice(3),
+  ]);
+  await reorder_sheet.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await reorder_sheet.waitFor({ state: 'hidden' });
+  assert.deepEqual(journal(), reorder_fixture);
+  await open_reorder.click();
+  await chooseSlot(booked_stay.title, 1);
+  assert.equal(await shellBack(), true);
+  await reorder_sheet.waitFor({ state: 'hidden' });
+  assert.equal(
+    journal_writes,
+    writes_before_reorder,
+    'Both ways of abandoning the draft leave storage untouched.',
+  );
+
+  await day_map.click();
+  if ((await map_order_toggle.getAttribute('aria-expanded')) === 'false')
+    await map_order_toggle.click();
+  await optimize.click();
+  await optimizer
+    .getByRole('heading', { name: 'Stops needing map coordinates', exact: true })
+    .waitFor();
+  await optimizer.getByText(timed_stop.title, { exact: true }).waitFor();
+  await optimizer.getByRole('button', { name: 'Close', exact: true }).click();
+  await open_reorder.click();
+  assert.deepEqual(await gripTitles(), original_titles);
+  const start = await moveGrip(timed_stop.title).boundingBox();
+  const target = await moveGrip(initial_route[2].title).boundingBox();
+  assert(start && target && start.width >= 44 && start.height >= 44);
+  const mouse = page.mouse;
+  const dragAcross = async () => {
+    await mouse.move(start.x + start.width / 2, start.y + start.height / 2);
+    await mouse.down();
+    await mouse.move(target.x + target.width / 2, target.y + target.height * 0.8, { steps: 14 });
+    await order_list
+      .getByRole('listitem')
+      .nth(2)
+      .getByRole('button', { name: 'Move ' + timed_stop.title, exact: true })
+      .waitFor();
+  };
+  await dragAcross();
+  await page.keyboard.press('Escape');
+  await mouse.up();
+  assert.deepEqual(
+    await gripTitles(),
+    original_titles,
+    'Cancelling a drag restores its starting order.',
+  );
+  // A quick touch flick can report its destination only at pointerup in WebKit.
+  await mouse.move(start.x + start.width / 2, start.y + start.height / 2);
+  await mouse.down();
+  await order_list.evaluate(() =>
+    window.addEventListener('pointermove', (event) => event.stopImmediatePropagation(), {
+      capture: true,
+      once: true,
+    }),
+  );
+  await mouse.move(target.x + target.width / 2, target.y + target.height * 0.8);
+  await mouse.up();
+  assert.equal(
+    (await gripTitles())[2],
+    timed_stop.title,
+    'Use the release position even without a delivered pointermove.',
+  );
+  await chooseSlot(timed_stop.title, 1);
+  await dragAcross();
+  await mouse.up();
+  await chooseSlot(booked_stay.title, 2);
+  const arranged = [
+    initial_route[1],
+    booked_stay,
+    initial_route[2],
+    timed_stop,
+    ...initial_route.slice(3).filter((stop) => stop.id !== booked_stay.id),
+  ];
+  const arranged_titles = arranged.map((stop) => stop.title);
+  assert.deepEqual(await gripTitles(), arranged_titles);
+  await draft_map
+    .getByRole('button', { name: 'Stop 1, ' + arranged_titles[0], exact: true })
+    .waitFor();
+  assert.equal(
+    await draft_map.getByRole('button', { name: /Stop 4, / }).count(),
+    0,
+    'The unlocated stop retains its number in the list.',
+  );
+  assert.deepEqual(journal(), reorder_fixture, 'Dragging and tapping only change the draft.');
+  await page
+    .locator('#applet')
+    .screenshot({ path: resolve(qa_directory, 'native-reorder-stops.png') });
+  const finish_reorder = reorder_sheet.getByRole('button', { name: 'Done', exact: true });
+  fail_next_write = true;
+  await finish_reorder.click();
+  await reorder_sheet.getByRole('alert').filter({ hasText: 'Simulated storage failure' }).waitFor();
+  assert.deepEqual(journal(), reorder_fixture);
+  assert.deepEqual(await gripTitles(), arranged_titles);
+  await finish_reorder.click();
+  await reorder_sheet.waitFor({ state: 'hidden' });
+  let route_index = 0;
+  assert.deepEqual(journal(), {
+    ...reorder_fixture,
+    stops: reorder_fixture.stops.map((stop) =>
+      stop.trip_id === 'example-kansai' && stop.day === day_two ? arranged[route_index++] : stop,
+    ),
+  });
+  assert.equal(journal_writes, writes_before_reorder + 1);
+  assert.deepEqual(
+    await map_order
+      .getByRole('button', { name: /^Edit / })
+      .evaluateAll((buttons) =>
+        buttons.map((button) => button.getAttribute('aria-label')!.slice('Edit '.length)),
+      ),
+    arranged_titles,
+  );
+  await frame.getByRole('button', { name: 'Stop 1, ' + arranged_titles[0], exact: true }).waitFor();
+  await native_frame.goto(native_frame.url());
+  await frame.getByRole('button', { name: 'Open trip Kansai by rail', exact: true }).click();
+  await frame.getByRole('button', { name: 'Day 2, 21 May', exact: true }).click();
+  assert.deepEqual(
+    await planned_list.getByRole('button', { name: /^Edit / }).allTextContents(),
+    arranged_titles,
+  );
+  await frame.getByRole('button', { name: 'Day 3, 22 May', exact: true }).click();
+  await frame
+    .getByRole('button', { name: 'Staying at ' + booked_stay.title, exact: true })
+    .waitFor();
+  await open_reorder.click();
+  assert.deepEqual(
+    await gripTitles(),
+    day_titles(reorder_fixture, day_three),
+    'A continuing hotel stay has no numbered slot.',
+  );
+  await reorder_sheet.getByRole('button', { name: 'Cancel', exact: true }).click();
+  assert.equal(journal_writes, writes_before_reorder + 1);
   assert.deepEqual(errors, [], 'The native applet should not produce uncaught browser errors.');
   for (const method of [
     'photos.pick',
@@ -2339,6 +2522,7 @@ try {
           'scoped sight and lodging types across the list, map, quick add and hotel review',
           'departure-city sights in trip order from review, list and map, explicit overrides and stable overnight stops',
           'an immediate manual save waits for bundled city centers and writes once in transfer order',
+          'whole-day reordering from itinerary and map with drag, tap, cancel, persistence and retry',
         ],
       },
       null,

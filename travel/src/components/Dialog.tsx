@@ -12,6 +12,7 @@ export function Dialog({
   dismiss_disabled = false,
   back_label,
   dismiss_label,
+  leading_action,
   trailing_action,
   active = true,
 }: {
@@ -24,6 +25,7 @@ export function Dialog({
   dismiss_disabled?: boolean;
   back_label?: string;
   dismiss_label?: string;
+  leading_action?: ReactNode;
   trailing_action?: ReactNode;
   active?: boolean;
 }) {
@@ -75,7 +77,10 @@ export function Dialog({
         dismissBackLayer();
       }}
     >
-      <header className={`dialog-header${back_label ? ' dialog-back-header' : ''}`}>
+      <header
+        className={`dialog-header${back_label || leading_action ? ' dialog-back-header' : ''}`}
+      >
+        {leading_action}
         {back_label && (
           <button
             type="button"
@@ -89,7 +94,7 @@ export function Dialog({
         )}
         <h2 id={id}>{title}</h2>
         {trailing_action && <div className="dialog-trailing-action">{trailing_action}</div>}
-        {(dismiss_label || !back_label) && (
+        {(dismiss_label || (!back_label && !leading_action)) && (
           <button
             type="button"
             className={dismiss_label ? 'dialog-dismiss-label' : 'icon-button'}

@@ -32,6 +32,7 @@ interface ItineraryDayProps {
   platform: TravelPlatform;
   onAddStop(category: 'sight' | 'stay'): void;
   onOpenMap(): void;
+  onReorderStops(): void;
   onEditStop(stop: PlannedStop): void;
   onMoveStop: MoveStop;
   onCheckIn(stop?: PlannedStop): void;
@@ -54,6 +55,7 @@ export function ItineraryDay({
   platform,
   onAddStop,
   onOpenMap,
+  onReorderStops,
   onEditStop,
   onMoveStop,
   onCheckIn,
@@ -161,15 +163,24 @@ export function ItineraryDay({
               </p>
             )}
           </div>
-          <button
-            type="button"
-            className="day-map-button"
-            onClick={onOpenMap}
-            aria-label="Open day map"
-          >
-            <Icon name="map" size={20} />
-            Map
-          </button>
+          <div className="day-route-actions">
+            {stops.length >= 2 && (
+              <button
+                type="button"
+                aria-label="Reorder stops"
+                aria-haspopup="dialog"
+                title="Reorder stops"
+                disabled={moving}
+                onClick={onReorderStops}
+              >
+                <Icon name="reorder" size={20} />
+              </button>
+            )}
+            <button type="button" onClick={onOpenMap} aria-label="Open day map">
+              <Icon name="map" size={20} />
+              Map
+            </button>
+          </div>
         </div>
         <div className="day-place-actions">
           <button type="button" className="primary" onClick={() => onAddStop('sight')}>

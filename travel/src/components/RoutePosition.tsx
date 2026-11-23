@@ -4,15 +4,7 @@ import type { PlannedStop } from '../lib/types';
 import { Dialog } from './Dialog';
 import { Icon } from './Icon';
 
-export function RoutePosition({
-  stops,
-  index,
-  title,
-  context,
-  city_labels,
-  pending = false,
-  onChange,
-}: {
+interface PositionProps {
   stops: PlannedStop[];
   index: number;
   title: string;
@@ -20,31 +12,25 @@ export function RoutePosition({
   city_labels?: ReadonlyMap<string, string>;
   pending?: boolean;
   onChange(before_stop_id: string | null): void;
-}) {
+}
+
+function positionAt(stops: PlannedStop[], index: number) {
+  const before = index < stops.length;
+  const anchor = stops[before ? index : stops.length - 1];
+  return { anchor, label: `${before ? 'Before' : 'After'} ${anchor.title}` };
+}
+
+export function RoutePosition(props: PositionProps) {
+  const { stops, index, city_labels, pending } = props;
   const [open, setOpen] = useState(false);
   const description = useId();
-  const selected = useRef<HTMLButtonElement>(null);
-  useLayoutEffect(() => {
-    if (open) selected.current?.focus();
-  }, [open]);
   if (!stops.length) return null;
-  const positions = [...stops, stops[stops.length - 1]].map((anchor, slot) => {
-    const before = slot < stops.length;
-    const city = city_labels?.get(anchor.id);
-    // A venue can be named for a different city. Suppress only an explicit
-    // locality, such as “National Museum (Kyoto)” or “National Museum, Kyoto”.
-    const has_city =
-      city &&
-      anchor.title.split(/[,，·()（）]/u).some((part) => directoryKey(part) === directoryKey(city));
-    return {
-      before_stop_id: before ? anchor.id : null,
-      label: `${before ? 'Before' : 'After'} ${anchor.title}`,
-      city,
-      city_detail: has_city ? undefined : city,
-    };
-  });
-  const current = positions[index];
-  const count = positions.length;
+  const { anchor, label } = positionAt(stops, index);
+  const city = city_labels?.get(anchor.id);
+  // A venue can be named for a different city. Suppress only an explicit locality.
+  const show_city =
+    city &&
+    !anchor.title.split(/[,，·()（）]/u).some((part) => directoryKey(part) === directoryKey(city));
   return (
     <>
       <button
@@ -60,55 +46,71 @@ export function RoutePosition({
         <small id={description}>
           {pending
             ? 'Finding route position…'
-            : `${index + 1} of ${count} · ${current.label}${current.city_detail ? ` · ${current.city_detail}` : ''}`}
+            : `${index + 1} of ${stops.length + 1} · ${label}${show_city ? ` · ${city}` : ''}`}
         </small>
         <Icon name="next" size={15} />
       </button>
-      {open && (
-        <Dialog
-          title="Route position"
-          back_label="Back to stop"
-          full_screen
-          onDismiss={() => setOpen(false)}
-        >
-          <div className="stop-position-content">
-            <header className="stop-position-context">
-              <strong>{title}</strong>
-              <span>{context}</span>
-            </header>
-            <ol className="stop-position-options" aria-label="Positions in this day">
-              {positions.map((position, slot) => (
-                <li
-                  key={
-                    position.before_stop_id === null ? 'end' : 'before-' + position.before_stop_id
-                  }
-                >
-                  {position.city && position.city !== positions[slot - 1]?.city && (
-                    <h3 className="stop-position-city">{position.city} stops</h3>
-                  )}
-                  <button
-                    type="button"
-                    ref={!pending && slot === index ? selected : undefined}
-                    aria-pressed={!pending && slot === index}
-                    aria-label={`Position ${slot + 1} of ${count}, ${position.label}`}
-                    aria-description={position.city}
-                    onClick={() => {
-                      onChange(position.before_stop_id);
-                      setOpen(false);
-                    }}
-                  >
-                    <span className="stop-position-number" aria-hidden="true">
-                      {slot + 1}
-                    </span>
-                    <span>{position.label}</span>
-                    {!pending && slot === index && <Icon name="check" size={18} />}
-                  </button>
-                </li>
-              ))}
-            </ol>
-          </div>
-        </Dialog>
-      )}
+      {open && <RoutePositionSheet {...props} onClose={() => setOpen(false)} />}
     </>
+  );
+}
+
+export function RoutePositionSheet({
+  stops,
+  index,
+  title,
+  context,
+  city_labels,
+  pending,
+  onChange,
+  onClose,
+  back_label = 'Back to stop',
+}: PositionProps & { onClose(): void; back_label?: string }) {
+  const selected = useRef<HTMLButtonElement>(null);
+  useLayoutEffect(() => {
+    selected.current?.focus();
+  }, []);
+  const count = stops.length + 1;
+  return (
+    <Dialog title="Route position" back_label={back_label} full_screen onDismiss={onClose}>
+      <div className="stop-position-content">
+        <header className="stop-position-context">
+          <strong>{title}</strong>
+          <span>{context}</span>
+        </header>
+        <ol className="stop-position-options" aria-label="Positions in this day">
+          {Array.from({ length: count }, (_, slot) => {
+            const { anchor, label } = positionAt(stops, slot);
+            const before_id = stops[slot]?.id ?? null;
+            const city = city_labels?.get(anchor.id);
+            const previous = stops[slot - 1];
+            const show_city = city && (!previous || city_labels?.get(previous.id) !== city);
+            const current = !pending && slot === index;
+            return (
+              <li key={before_id === null ? 'end' : 'before-' + before_id}>
+                {show_city && <h3 className="stop-position-city">{city} stops</h3>}
+                <button
+                  type="button"
+                  ref={current ? selected : undefined}
+                  aria-pressed={current}
+                  aria-label={`Position ${slot + 1} of ${count}, ${label}`}
+                  aria-description={city}
+                  onClick={() => {
+                    onChange(before_id);
+                    onClose();
+                  }}
+                >
+                  <span className="stop-position-number" aria-hidden="true">
+                    {slot + 1}
+                  </span>
+                  <span>{label}</span>
+                  {current && <Icon name="check" size={18} />}
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      </div>
+    </Dialog>
   );
 }

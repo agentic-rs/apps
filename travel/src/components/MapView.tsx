@@ -143,6 +143,7 @@ export default function MapView({
   onOpenVisit,
   onOpenStop,
   onMoveStop,
+  onReorderStops,
   onOptimize,
   active,
 }: {
@@ -154,6 +155,7 @@ export default function MapView({
   onOpenVisit(id: string): void;
   onOpenStop(id: string): void;
   onMoveStop: MoveStop;
+  onReorderStops(): void;
   onOptimize(): void;
   active: boolean;
 }) {
@@ -448,6 +450,7 @@ export default function MapView({
           continuing_stays={continuing_stays}
           onOpenStop={onOpenStop}
           onMoveStop={onMoveStop}
+          onReorderStops={onReorderStops}
           onOptimize={onOptimize}
         />
       )}

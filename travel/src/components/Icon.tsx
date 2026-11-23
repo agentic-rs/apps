@@ -1,6 +1,8 @@
 import type { CSSProperties } from 'react';
 
 const paths = {
+  reorder: <path d="M8 20V4m-4 4 4-4 4 4m4-4v16m-4-4 4 4 4-4" />,
+  grip: <path d="M4 7h16M4 12h16M4 17h16" />,
   filter: (
     <>
       <path d="M3 7h5m5 0h8M3 17h10m5 0h3" />

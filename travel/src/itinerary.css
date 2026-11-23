@@ -32,7 +32,14 @@
   margin-top: 4px;
 }
 
-.day-map-button {
+.day-route-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+}
+
+.day-route-actions button {
   display: inline-flex;
   align-items: center;
   justify-content: center;

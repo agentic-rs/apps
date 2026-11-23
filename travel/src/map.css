@@ -594,6 +594,15 @@
 .route-action-bar button + button {
   border-inline-start: 1px solid var(--apell-line);
 }
+.route-action-bar .map-reorder-button {
+  flex: none;
+  min-width: 44px;
+}
+@media (max-width: 359px) {
+  .map-reorder-button span {
+    display: none;
+  }
+}
 .map-stop-count {
   font-size: 0.79rem;
   font-variant-numeric: tabular-nums;

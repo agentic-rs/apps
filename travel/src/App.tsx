@@ -31,7 +31,8 @@ import { TimelineView } from './components/TimelineView';
 import { TripLibrary } from './components/TripLibrary';
 import { TripToolbox } from './components/TripToolbox';
 import { RoutePlanner } from './components/RoutePlanner';
-import { applyDayRoute } from './lib/route-planner';
+import { StopOrderEditor } from './components/StopOrderEditor';
+import { applyDayRoute, type RouteOrderMode } from './lib/route-planner';
 import { TripDays } from './components/TripDays';
 import { TripOverview } from './components/TripOverview';
 import { ItineraryDay } from './components/ItineraryDay';
@@ -44,7 +45,7 @@ type View = 'Itinerary' | 'Map' | 'Journal' | 'Toolbox';
 type Editor =
   | { kind: 'new_trip' | 'edit_trip' | 'add_city' | 'overview' }
   | { kind: 'stop'; stop?: PlannedStop; initial_category?: StopSearchCategory }
-  | { kind: 'route' }
+  | { kind: 'route' | 'reorder' }
   | { kind: 'visit'; visit?: CheckIn; stop?: PlannedStop }
   | { kind: 'photo_events' };
 type Removal =
@@ -160,6 +161,21 @@ export function App() {
 
   function reorderStop(stop: PlannedStop, direction: -1 | 1) {
     return persist((snapshot) => moveStop(snapshot, stop.id, direction));
+  }
+
+  function openStopOrder() {
+    setEditor({ kind: 'reorder' });
+  }
+
+  async function saveDayRoute(
+    original_ids: string[],
+    ordered_ids: string[],
+    mode: RouteOrderMode = 'optimized',
+  ) {
+    await persist((snapshot) =>
+      applyDayRoute(snapshot, trip_id, day, original_ids, ordered_ids, mode),
+    );
+    setNotice('Day route updated.');
   }
 
   function openItineraryDay(date: string) {
@@ -343,6 +359,7 @@ export function App() {
                   platform={platform}
                   onAddStop={(initial_category) => setEditor({ kind: 'stop', initial_category })}
                   onOpenMap={() => setView('Map')}
+                  onReorderStops={openStopOrder}
                   onEditStop={(stop) => setEditor({ kind: 'stop', stop })}
                   onMoveStop={reorderStop}
                   onCheckIn={visit_editor}
@@ -366,8 +383,9 @@ export function App() {
                     visits={day_visits}
                     places={journal.places}
                     platform={platform}
-                    active={editor?.kind !== 'stop'}
+                    active={editor?.kind !== 'stop' && editor?.kind !== 'reorder'}
                     onMoveStop={reorderStop}
+                    onReorderStops={openStopOrder}
                     onOptimize={() => setEditor({ kind: 'route' })}
                     onOpenVisit={setDetailId}
                     onOpenStop={(id) => {
@@ -521,15 +539,17 @@ export function App() {
         />
       )}
       {editor?.kind === 'route' && trip && (
-        <RoutePlanner
+        <RoutePlanner stops={day_stops} onClose={() => setEditor(null)} onApply={saveDayRoute} />
+      )}
+      {editor?.kind === 'reorder' && trip && (
+        <StopOrderEditor
+          trip={trip}
+          day={day}
+          first={first}
           stops={day_stops}
+          native={platform.native}
           onClose={() => setEditor(null)}
-          onApply={async (original_ids, ordered_ids) => {
-            await persist((snapshot) =>
-              applyDayRoute(snapshot, trip.id, day, original_ids, ordered_ids),
-            );
-            setNotice('Day route updated.');
-          }}
+          onApply={(original_ids, ordered_ids) => saveDayRoute(original_ids, ordered_ids, 'manual')}
         />
       )}
       {editor?.kind === 'stop' && trip && (

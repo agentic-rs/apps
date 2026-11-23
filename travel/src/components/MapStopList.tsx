@@ -41,12 +41,14 @@ export function MapStopList({
   continuing_stays,
   onOpenStop,
   onMoveStop,
+  onReorderStops,
   onOptimize,
 }: {
   stops: PlannedStop[];
   continuing_stays: ContinuingStay[];
   onOpenStop(id: string): void;
   onMoveStop: MoveStop;
+  onReorderStops(): void;
   onOptimize(): void;
 }) {
   const list_id = useId();
@@ -81,10 +83,24 @@ export function MapStopList({
           />
         </button>
         {stops.length > 1 && (
-          <button type="button" onClick={onOptimize}>
-            <Icon name="route" size={17} />
-            Optimize route
-          </button>
+          <>
+            <button
+              type="button"
+              className="map-reorder-button"
+              onClick={onReorderStops}
+              disabled={moving}
+              aria-label="Reorder stops"
+              aria-haspopup="dialog"
+              title="Reorder stops"
+            >
+              <Icon name="reorder" size={17} />
+              <span>Reorder</span>
+            </button>
+            <button type="button" onClick={onOptimize}>
+              <Icon name="route" size={17} />
+              Optimize route
+            </button>
+          </>
         )}
       </div>
       <div className="map-stop-list-scroll" id={list_id} hidden={!expanded}>

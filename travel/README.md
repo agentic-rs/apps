@@ -15,6 +15,8 @@ Tap **＋** beside a nearby sight to add it directly to the selected day. If it 
 
 Open **Overview** to see the cities and planned stops for each day. Tap a day to open it. **Add day** extends the itinerary by one calendar day and opens that day.
 
+On a day with two or more planned stops, tap the reorder arrows beside **Map**, or **Reorder** on the day map. Drag a handle to move a stop several places, or tap it to choose a position. The numbered map previews each move. **Done** saves the whole order and **Cancel** returns to the original route. Stop times, hotel dates and check-ins stay with their stops. Stops without coordinates can also be rearranged. [行程助手’s mobile arrangement screen, page 14](https://www.pmdaniu.com/index.php/storages/95419/27de68b70b9d6a22b410d2a0eabd8926-54667/1303sZobr5wc.pdf#page=14)
+
 When you finish adding places, the itinerary brings the last saved stop into view. If you edit a stay from an overnight or checkout day, returning to that day brings its hotel row into view.
 
 In a sight or hotel search, tap **Map** beside the results heading. Tap a pin or use the arrows to compare places, including those that share coordinates. Each new place shows its straight-line distance to the nearest numbered stop or overnight hotel with coordinates, including the checkout hotel. On a transfer day, tap either city to see its results. **Day route** fits the results and the numbered itinerary stops together. **Review place** opens the stop or hotel review. Back returns to the selected place on the map, then to the list.

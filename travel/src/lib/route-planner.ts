@@ -73,6 +73,8 @@ export function suggestDayRoute(
   return route;
 }
 
+export type RouteOrderMode = 'optimized' | 'manual';
+
 /** Reorder only the original trip/day slots. Preserve the latest stop objects and all links. */
 export function applyDayRoute(
   journal: Journal,
@@ -80,6 +82,7 @@ export function applyDayRoute(
   day: string,
   original_ids: readonly string[],
   ordered_ids: readonly string[],
+  mode: RouteOrderMode = 'optimized',
 ): Journal {
   const belongs = (stop: PlannedStop) => stop.trip_id === trip_id && stop.day === day;
   const current = journal.stops.filter(belongs);
@@ -99,7 +102,7 @@ export function applyDayRoute(
   ) {
     throw new Error('The route must contain every stop on the day exactly once.');
   }
-  if (current.some((stop) => !stop.position))
+  if (mode === 'optimized' && current.some((stop) => !stop.position))
     throw new Error('Add coordinates to each stop before arranging the route.');
   if (current.every((stop, i) => stop.id === ordered_ids[i])) return journal;
 
