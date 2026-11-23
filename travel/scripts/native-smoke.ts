@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { firefox, type Browser, type Locator, type Page } from 'playwright-core';
 import sharp from 'sharp';
 import type { LlmRequest } from '@apell/sdk';
+import { directoryShard } from '../src/lib/directory-format';
 import type { Journal } from '../src/lib/types';
 
 // No device APIs or existing journal data are accessed. The real production
@@ -1929,7 +1930,8 @@ try {
   assert.equal(await place_search.inputValue(), '');
   assert.equal(journal_writes, writes_before_quick_add + 2);
   const saved_quickly = journal();
-  const new_sights = saved_quickly.stops.slice(-2);
+  const previous_ids = new Set(second_save.stops.map((stop) => stop.id));
+  const new_sights = saved_quickly.stops.filter((stop) => !previous_ids.has(stop.id));
   assert.deepEqual(
     new_sights.map((stop) => [stop.title, stop.kind, stop.city, stop.day]),
     [
@@ -1938,7 +1940,10 @@ try {
     ],
   );
   assert(new_sights.every((stop) => stop.directory_ref && stop.position));
-  assert.deepEqual({ ...saved_quickly, stops: saved_quickly.stops.slice(0, -2) }, second_save);
+  assert.deepEqual(
+    { ...saved_quickly, stops: saved_quickly.stops.filter((stop) => previous_ids.has(stop.id)) },
+    second_save,
+  );
   await open_results_map.click();
   await sight_map.getByRole('button', { name: /^Edit planned visit/ }).click();
   assert.equal(await dialog.getByLabel('Stop name').inputValue(), sight_names[0]);
@@ -2121,6 +2126,166 @@ try {
   assert.equal(await shellBack(), true, 'Back from the trip itinerary returns to the library.');
   await frame.getByRole('heading', { name: 'Your trips', exact: true }).waitFor();
   assert.equal(await shellBack(), false);
+
+  // Use the untouched legacy route. All three Day 2 records have coordinates but no city.
+  const kansai_source = Bun.file(new URL('../fixtures/kansai.json', import.meta.url));
+  files.set('journal/journal.json', [...(await kansai_source.bytes())]);
+  const clean_kansai = journal();
+  const nara_route = day_titles(clean_kansai, day_two);
+  const writes_before_transfer = journal_writes;
+  await native_frame.goto(native_frame.url());
+  await frame.getByRole('button', { name: 'Open trip Kansai by rail', exact: true }).click();
+  await frame.getByRole('button', { name: 'Day 2, 21 May', exact: true }).click();
+  await add_stop.click();
+  await place_search.fill('Canal Works');
+  await search.click();
+  const reviewed_sight = 'Kyoto Canal Works';
+  await results.getByRole('button', { name: /^Kyoto Canal Works/ }).click();
+  await route_position.click();
+  assert.equal(
+    await first_slot.getAttribute('aria-pressed'),
+    'true',
+    'Start the Kyoto sight before the Nara train arrival.',
+  );
+  await position_sheet.getByRole('button', { name: 'Back to stop', exact: true }).click();
+  await view_on_map.click();
+  await candidate_pin.waitFor();
+  assert.equal(await candidate_pin.getAttribute('aria-description'), 'Stop 1 of 4');
+  await preview_map.getByRole('button', { name: 'Stop 2, JR Nara Station', exact: true }).waitFor();
+  await map_preview.getByRole('button', { name: 'Back to stop', exact: true }).click();
+  assert.deepEqual(journal(), clean_kansai);
+  await save_stop.click();
+  await dialog.waitFor({ state: 'hidden' });
+  assert.deepEqual(day_titles(journal(), day_two), [reviewed_sight, ...nara_route]);
+
+  await add_stop.click();
+  await quick_museum.click();
+  await kyoto_museum.getByText('On this day', { exact: true }).waitFor();
+  await dialog
+    .getByRole('status')
+    .getByText('Kyoto test museum added to Day 2 before JR Nara Station.', { exact: true })
+    .waitFor();
+  const quick_sights = [reviewed_sight, 'Kyoto test museum', 'Kyoto history museum'];
+  assert.deepEqual(day_titles(journal(), day_two), [
+    reviewed_sight,
+    'Kyoto test museum',
+    ...nara_route,
+  ]);
+  await open_results_map.click();
+  await pin_for('Kyoto history museum').press('Enter');
+  await quick_history.click();
+  await sight_map.getByRole('group', { name: 'Selected place' }).getByText('On this day').waitFor();
+  const route_confirmation = sight_map
+    .getByRole('status')
+    .filter({ hasText: 'Kyoto history museum added to Day 2 before JR Nara Station.' });
+  await route_confirmation.waitFor();
+  const confirmation_size = await route_confirmation.boundingBox();
+  assert(
+    confirmation_size && confirmation_size.height >= 12,
+    'Show the placement on the map card.',
+  );
+  await page
+    .locator('#applet')
+    .screenshot({ path: resolve(qa_directory, 'native-transfer-insertion.png') });
+  assert.deepEqual(day_titles(journal(), day_two), [...quick_sights, ...nara_route]);
+  await sight_map.getByRole('button', { name: 'Back to place list', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Done', exact: true }).click();
+  await dialog.waitFor({ state: 'hidden' });
+  assert.deepEqual(await planned_list.getByRole('button', { name: /^Edit / }).allTextContents(), [
+    ...quick_sights,
+    ...nara_route,
+  ]);
+
+  // An overnight stay remains at the end even when searched in the departure city.
+  await add_hotel.click();
+  await kyoto.click();
+  await dialog.getByRole('button', { name: /^Kyoto test inn/ }).click();
+  await route_position.click();
+  assert.equal(await last_slot.getAttribute('aria-pressed'), 'true');
+  await position_sheet.getByRole('button', { name: 'Back to stop', exact: true }).click();
+  // Book the arrival-city inn to leave the legacy route in chronological city order.
+  await dialog.getByRole('button', { name: 'Change place', exact: true }).click();
+  await nara.click();
+  await nara_inn.click();
+  await save_stop.click();
+  await dialog.waitFor({ state: 'hidden' });
+  const route_with_stay = [...quick_sights, ...nara_route, 'Nara test inn'];
+  assert.deepEqual(day_titles(journal(), day_two), route_with_stay);
+
+  // A traveler can place a departure-city sight last and edit it there on a later visit.
+  const manual_sight = 'Kyoto Canal Walk';
+  await add_stop.click();
+  await place_search.fill('Canal Walk');
+  await search.click();
+  await results.getByRole('button', { name: /^Kyoto Canal Walk/ }).click();
+  await route_position.click();
+  const route_slots = position_sheet.getByRole('list', { name: 'Positions in this day' });
+  assert.deepEqual(await route_slots.getByRole('heading').allTextContents(), [
+    'Kyoto stops',
+    'Nara stops',
+  ]);
+  assert.equal(
+    await position_sheet
+      .getByRole('button', { name: 'Position 4 of 8, Before JR Nara Station', exact: true })
+      .getAttribute('aria-pressed'),
+    'true',
+  );
+  await last_slot.click();
+  await save_stop.click();
+  await dialog.waitFor({ state: 'hidden' });
+  await native_frame.goto(native_frame.url());
+  await frame.getByRole('button', { name: 'Open trip Kansai by rail', exact: true }).click();
+  await frame.getByRole('button', { name: 'Day 2, 21 May', exact: true }).click();
+  await planned_list.getByRole('button', { name: 'Edit ' + manual_sight, exact: true }).click();
+  await route_position.click();
+  assert.equal(await last_slot.getAttribute('aria-pressed'), 'true');
+  await position_sheet.getByRole('button', { name: 'Back to stop', exact: true }).click();
+  await dialog.getByLabel('Notes').fill('Meet at the west gate.');
+  await save_stop.click();
+  await dialog.waitFor({ state: 'hidden' });
+  const final_route = journal();
+  assert.equal(journal_writes, writes_before_transfer + 6);
+  assert.deepEqual(day_titles(final_route, day_two), [...route_with_stay, manual_sight]);
+  const fixture_ids = new Set(clean_kansai.stops.map((stop) => stop.id));
+  assert.deepEqual(
+    final_route.stops.filter((stop) => fixture_ids.has(stop.id)),
+    clean_kansai.stops,
+  );
+
+  // A traveler can submit a manual stop before the bundled city lookup finishes.
+  const nara_shard = `**/directory/cities-${directoryShard('nara')}.json.gz`;
+  let release_directory!: () => void;
+  const pending_directory = new Promise<void>((resolve) => {
+    release_directory = resolve;
+  });
+  await page.route(
+    nara_shard,
+    async (route) => {
+      await pending_directory;
+      await route.continue();
+    },
+    { times: 1 },
+  );
+  const writes_before_manual = journal_writes;
+  const manual_title = 'Kyoto morning walk';
+  try {
+    files.set('journal/journal.json', [...(await kansai_source.bytes())]);
+    await native_frame.goto(native_frame.url());
+    await frame.getByRole('button', { name: 'Open trip Kansai by rail', exact: true }).click();
+    await frame.getByRole('button', { name: 'Day 2, 21 May', exact: true }).click();
+    await add_stop.click();
+    await dialog.getByRole('button', { name: 'Enter manually', exact: true }).click();
+    await dialog.getByLabel('Stop name').fill(manual_title);
+    await route_position.getByText('Finding route position…', { exact: true }).waitFor();
+    await save_stop.click();
+    await dialog.getByRole('button', { name: 'Saving…', exact: true }).waitFor();
+    assert.equal(journal_writes, writes_before_manual);
+  } finally {
+    release_directory();
+  }
+  await dialog.waitFor({ state: 'hidden' });
+  assert.equal(journal_writes, writes_before_manual + 1);
+  assert.deepEqual(day_titles(journal(), day_two), [manual_title, ...nara_route]);
   assert.deepEqual(errors, [], 'The native applet should not produce uncaught browser errors.');
   for (const method of [
     'photos.pick',
@@ -2172,6 +2337,8 @@ try {
           'returning to the last saved stop, continuing stay or checkout in the day timeline',
           'comparing a sight to an unnumbered checkout hotel in both maps without occupying another night',
           'scoped sight and lodging types across the list, map, quick add and hotel review',
+          'departure-city sights in trip order from review, list and map, explicit overrides and stable overnight stops',
+          'an immediate manual save waits for bundled city centers and writes once in transfer order',
         ],
       },
       null,

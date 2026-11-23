@@ -28,6 +28,7 @@ interface PlaceResultsSheetProps {
   search_error: string;
   onRetry(): void;
   saved_message: string;
+  saved_stop_id?: string;
   saving: boolean;
   save_error?: { id: string; message: string };
   onPick(place: StopSearchResult, origin: HTMLElement): void;
@@ -51,6 +52,7 @@ export function PlaceResultsSheet({
   search_error,
   onRetry,
   saved_message,
+  saved_stop_id,
   saving,
   save_error,
   onPick,
@@ -207,7 +209,14 @@ export function PlaceResultsSheet({
                   )}
                 </div>
               )}
-              <span className="sr-only" role="status">
+              <span
+                className={
+                  planned.some((stop) => stop.id === saved_stop_id)
+                    ? 'result-map-confirmation'
+                    : 'sr-only'
+                }
+                role="status"
+              >
                 {saved_message}
               </span>
             </fieldset>

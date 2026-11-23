@@ -7,13 +7,13 @@ import { isCalendarDate, itineraryDayLabel } from '../lib/dates';
 import { text_limits } from '../lib/model';
 import {
   matchesPlannedPlace,
+  searchCityLabel,
   searchPlannedStops,
-  type SearchCity,
 } from '../lib/planned-stop-search';
+import { searchCities, useSearchCityLocations } from '../lib/use-search-cities';
 import {
   filterNearbyPlaces,
   groupPlacesForCity,
-  resolveSearchCity,
   type StopLookup,
   type StopSearchRequest,
   type StopSearchResult,
@@ -67,6 +67,7 @@ export function StopPlacePicker({
   route,
   stays,
   saved_message = '',
+  saved_stop_id,
   onCategoryChange,
   onEditPlanned,
   onQuickAdd,
@@ -84,6 +85,7 @@ export function StopPlacePicker({
   route: PlannedStop[];
   stays: ContinuingStay[];
   saved_message?: string;
+  saved_stop_id?: string;
   onCategoryChange?(category: StopSearchRequest['category']): void;
   onEditPlanned?(stop: PlannedStop): void;
   onQuickAdd?(place: StopSearchResult, city?: string, city_id?: string): Promise<void>;
@@ -110,16 +112,7 @@ export function StopPlacePicker({
     () => (day_indices.length ? day_indices : (trip.cities ?? []).map((_, index) => index)),
     [trip.cities, day_indices],
   );
-  const route_cities = useMemo<SearchCity[]>(
-    () =>
-      options.map((index) => ({
-        index,
-        name: trip.cities![index],
-        location: trip.city_locations?.[index],
-      })),
-    [options, trip],
-  );
-  const [resolved, setResolved] = useState<{ route: SearchCity[]; cities: SearchCity[] }>();
+  const route_cities = useMemo(() => searchCities(trip, options), [options, trip]);
   const [category, setCategory] = useState(initial_category);
   const [chosen_city, setChosenCity] = useState<number | undefined>(() => {
     if (initial_city_id) {
@@ -170,22 +163,7 @@ export function StopPlacePicker({
         (stop) => stop.city_id || (stop.position && (route_cities.length > 1 || stop.day !== day)),
       ),
   );
-  useEffect(() => {
-    if (!needs_centers || resolved?.route === route_cities) return;
-    let active = true;
-    void Promise.all(
-      route_cities.map(async (city) => {
-        if (city.location) return city;
-        const location = await resolveSearchCity(city.name).catch(() => undefined);
-        return { ...city, location };
-      }),
-    ).then((cities) => {
-      if (active) setResolved({ route: route_cities, cities });
-    });
-    return () => {
-      active = false;
-    };
-  }, [needs_centers, route_cities, resolved]);
+  const resolved = useSearchCityLocations(route_cities, needs_centers);
   const can_search = Boolean(query.trim() && (airports || city));
   const can_browse = is_browsable && city_index !== undefined;
   // While composing, keep the nearby request alive and match its rows on device.
@@ -230,7 +208,7 @@ export function StopPlacePicker({
           day_stops,
           query,
           category,
-          resolved?.route === route_cities ? resolved.cities : route_cities,
+          resolved.cities,
           city_index,
           day,
           custom_city,
@@ -317,10 +295,7 @@ export function StopPlacePicker({
   }, [lookup, request, retry]);
 
   function cityLabel(index: number) {
-    const name = cities[index];
-    if (!options.some((other) => other !== index && cities[other] === name)) return name;
-    const country = trip.city_locations?.[index]?.country_code;
-    return [name, country, `City ${index + 1}`].filter(Boolean).join(' · ');
+    return searchCityLabel(route_cities, index);
   }
 
   function changeSearch(text: string, submitted: string | null, key = scope_key) {
@@ -708,6 +683,7 @@ export function StopPlacePicker({
           onRetry={tryAgain}
           saving={adding_id !== null}
           saved_message={saved_message}
+          saved_stop_id={saved_stop_id}
           save_error={save_error}
           onPick={chooseResult}
           onQuickAdd={quick_sights ? addSight : undefined}

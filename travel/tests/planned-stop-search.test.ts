@@ -1,7 +1,13 @@
 import { expect, test } from 'bun:test';
 import kansai from '../fixtures/kansai.json';
 import { parseJournal } from '../src/lib/model';
-import { matchesPlannedPlace, searchPlannedStops } from '../src/lib/planned-stop-search';
+import {
+  matchesPlannedPlace,
+  plannedStopCityIndex,
+  searchCityLabel,
+  searchPlannedStops,
+  suggestRouteAnchor,
+} from '../src/lib/planned-stop-search';
 import type { StopSearchResult } from '../src/lib/stop-lookup';
 import type { PlannedStop } from '../src/lib/types';
 
@@ -168,4 +174,147 @@ test('a manually entered city finds only explicitly assigned stops when the trip
   expect(
     searchPlannedStops([assigned, park], 'park', 'sight', [], undefined, park.day, 'Nara'),
   ).toEqual([]);
+});
+
+test('a new Kyoto activity goes before the Kansai fixture’s Nara arrival station', () => {
+  const route = stops.filter((stop) => stop.day === park.day);
+  const [station] = route;
+  const candidate = { kind: 'sight' as const, city: 'Kyoto' };
+  expect(plannedStopCityIndex(station, cities, park.day)).toBe(1);
+  expect(suggestRouteAnchor(cities, stops, candidate, park.day)).toBe(station.id);
+  for (const kind of ['food', 'other'] as const) {
+    const morning = { ...park, id: 'morning', city: 'Kyoto', position: null };
+    expect(suggestRouteAnchor(cities, [morning, ...route], { ...candidate, kind }, park.day)).toBe(
+      station.id,
+    );
+  }
+  expect(
+    suggestRouteAnchor(cities, route, { ...candidate, city: 'Nara' }, park.day),
+  ).toBeUndefined();
+  expect(
+    suggestRouteAnchor(cities, [station, { ...park, city: 'Kyoto' }], candidate, park.day),
+  ).toBeUndefined();
+  expect(
+    suggestRouteAnchor(
+      cities.map(({ name, index }) => ({ name, index })),
+      route,
+      candidate,
+      park.day,
+    ),
+  ).toBeUndefined();
+});
+
+test('leaves new hotels, transport, unscoped activities and non-transfer days at the end', () => {
+  const route = [park];
+  for (const kind of ['stay', 'transport'] as const) {
+    expect(suggestRouteAnchor(cities, route, { kind, city: 'Kyoto' }, park.day)).toBeUndefined();
+  }
+  const candidate = { kind: 'sight' as const, city: 'Kyoto' };
+  expect(suggestRouteAnchor(cities, route, { kind: 'sight' }, park.day)).toBeUndefined();
+  expect(
+    suggestRouteAnchor(cities, route, { ...candidate, city: 'Unlisted town' }, park.day),
+  ).toBeUndefined();
+  expect(suggestRouteAnchor([], route, candidate, park.day)).toBeUndefined();
+  expect(suggestRouteAnchor([cities[0]], route, candidate, park.day)).toBeUndefined();
+  const earlier_stay = {
+    ...park,
+    kind: 'stay' as const,
+    day: '2030-05-20',
+    checkout_date: '2030-05-23',
+  };
+  expect(suggestRouteAnchor(cities, [earlier_stay], candidate, park.day)).toBeUndefined();
+});
+
+test('unknown stops block automatic placement only when their city could move the boundary', () => {
+  const candidate = { kind: 'food' as const, city: 'Kyoto' };
+  const breakfast = { ...park, id: 'breakfast', city: 'Kyoto', position: null };
+  const unknown = { ...park, id: 'transfer', kind: 'transport' as const, position: null };
+  expect(
+    suggestRouteAnchor(cities, [breakfast, unknown, park], candidate, park.day),
+  ).toBeUndefined();
+  expect(suggestRouteAnchor(cities, [unknown, park], candidate, park.day)).toBeUndefined();
+  expect(
+    suggestRouteAnchor(
+      cities,
+      [unknown, breakfast, park, { ...unknown, id: 'later' }],
+      candidate,
+      park.day,
+    ),
+  ).toBe(park.id);
+});
+
+test('a return visit cannot be inferred even when the stop ID identifies the city', () => {
+  const loop = [...cities, { ...cities[0], index: 2 }];
+  const breakfast = { ...park, city: 'Kyoto', city_id: kyoto.id };
+  expect(plannedStopCityIndex(breakfast, loop, park.day)).toBeUndefined();
+  for (const selected of [0, 2]) {
+    expect(searchPlannedStops([breakfast], 'park', 'sight', loop, selected, park.day)).toEqual([
+      breakfast,
+    ]);
+  }
+  const candidate = { kind: 'sight' as const, city: 'Nara' };
+  expect(suggestRouteAnchor(loop, [park, breakfast], candidate, park.day)).toBeUndefined();
+  const osaka = { ...park, id: 'castle', city: 'Osaka', position: null };
+  const osaka_visit = { index: 3, name: 'Osaka' };
+  expect(suggestRouteAnchor([...cities, osaka_visit], [osaka], candidate, park.day)).toBe(osaka.id);
+  expect(suggestRouteAnchor([...loop, osaka_visit], [osaka], candidate, park.day)).toBeUndefined();
+  expect(
+    suggestRouteAnchor(
+      [...cities, { index: 2, name: 'Kyōto' }],
+      [park],
+      { ...candidate, city: 'Kyoto', city_id: kyoto.id },
+      park.day,
+    ),
+  ).toBeUndefined();
+});
+
+test('distinct namesakes require an identifiable destination and honor a recorded city ID', () => {
+  const namesakes = [
+    { ...cities[0], index: 4, name: 'Central' },
+    { ...cities[1], index: 5, name: 'Central' },
+  ];
+  const candidate = { kind: 'sight' as const, city: 'Central' };
+  const stop = { ...park, city: 'Central', city_id: nara.id, position: null };
+  expect(plannedStopCityIndex(stop, namesakes, park.day)).toBe(5);
+  expect(suggestRouteAnchor(namesakes, [stop], candidate, park.day)).toBeUndefined();
+  expect(suggestRouteAnchor(namesakes, [stop], { ...candidate, city_id: kyoto.id }, park.day)).toBe(
+    stop.id,
+  );
+  expect(
+    suggestRouteAnchor(namesakes, [stop], { ...candidate, city_id: 'geonames:1' }, park.day),
+  ).toBeUndefined();
+  expect(plannedStopCityIndex({ ...park, city: 'Nara', city_id: kyoto.id }, cities, park.day)).toBe(
+    0,
+  );
+});
+
+test('city labels distinguish namesakes and repeat visits by their full trip position', () => {
+  const visits = [
+    {
+      index: 3,
+      name: 'York',
+      location: {
+        id: 'geonames:2633352',
+        country_code: 'GB',
+        latitude: 53.95763,
+        longitude: -1.08271,
+      },
+    },
+    {
+      index: 4,
+      name: 'York',
+      location: {
+        id: 'geonames:4562407',
+        country_code: 'US',
+        latitude: 39.9626,
+        longitude: -76.72774,
+      },
+    },
+    { index: 5, name: 'York' },
+    { index: 6, name: 'London' },
+  ];
+  expect(searchCityLabel(visits, 3)).toBe('York · GB · City 4');
+  expect(searchCityLabel(visits, 4)).toBe('York · US · City 5');
+  expect(searchCityLabel(visits, 5)).toBe('York · City 6');
+  expect(searchCityLabel(visits, 6)).toBe('London');
 });

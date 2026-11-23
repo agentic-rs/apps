@@ -85,6 +85,12 @@
 .result-map-card .stop-picker-saved {
   margin: 8px 0 0;
 }
+.result-map-confirmation {
+  display: block;
+  margin-top: 6px;
+  font-size: 0.85rem;
+  color: var(--apell-success);
+}
 .result-map-empty {
   padding: 8px 16px;
 }

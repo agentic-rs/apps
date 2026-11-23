@@ -1,8 +1,14 @@
 import { lazy, Suspense, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { citiesOnDay } from '../lib/city-days';
+import { citiesOnDay, cityIndicesOnDay } from '../lib/city-days';
 import { daysBetween, isCalendarDate, itineraryDayLabel, offsetDay } from '../lib/dates';
 import { createId } from '../lib/identity';
 import { placeTypeLabel } from '../lib/place-types';
+import {
+  plannedStopCityIndex,
+  searchCityLabel,
+  suggestRouteAnchor,
+} from '../lib/planned-stop-search';
+import { searchCities, useSearchCityLocations } from '../lib/use-search-cities';
 import { readCoordinates, text_limits } from '../lib/model';
 import type { StopLookup, StopSearchCategory, StopSearchResult } from '../lib/stop-lookup';
 import {
@@ -201,7 +207,7 @@ function StopEditor({
   function updateDraft(fields: Partial<typeof draft>) {
     setDraft((previous) => ({ ...previous, ...fields }));
   }
-  const [saved_message, setSavedMessage] = useState('');
+  const [confirmation, setConfirmation] = useState<{ id: string; message: string }>();
   const [picking, setPicking] = useState<'initial' | 'change' | null>(stop ? null : 'initial');
   const [picker_day, setPickerDay] = useState<string | null>(stop ? null : day);
   const [picker_category, setPickerCategory] = useState<StopSearchCategory>(
@@ -234,15 +240,46 @@ function StopEditor({
     () => (picker_day ? continuingStays(trip_stops, picker_day) : []),
     [trip_stops, picker_day],
   );
+  const route_day = picking && picker_day ? picker_day : stop_day;
+  const route = picking && picker_day ? picker_stops : preview_stops;
+  const scheduled_cities = useMemo(
+    () => searchCities(trip, cityIndicesOnDay(trip, route_day)),
+    [trip, route_day],
+  );
+  const day_cities = useSearchCityLocations(
+    scheduled_cities,
+    scheduled_cities.length > 1 && route.some((item) => item.position || item.city_id),
+  );
+  const city_labels = useMemo(() => {
+    if (day_cities.cities.length < 2) return;
+    const labels = new Map<string, string>();
+    for (const item of route) {
+      const index = plannedStopCityIndex(item, day_cities.cities, route_day);
+      if (index !== undefined) labels.set(item.id, searchCityLabel(scheduled_cities, index));
+    }
+    return labels;
+  }, [day_cities.cities, route, route_day, scheduled_cities]);
   const other_stops = preview_stops.filter((item) => item.id !== draft_id);
   const existing_index = preview_stops.findIndex((item) => item.id === draft_id);
-  const default_index = existing_index < 0 ? other_stops.length : existing_index;
-  const chosen_index =
-    chosen_before === null
-      ? other_stops.length
-      : other_stops.findIndex((item) => item.id === chosen_before);
-  const insertion_index = chosen_index < 0 ? default_index : chosen_index;
-  const before_stop_id = insertion_index === default_index ? undefined : chosen_before;
+  const original_index = existing_index < 0 ? other_stops.length : existing_index;
+  const placement_pending =
+    day_cities.loading &&
+    !stop &&
+    !picking &&
+    chosen_before === undefined &&
+    Boolean(city || city_id) &&
+    kind !== 'stay' &&
+    kind !== 'transport';
+  const suggested_before =
+    !stop && !picking
+      ? suggestRouteAnchor(day_cities.cities, other_stops, draft, stop_day)
+      : undefined;
+  const anchor = chosen_before === undefined ? suggested_before : chosen_before;
+  const anchor_index = other_stops.findIndex((item) => item.id === anchor);
+  const fallback_index = anchor === null ? other_stops.length : original_index;
+  const insertion_index = anchor_index >= 0 ? anchor_index : fallback_index;
+  const before_stop_id =
+    insertion_index === original_index ? undefined : (other_stops[insertion_index]?.id ?? null);
   const last_pick = useRef<HTMLElement | null>(null);
   const change_place = useRef<HTMLButtonElement>(null);
   const picker_pane = useRef<HTMLDivElement>(null);
@@ -259,7 +296,7 @@ function StopEditor({
       ? daysBetween(stop_day, checkout)
       : 0;
   const dirty =
-    before_stop_id !== undefined ||
+    (chosen_before !== undefined && insertion_index !== original_index) ||
     city !== stop?.city ||
     city_id !== stop?.city_id ||
     title !== (stop?.title ?? '') ||
@@ -283,7 +320,15 @@ function StopEditor({
     .join(' · ');
   const day_label =
     trip.start_date && isCalendarDate(stop_day) ? itineraryDayLabel(stop_day, day, trip) : '';
-  const place_context = [day_label, city || citiesOnDay(trip, stop_day).join(' → ') || trip.title]
+  const visit_index = city_id
+    ? plannedStopCityIndex({ city, city_id, day: stop_day, position }, scheduled_cities, stop_day)
+    : undefined;
+  const planning_city =
+    visit_index === undefined ? city : searchCityLabel(scheduled_cities, visit_index);
+  const place_context = [
+    day_label,
+    planning_city || citiesOnDay(trip, stop_day).join(' → ') || trip.title,
+  ]
     .filter(Boolean)
     .join(' · ');
 
@@ -389,12 +434,17 @@ function StopEditor({
     }
   }
 
-  function resumePicking(saved: PlannedStop) {
+  function resumePicking(saved: PlannedStop, before?: string | null) {
     const label = trip.start_date ? itineraryDayLabel(saved.day, day, trip) : '';
     const destination = label.startsWith('Day ')
       ? label
       : date_format.format(new Date(saved.day + 'T00:00:00Z'));
-    setSavedMessage(`${saved.title} added to ${destination}.`);
+    const next = trip_stops.find((item) => item.id === before);
+    const placement = next ? ` before ${next.title}` : '';
+    setConfirmation({
+      id: saved.id,
+      message: `${saved.title} added to ${destination}${placement}.`,
+    });
     setDraft(stopDraft(saved.day));
     inspected.current = null;
     setPickerDay(saved.day);
@@ -417,8 +467,10 @@ function StopEditor({
     };
     setBusy(true);
     try {
-      await onSave(value);
-      resumePicking(value);
+      const cities = day_cities.loading ? await day_cities.resolve() : day_cities.cities;
+      const before = suggestRouteAnchor(cities, picker_stops, value, value.day);
+      await onSave(value, before);
+      resumePicking(value, before);
     } finally {
       setBusy(false);
     }
@@ -444,9 +496,12 @@ function StopEditor({
         position: readCoordinates(latitude, longitude),
         ...(directory_ref && { directory_ref }),
       };
-      await onSave(value, before_stop_id);
+      const before = placement_pending
+        ? suggestRouteAnchor(await day_cities.resolve(), other_stops, value, stop_day)
+        : before_stop_id;
+      await onSave(value, before);
       if (another) {
-        resumePicking(value);
+        resumePicking(value, before);
       } else {
         onFinish();
       }
@@ -475,7 +530,7 @@ function StopEditor({
         dismiss_label={
           !stop && !picking && !discard
             ? 'Cancel'
-            : picking && !dirty && saved_message
+            : picking && !dirty && confirmation
               ? 'Done'
               : undefined
         }
@@ -499,7 +554,8 @@ function StopEditor({
               lookup={lookup}
               onPick={choosePlace}
               onManual={enterManually}
-              saved_message={saved_message}
+              saved_message={confirmation?.message}
+              saved_stop_id={confirmation?.id}
               onQuickAdd={picking === 'initial' && !dirty && !source_changed ? quickAdd : undefined}
               onEditPlanned={
                 picking === 'initial' && !dirty && !source_changed ? onEditPlanned : undefined
@@ -555,6 +611,7 @@ function StopEditor({
                         className="stop-map-action"
                         aria-label="View on map"
                         aria-description={place_description || undefined}
+                        disabled={placement_pending}
                         onClick={() => setShowMap(true)}
                       >
                         <Icon name="map" size={19} />
@@ -626,12 +683,9 @@ function StopEditor({
                       index={insertion_index}
                       title={title.trim() || (kind === 'stay' ? 'New hotel stay' : 'New stop')}
                       context={place_context}
-                      onChange={(id) =>
-                        updateDraft({
-                          before_stop_id:
-                            id === (other_stops[default_index]?.id ?? null) ? undefined : id,
-                        })
-                      }
+                      city_labels={city_labels}
+                      pending={placement_pending}
+                      onChange={(id) => updateDraft({ before_stop_id: id })}
                     />
                   </div>
                   <label className="stop-notes">
