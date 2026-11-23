@@ -559,6 +559,7 @@ export function App() {
           trip_stops={stops}
           trip={trip}
           day={day}
+          first={first}
           stop={editor.stop}
           initial_category={editor.initial_category}
           onCancel={() => setEditor(null)}

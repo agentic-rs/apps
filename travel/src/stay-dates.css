@@ -1,0 +1,185 @@
+.stay-date-nav {
+  min-width: 44px;
+  padding: 4px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--apell-primary);
+}
+.dialog-header > .stay-date-nav {
+  justify-self: start;
+}
+.dialog-trailing-action .stay-date-nav {
+  font-weight: 650;
+}
+.stay-date-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.stay-date-body {
+  width: min(100%, 640px);
+  margin: 0 auto;
+  padding: 16px clamp(12px, 4vw, 24px) max(20px, var(--safe-area-bottom));
+}
+.stay-date-endpoints {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.stay-date-endpoints button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+  padding: 11px 12px;
+  text-align: start;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--apell-line);
+  border-radius: 12px;
+  background: var(--apell-surface);
+}
+.stay-date-endpoints button[aria-pressed='true'] {
+  border-color: var(--apell-primary);
+  background: var(--apell-primary-soft);
+  color: var(--apell-primary);
+}
+.stay-date-endpoints strong {
+  font-size: 1.05rem;
+  line-height: 1.2;
+}
+.stay-date-endpoints span,
+.stay-date-endpoints small,
+.stay-date-days small {
+  color: var(--apell-muted);
+  font-size: 0.82rem;
+}
+.stay-date-summary,
+.stay-date-summary > span,
+.stay-date-calendar,
+.stay-date-page,
+.stay-date-page > div,
+.stay-date-days button {
+  display: flex;
+  align-items: center;
+}
+.stay-date-summary {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0 8px;
+  min-height: 44px;
+}
+.stay-date-summary > span {
+  gap: 6px;
+  font-size: 0.88rem;
+}
+.stay-date-summary button,
+.stay-date-page button {
+  min-width: 44px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--apell-primary);
+}
+.stay-date-summary button {
+  padding: 4px 0;
+  font-size: 0.85rem;
+}
+.stay-date-calendar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  position: relative;
+  gap: 7px;
+  min-height: 48px;
+  padding: 0 10px;
+  border: 1px solid var(--apell-line);
+  border-radius: 10px;
+  font-size: 0.9rem;
+}
+.stay-date-calendar input {
+  min-width: 0;
+  width: auto;
+  max-width: 100%;
+  min-height: 44px;
+  margin-inline-start: auto;
+  padding: 3px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--apell-primary);
+  font: inherit;
+}
+.stay-date-calendar-arrow {
+  display: none;
+  color: var(--apell-primary);
+}
+@media (pointer: coarse) {
+  .stay-date-calendar-arrow {
+    display: flex;
+  }
+  .stay-date-calendar input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+  }
+  .stay-date-calendar:has(input:focus-visible) {
+    outline: 2px solid var(--apell-focus);
+  }
+}
+.stay-date-page {
+  justify-content: space-between;
+  min-height: 44px;
+  margin-top: 8px;
+}
+.stay-date-page h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+.stay-date-page > div {
+  gap: 2px;
+}
+.stay-date-days {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.stay-date-days li + li {
+  border-top: 1px solid var(--apell-line);
+}
+.stay-date-days button {
+  width: 100%;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  text-align: start;
+}
+.stay-date-days button[aria-pressed='true'] {
+  background: var(--apell-primary-soft);
+  color: var(--apell-primary);
+}
+.stay-date-days button > span {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+  overflow-wrap: anywhere;
+}
+@media (min-width: 560px) and (max-height: 480px) {
+  .stay-date-body {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: 20px;
+    width: min(100%, 960px);
+    padding-block-start: 8px;
+  }
+  .stay-date-page {
+    margin-top: 0;
+  }
+}

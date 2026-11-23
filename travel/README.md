@@ -19,6 +19,10 @@ On a day with two or more planned stops, tap the reorder arrows beside **Map**, 
 
 When you finish adding places, the itinerary brings the last saved stop into view. If you edit a stay from an overnight or checkout day, returning to that day brings its hotel row into view.
 
+Tap **Stay dates** when adding or editing a hotel to see check-in and check-out together. Pick a day by its date and scheduled cities, or use the calendar for a date farther away. Moving check-in carries the number of nights forward. You can also leave check-out open. **Done** returns the selected dates to the hotel review, where you can save the stay. [行程助手’s hotel date screen](https://pic.downxia.com/upload/2020/0429/20200429122045718.jpg)
+
+If you change the day while reviewing a new stop or hotel, **Back** opens results for the revised day. The selected city carries over when it is on that day’s route.
+
 In a sight or hotel search, tap **Map** beside the results heading. Tap a pin or use the arrows to compare places, including those that share coordinates. Each new place shows its straight-line distance to the nearest numbered stop or overnight hotel with coordinates, including the checkout hotel. On a transfer day, tap either city to see its results. **Day route** fits the results and the numbered itinerary stops together. **Review place** opens the stop or hotel review. Back returns to the selected place on the map, then to the list.
 
 From a stop’s review, **View on map** previews the day in the proposed order. The highlighted pin carries the stop’s proposed number. Dashed lines connect consecutive stops with coordinates. The nearest stop or hotel and its straight-line distance help you compare locations before saving. Use **Back** to return to the same route position, dates and notes. The map action is available for directory results and manually entered coordinates.

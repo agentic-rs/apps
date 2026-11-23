@@ -1168,7 +1168,27 @@ try {
   const hotel_editor = page.getByRole('dialog');
   await hotel_editor.getByRole('button', { name: 'Enter manually' }).click();
   await hotel_editor.getByLabel('Stop name').fill('Station hotel');
-  await hotel_editor.getByLabel('Check-out date').fill('2031-03-13');
+  const change_dates = hotel_editor.getByRole('button', { name: 'Change stay dates', exact: true });
+  const stay_dates = page.getByRole('dialog', { name: 'Stay dates', exact: true });
+  const departure = stay_dates.getByRole('button', { name: 'Check-out', exact: true });
+  const calendar = stay_dates.getByLabel('Choose calendar date', { exact: true });
+  const apply_dates = stay_dates.getByRole('button', { name: 'Done', exact: true });
+  const cancel_dates = stay_dates.getByRole('button', { name: 'Cancel', exact: true });
+  await change_dates.click();
+  await calendar.fill('2031-03-10');
+  await stay_dates.getByRole('alert').waitFor();
+  assert.equal(await apply_dates.isDisabled(), true);
+  await stay_dates.getByRole('button', { name: 'Set check-out later', exact: true }).click();
+  await apply_dates.click();
+  assert.match(await change_dates.innerText(), /Check-out open/);
+  await change_dates.click();
+  assert.equal(await calendar.inputValue(), '');
+  assert.equal(
+    await stay_dates.getByRole('button', { name: 'Choose 2031-03-11', exact: true }).isDisabled(),
+    true,
+  );
+  await stay_dates.getByRole('button', { name: 'Choose 2031-03-13', exact: true }).click();
+  await apply_dates.click();
   await hotel_editor.getByText('Map coordinates', { exact: false }).click();
   await hotel_editor.getByLabel('Stop latitude').fill('48.88');
   await hotel_editor.getByLabel('Stop longitude').fill('2.35');
@@ -1194,8 +1214,12 @@ try {
   const pin_card = page.getByRole('region', { name: 'Stops at selected map pin' });
   await pin_card.getByRole('button', { name: /Station hall/ }).waitFor();
   await pin_card.getByRole('button', { name: 'Staying at Station hotel', exact: true }).click();
-  assert.equal(await hotel_editor.getByLabel('Check-in date').inputValue(), '2031-03-11');
-  assert.equal(await hotel_editor.getByLabel('Check-out date').inputValue(), '2031-03-13');
+  await change_dates.click();
+  assert.equal(await departure.getAttribute('aria-pressed'), 'true');
+  assert.equal(await calendar.inputValue(), '2031-03-13');
+  await stay_dates.getByRole('button', { name: 'Check-in', exact: true }).click();
+  assert.equal(await calendar.inputValue(), '2031-03-11');
+  await cancel_dates.click();
   await hotel_editor.getByRole('button', { name: 'Cancel', exact: true }).click();
   await waitClosed();
   assert.equal(await page.getByLabel('Choose itinerary date').inputValue(), '2031-03-12');

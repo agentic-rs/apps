@@ -1,6 +1,6 @@
-import { lazy, Suspense, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { citiesOnDay, cityIndicesOnDay } from '../lib/city-days';
-import { daysBetween, isCalendarDate, itineraryDayLabel, offsetDay } from '../lib/dates';
+import { daysBetween, isCalendarDate, itineraryDayLabel } from '../lib/dates';
 import { createId } from '../lib/identity';
 import { placeTypeLabel } from '../lib/place-types';
 import {
@@ -24,7 +24,8 @@ import { EditorForm } from './EditorForm';
 import { RoutePosition } from './RoutePosition';
 import { Icon } from './Icon';
 import { StopPlacePicker } from './StopPlacePicker';
-import { continuingStays } from '../lib/hotel-stays';
+import { checkoutAfter, continuingStays } from '../lib/hotel-stays';
+import { StayDates } from './StayDates';
 
 const PlaceMapPreview = lazy(() => import('./PlaceMapPreview'));
 
@@ -32,6 +33,7 @@ interface StopFormProps {
   trip: Trip;
   trip_stops: PlannedStop[];
   day: string;
+  first: string;
   initial_category?: StopSearchCategory;
   stop?: PlannedStop;
   native: boolean;
@@ -39,11 +41,6 @@ interface StopFormProps {
   onSave(stop: PlannedStop, before_stop_id?: string | null): Promise<void>;
   onCancel(): void;
   onDelete?(stop: PlannedStop): void;
-}
-
-function checkoutAfter(day: string, nights: number) {
-  if (!isCalendarDate(day) || day === '9999-12-31') return '';
-  return offsetDay(day, Math.min(nights, daysBetween(day, '9999-12-31')));
 }
 
 function stopDraft(day: string, stop?: PlannedStop) {
@@ -104,17 +101,13 @@ function ScheduleField({
   type,
   value,
   onChange,
-  min,
   required,
-  detail,
 }: {
   label: string;
   type: 'date' | 'time';
   value: string;
   onChange(value: string): void;
-  min?: string;
   required?: boolean;
-  detail?: string;
 }) {
   let formatted = type === 'date' ? 'Set date' : 'Set time';
   if (type === 'date' && isCalendarDate(value))
@@ -123,10 +116,7 @@ function ScheduleField({
     formatted = time_format.format(new Date('2000-01-01T' + value + 'Z'));
   return (
     <label className="stop-setting">
-      <span>
-        {label}
-        {detail && <small>{detail}</small>}
-      </span>
+      <span>{label}</span>
       <span className="stop-setting-control">
         <span className="stop-touch-value" aria-hidden="true">
           {formatted}
@@ -135,7 +125,6 @@ function ScheduleField({
           aria-label={label}
           type={type}
           value={value}
-          min={min}
           required={required}
           onChange={(event) => onChange(event.target.value)}
         />
@@ -172,6 +161,7 @@ function StopEditor({
   trip,
   trip_stops,
   day,
+  first,
   stop,
   initial_category,
   lookup,
@@ -220,6 +210,9 @@ function StopEditor({
   const [error, setError] = useState('');
   const [discard, setDiscard] = useState(false);
   const [show_map, setShowMap] = useState(false);
+  const [show_dates, setShowDates] = useState(false);
+  const date_button = useRef<HTMLButtonElement>(null);
+  const date_description = useId();
   const position = useMemo(() => {
     try {
       return readCoordinates(latitude, longitude);
@@ -291,10 +284,18 @@ function StopEditor({
       change_place.current?.focus({ preventScroll: true });
     }
   }, [picking, picker_day, directory_ref, stop]);
-  const nights =
-    kind === 'stay' && isCalendarDate(stop_day) && isCalendarDate(checkout)
-      ? daysBetween(stop_day, checkout)
-      : 0;
+  function staySummary() {
+    if (!isCalendarDate(stop_day)) return 'Choose check-in';
+    const start = new Date(stop_day + 'T00:00:00Z');
+    const arrival = itineraryDayLabel(stop_day, first, trip);
+    if (!isCalendarDate(checkout) || checkout <= stop_day)
+      return `${date_format.format(start)} · ${arrival} · Check-out open`;
+    const range = date_format.formatRange(start, new Date(checkout + 'T00:00:00Z'));
+    const departure = itineraryDayLabel(checkout, first, trip);
+    const days = arrival === departure ? arrival : `${arrival} → ${departure}`;
+    const nights = daysBetween(stop_day, checkout);
+    return `${range} · ${days} · ${nights} ${nights === 1 ? 'night' : 'nights'}`;
+  }
   const dirty =
     (chosen_before !== undefined && insertion_index !== original_index) ||
     city !== stop?.city ||
@@ -343,26 +344,26 @@ function StopEditor({
     return fields.every((field) => draft[field] === choice[field]);
   }
 
-  function backToResults() {
-    // Inspecting a directory result should leave the other places available to add.
-    // Keep a draft that has been edited or needs a save retry.
-    if (!error && onlyInspectedPlace()) {
-      setDraft(stopDraft(day));
+  function openResults(mode: 'initial' | 'change') {
+    const search_day = isCalendarDate(stop_day) ? stop_day : day;
+    if (picker_day !== search_day) {
+      setPickerCategory(
+        directory_ref?.provider === 'ourairports' ? 'airport' : search_categories[kind],
+      );
+      setPickerDay(search_day);
+      setConfirmation(undefined);
+    }
+    // Inspecting a result leaves the picker ready for a quick add. Keep edited drafts for review.
+    if (mode === 'initial' && !error && onlyInspectedPlace()) {
+      setDraft(stopDraft(search_day));
       inspected.current = null;
     }
-    setPicking('initial');
+    setPicking(mode);
   }
 
-  function changeDay(value: string) {
-    if (value === stop_day) return;
-    updateDraft({
-      day: value,
-      before_stop_id: undefined,
-      checkout:
-        kind === 'stay' && isCalendarDate(value) && isCalendarDate(checkout)
-          ? checkoutAfter(value, Math.max(1, nights))
-          : checkout,
-    });
+  function closeDates() {
+    setShowDates(false);
+    requestAnimationFrame(() => date_button.current?.focus({ preventScroll: true }));
   }
 
   function choosePlace(
@@ -518,10 +519,12 @@ function StopEditor({
         title={
           picking
             ? picker_titles[picker_category]
-            : stop
-              ? 'Edit stop'
-              : !picking && kind === 'stay'
-                ? 'Hotel stay'
+            : kind === 'stay'
+              ? stop
+                ? 'Edit hotel stay'
+                : 'Hotel stay'
+              : stop
+                ? 'Edit stop'
                 : 'Add stop'
         }
         full_screen
@@ -535,7 +538,7 @@ function StopEditor({
               : undefined
         }
         onDismiss={dismiss}
-        onBack={!stop && !picking && !discard ? backToResults : dismiss}
+        onBack={!stop && !picking && !discard ? () => openResults('initial') : dismiss}
       >
         {picker_day !== null && (
           <div ref={picker_pane} tabIndex={-1} className="stop-picker-pane" hidden={!picking}>
@@ -577,18 +580,7 @@ function StopEditor({
                       ref={change_place}
                       className="stop-form-lookup"
                       type="button"
-                      onClick={() => {
-                        const search_day = isCalendarDate(stop_day) ? stop_day : day;
-                        if (picker_day !== search_day) {
-                          setPickerCategory(
-                            directory_ref?.provider === 'ourairports'
-                              ? 'airport'
-                              : search_categories[kind],
-                          );
-                        }
-                        setPickerDay(search_day);
-                        setPicking('change');
-                      }}
+                      onClick={() => openResults('change')}
                     >
                       <Icon name="search" size={16} />{' '}
                       {directory_ref ? 'Change place' : 'Find a place'}
@@ -653,23 +645,30 @@ function StopEditor({
                     role="group"
                     aria-label={kind === 'stay' ? 'Stay dates and time' : 'Stop date and time'}
                   >
-                    <ScheduleField
-                      label={kind === 'stay' ? 'Check-in date' : 'Day'}
-                      type="date"
-                      required
-                      value={stop_day}
-                      onChange={changeDay}
-                    />
-                    {kind === 'stay' && (
+                    {kind === 'stay' ? (
+                      <button
+                        ref={date_button}
+                        className="stop-route-position stop-stay-dates"
+                        type="button"
+                        aria-label="Change stay dates"
+                        aria-describedby={date_description}
+                        aria-haspopup="dialog"
+                        aria-expanded={show_dates}
+                        onClick={() => setShowDates(true)}
+                      >
+                        <span>Stay dates</span>
+                        <small id={date_description}>{staySummary()}</small>
+                        <Icon name="next" size={15} />
+                      </button>
+                    ) : (
                       <ScheduleField
-                        label="Check-out date"
+                        label="Day"
                         type="date"
-                        min={checkoutAfter(stop_day, 1) || undefined}
-                        value={checkout}
-                        onChange={(checkout) => updateDraft({ checkout })}
-                        detail={
-                          nights > 0 ? `${nights} ${nights === 1 ? 'night' : 'nights'}` : undefined
-                        }
+                        required
+                        value={stop_day}
+                        onChange={(day) => {
+                          if (day !== stop_day) updateDraft({ day, before_stop_id: undefined });
+                        }}
                       />
                     )}
                     <ScheduleField
@@ -774,6 +773,19 @@ function StopEditor({
           </EditorForm>
         )}
       </Dialog>
+      {show_dates && (
+        <StayDates
+          trip={trip}
+          first={first}
+          check_in={stop_day}
+          check_out={checkout}
+          initial_field={isCalendarDate(stop_day) ? 'check_out' : 'check_in'}
+          onApply={(day, checkout) => {
+            updateDraft({ day, checkout, ...(day !== stop_day && { before_stop_id: undefined }) });
+          }}
+          onClose={closeDates}
+        />
+      )}
       {show_map && position && (
         <Dialog
           title="Place map"

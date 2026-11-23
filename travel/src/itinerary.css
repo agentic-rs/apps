@@ -420,6 +420,12 @@
   grid-row: 1 / 3;
   color: var(--apell-muted);
 }
+.stop-stay-dates {
+  border-top: 0;
+}
+.stop-stay-dates + .stop-setting {
+  border-top: 1px solid var(--apell-line);
+}
 .stop-position-content {
   align-self: center;
   width: min(100%, 640px);
