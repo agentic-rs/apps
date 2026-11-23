@@ -25,12 +25,6 @@ export function RoutePosition(props: PositionProps) {
   const [open, setOpen] = useState(false);
   const description = useId();
   if (!stops.length) return null;
-  const { anchor, label } = positionAt(stops, index);
-  const city = city_labels?.get(anchor.id);
-  // A venue can be named for a different city. Suppress only an explicit locality.
-  const show_city =
-    city &&
-    !anchor.title.split(/[,，·()（）]/u).some((part) => directoryKey(part) === directoryKey(city));
   return (
     <>
       <button
@@ -44,15 +38,28 @@ export function RoutePosition(props: PositionProps) {
       >
         <span>Route position</span>
         <small id={description}>
-          {pending
-            ? 'Finding route position…'
-            : `${index + 1} of ${stops.length + 1} · ${label}${show_city ? ` · ${city}` : ''}`}
+          {pending ? 'Finding route position…' : routePositionSummary(stops, index, city_labels)}
         </small>
         <Icon name="next" size={15} />
       </button>
       {open && <RoutePositionSheet {...props} onClose={() => setOpen(false)} />}
     </>
   );
+}
+
+export function routePositionSummary(
+  stops: PlannedStop[],
+  index: number,
+  city_labels?: ReadonlyMap<string, string>,
+) {
+  if (!stops.length) return 'First stop of the day';
+  const { anchor, label } = positionAt(stops, index);
+  const city = city_labels?.get(anchor.id);
+  // A venue can be named for a different city. Suppress only an explicit locality.
+  const show_city =
+    city &&
+    !anchor.title.split(/[,，·()（）]/u).some((part) => directoryKey(part) === directoryKey(city));
+  return `${index + 1} of ${stops.length + 1} · ${label}${show_city ? ` · ${city}` : ''}`;
 }
 
 export function RoutePositionSheet({

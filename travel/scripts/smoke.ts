@@ -368,15 +368,19 @@ try {
     .getByRole('button', { name: 'Add Tokyo Lantern Museum to day', exact: true })
     .waitFor();
   assert(await place_input.evaluate((input) => document.activeElement === input));
-  await place_picker.getByRole('button', { name: /^Tokyo Lantern Museum/ }).click();
+  const lantern = place_picker.getByRole('button', { name: /^Tokyo Lantern Museum/ });
   const visitor = page.getByRole('dialog', { name: 'Visitor details', exact: true });
-  const visitor_button = place_picker.getByRole('button', { name: 'Visitor details', exact: true });
+  const edit_itinerary = visitor.getByRole('button', {
+    name: 'Edit itinerary details',
+    exact: true,
+  });
   assert.equal(visitor_reads, 0);
   visitor_offline = true;
   await context.setOffline(true);
-  await visitor_button.click();
+  await lantern.click();
   const retry_visitor = visitor.getByRole('button', { name: 'Try again', exact: true });
   await retry_visitor.waitFor();
+  assert(await edit_itinerary.isEnabled());
   assert(await visitor.getByRole('button', { name: /^Add to (Day \d+|itinerary)$/ }).isEnabled());
   assert.equal(visitor_reads, 0, 'An uncached offline listing waits for the traveler to retry.');
   visitor_offline = false;
@@ -387,11 +391,28 @@ try {
   assert.equal(visitor_reads, 1);
   assert.equal(await website.getAttribute('href'), visitor_url);
   assert.equal(await visitor.getByText('Admission', { exact: true }).count(), 0);
+  const visitor_map = visitor.getByRole('button', { name: 'View on day map', exact: true });
+  await visitor_map.click();
+  const place_map = page.getByRole('dialog', { name: 'Place map', exact: true });
+  await place_map
+    .getByRole('button', { name: 'Selected place, Tokyo Lantern Museum', exact: true })
+    .waitFor();
+  await place_map.getByText('No other stops on this day.', { exact: true }).waitFor();
+  await place_map.getByRole('button', { name: 'Back to visitor details', exact: true }).click();
+  await visitor_map.and(visitor.locator(':focus')).waitFor();
+  assert.equal(visitor_reads, 1);
   await visitor.getByText('Source information', { exact: true }).click();
   await visitor.getByRole('link', { name: /overpass\.private\.coffee|geoapify\.com/ }).waitFor();
-  await visitor.getByRole('button', { name: 'Back to stop', exact: true }).click();
-  await visitor_button.and(page.locator(':focus')).waitFor();
-  await place_picker.getByRole('button', { name: 'Back to place results', exact: true }).click();
+  await visitor.getByRole('button', { name: 'Back to place results', exact: true }).click();
+  await lantern.and(page.locator(':focus')).waitFor();
+  await lantern.click();
+  await website.waitFor();
+  assert.equal(visitor_reads, 1, 'Inspecting the same result reuses its facts.');
+  await edit_itinerary.click();
+  const stop_editor = page.getByRole('dialog', { name: 'Add stop', exact: true });
+  assert.equal(await stop_editor.getByLabel('Stop name').inputValue(), 'Tokyo Lantern Museum');
+  await stop_editor.getByRole('button', { name: 'Back to visitor details', exact: true }).click();
+  await visitor.getByRole('button', { name: 'Back to place results', exact: true }).click();
   assert.equal(await place_input.inputValue(), 'Lantern');
   await place_picker.getByRole('button', { name: 'Airports', exact: true }).click();
   const airport_input = place_picker.getByRole('searchbox', { name: 'Search airports' });

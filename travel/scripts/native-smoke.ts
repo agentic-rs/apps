@@ -1166,6 +1166,24 @@ try {
   const visitor_action = dialog.getByRole('button', { name: 'Visitor details', exact: true });
   const visitor_sheet = frame.getByRole('dialog', { name: 'Visitor details', exact: true });
   const visitor_back = visitor_sheet.getByRole('button', { name: 'Back to stop', exact: true });
+  const edit_itinerary = visitor_sheet.getByRole('button', {
+    name: 'Edit itinerary details',
+    exact: true,
+  });
+  const back_to_results = visitor_sheet.getByRole('button', {
+    name: 'Back to place results',
+    exact: true,
+  });
+  async function backThroughVisitorDetails() {
+    await dialog.getByRole('button', { name: 'Back to visitor details', exact: true }).waitFor();
+    assert.equal(await shellBack(), true);
+    await back_to_results.waitFor();
+    assert.equal(await shellBack(), true);
+  }
+  const inspect_stay_dates = visitor_sheet.getByRole('button', {
+    name: 'Choose stay dates',
+    exact: true,
+  });
   const change_dates = dialog.getByRole('button', { name: 'Change stay dates', exact: true });
   const stay_dates = frame.getByRole('dialog', { name: 'Stay dates', exact: true });
   const arrival = stay_dates.getByRole('button', { name: 'Check-in', exact: true });
@@ -1247,12 +1265,29 @@ try {
   await sights.click();
   await nara_museum.waitFor();
   assert.equal(await nara.getAttribute('aria-pressed'), 'true');
+  assert.equal(
+    visitor_requests.length,
+    0,
+    'Browsing results must not request facts for unselected places.',
+  );
   await nara_museum.click();
+  await visitor_sheet.getByRole('heading', { name: 'Nara test museum', exact: true }).waitFor();
+  await visitor_sheet
+    .getByText('No visitor information is listed for this place.', { exact: true })
+    .waitFor();
+  await edit_itinerary.click();
   assert.equal(await dialog.getByLabel('Category').inputValue(), 'sight');
   await dialog.getByText('Day 2 · Nara', { exact: true }).waitFor();
-  assert.equal(await shellBack(), true);
+  await backThroughVisitorDetails();
+  await nara_museum.and(dialog.locator(':focus')).waitFor();
+  const reads_before_reopen = visitor_requests.length;
   await nara_museum.click();
-  await save_stop.click();
+  await visitor_sheet
+    .getByText('No visitor information is listed for this place.', { exact: true })
+    .waitFor();
+  assert.equal(visitor_requests.length, reads_before_reopen);
+  await visitor_sheet.getByRole('button', { name: 'Add to Day 2', exact: true }).click();
+  await visitor_sheet.waitFor({ state: 'hidden' });
   await dialog.waitFor({ state: 'hidden' });
   await assertReturnedToStop('Edit Nara test museum');
 
@@ -1289,8 +1324,13 @@ try {
   assert.equal(await place_search.inputValue(), 'Nara test inn');
   assert.deepEqual(place_requests.at(-1), { city: 'Nara', query: 'Nara test inn' });
   await nara_inn.click();
-  await dialog.getByText('Day 2 · Nara', { exact: true }).waitFor();
+  await visitor_sheet.getByRole('heading', { name: 'Nara test inn', exact: true }).waitFor();
+  await inspect_stay_dates.click();
+  await stay_dates.getByText('Nara test inn', { exact: true }).waitFor();
   assert.equal(await shellBack(), true);
+  await inspect_stay_dates.and(visitor_sheet.locator(':focus')).waitFor();
+  await back_to_results.click();
+  await nara_inn.and(dialog.locator(':focus')).waitFor();
   await kyoto.click();
   await search_in_nara.waitFor();
   assert.equal(await place_search.inputValue(), 'Nara test inn');
@@ -1419,6 +1459,7 @@ try {
   await dialog.getByRole('heading', { name: 'Hotels near Nara' }).waitFor();
   assert.equal(await place_search.inputValue(), 'test inn');
   await nara_inn.click();
+  await edit_itinerary.click();
   assert.equal(await dialog.getByLabel('Category').inputValue(), 'stay');
   await assertStayDates(day_two, '2030-05-22');
   await dialog.getByRole('button', { name: 'Change place', exact: true }).click();
@@ -1454,6 +1495,44 @@ try {
     name: 'Map of selected place and day stops',
   });
   const candidate_pin = preview_map.locator('[data-candidate-pin]');
+  const visitor_map_action = visitor_sheet.getByRole('button', {
+    name: 'View on day map',
+    exact: true,
+  });
+  async function checkVisitorMap(
+    title: string,
+    expected_description: RegExp,
+    back: 'button' | 'native',
+  ) {
+    const description = await visitor_map_action.evaluate((button) =>
+      (button.getAttribute('aria-describedby') ?? '')
+        .split(/\s+/)
+        .map((id) => document.getElementById(id)?.textContent)
+        .join(' '),
+    );
+    assert.match(description, expected_description);
+    const reads = [place_requests.length, visitor_requests.length];
+    const writes = journal_writes;
+    await visitor_map_action.click();
+    await preview_map
+      .getByRole('button', { name: 'Selected place, ' + title, exact: true })
+      .waitFor();
+    await preview_map
+      .getByRole('button', { name: /^Stop \d+, / })
+      .first()
+      .waitFor();
+    const back_to_visitor = map_preview.getByRole('button', {
+      name: 'Back to visitor details',
+      exact: true,
+    });
+    await back_to_visitor.waitFor();
+    if (back === 'native') assert.equal(await shellBack(), true);
+    else await back_to_visitor.click();
+    await visitor_map_action.and(visitor_sheet.locator(':focus')).waitFor();
+    await visitor_sheet.getByRole('heading', { name: title, exact: true }).waitFor();
+    assert.deepEqual([place_requests.length, visitor_requests.length], reads);
+    assert.equal(journal_writes, writes);
+  }
   const review_after_map = async () => {
     await view_on_map.waitFor();
     assert(
@@ -1606,15 +1685,20 @@ try {
   await frame.getByRole('button', { name: 'Day 2, 21 May' }).click();
   await frame.getByRole('button', { name: 'Edit Nara test museum' }).waitFor();
   const requests_before_edit = place_requests.length;
+  const visitor_reads_before_edit = visitor_requests.length;
   await frame.getByRole('button', { name: 'Edit Nara test inn' }).click();
   await assertStayDates(day_two, '2030-05-23');
   assert.equal(place_requests.length, requests_before_edit, 'Opening a saved stop stays local.');
-  assert.deepEqual(visitor_requests, [], 'Opening reviews and dates must not fetch venue details.');
+  assert.equal(
+    visitor_requests.length,
+    visitor_reads_before_edit,
+    'Opening a saved stop and its dates must stay local.',
+  );
   const writes_before_details = journal_writes;
   fail_visitor_details = true;
   await visitor_action.click();
   await visitor_sheet.getByRole('button', { name: 'Try again', exact: true }).waitFor();
-  assert.deepEqual(visitor_requests, [inn.directory_ref.id]);
+  assert.deepEqual(visitor_requests.slice(visitor_reads_before_edit), [inn.directory_ref.id]);
   fail_visitor_details = false;
   await visitor_sheet.getByRole('button', { name: 'Try again', exact: true }).click();
   await visitor_sheet.getByRole('heading', { name: 'Nara test inn', exact: true }).waitFor();
@@ -1624,7 +1708,10 @@ try {
     await visitor_sheet.getByRole('button', { name: /^(Add|Save|Choose stay dates)/ }).count(),
     0,
   );
-  assert.deepEqual(visitor_requests, [inn.directory_ref.id, inn.directory_ref.id]);
+  assert.deepEqual(visitor_requests.slice(visitor_reads_before_edit), [
+    inn.directory_ref.id,
+    inn.directory_ref.id,
+  ]);
   assert.equal(
     await visitor_sheet.getByRole('link').count(),
     0,
@@ -1638,7 +1725,7 @@ try {
   await visitor_action.click();
   await visitor_sheet.getByText(/inn\.example/).waitFor();
   assert.equal(
-    visitor_requests.length,
+    visitor_requests.length - visitor_reads_before_edit,
     2,
     'Reopening the same listing offline uses its cached facts.',
   );
@@ -1716,6 +1803,7 @@ try {
   const cancel_review = dialog.getByRole('button', { name: 'Cancel', exact: true });
   const writes_before_inspecting = journal_writes;
   await another_visit.click();
+  await edit_itinerary.click();
   await dialog.getByRole('button', { name: 'Add to Day 2', exact: true }).waitFor();
   await cancel_review.click();
   await dialog.waitFor({ state: 'hidden' });
@@ -1728,6 +1816,7 @@ try {
   await nara.click();
   await nara_museum.click();
   await another_visit.click();
+  await edit_itinerary.click();
   const visit_notes = dialog.getByLabel('Notes');
   await visit_notes.fill('Return for the evening opening.');
   await cancel_review.click();
@@ -1792,6 +1881,7 @@ try {
     .press('Enter');
   await checkout_map.getByText(/straight line to hotel · Nara test inn/).waitFor();
   await checkout_map.getByRole('button', { name: 'Review place' }).click();
+  await edit_itinerary.click();
   await view_on_map.click();
   const checkout_preview_pin = preview_map.getByRole('button', {
     name: checkout_label,
@@ -1802,7 +1892,7 @@ try {
   await preview_map.getByText(checkout_label, { exact: true }).waitFor();
   await map_preview.getByText(/Closest hotel/).waitFor();
   assert.equal(await candidate_pin.getAttribute('aria-description'), 'Stop 1 of 1');
-  for (const step of ['preview', 'review', 'result map', 'place list']) {
+  for (const step of ['preview', 'review', 'visitor details', 'result map', 'place list']) {
     assert.equal(await shellBack(), true, `Back from checkout-day ${step}.`);
   }
   await dialog.waitFor({ state: 'hidden' });
@@ -1895,10 +1985,11 @@ try {
   assert.equal(await pin_for(sight_names[1]).getAttribute('aria-pressed'), 'true');
   assert.equal(await sight_map.getByRole('button', { name: 'Next place' }).isDisabled(), true);
   await sight_map.getByText(sight_names[1], { exact: true }).waitFor();
-  await sight_map.getByRole('button', { name: 'Review place' }).click();
-  assert.equal(await dialog.getByLabel('Stop name').inputValue(), sight_names[1]);
-  await dialog.getByText('Day 2 · Kyoto', { exact: true }).waitFor();
+  const review_map_place = sight_map.getByRole('button', { name: 'Review place', exact: true });
+  await review_map_place.click();
+  await visitor_sheet.getByRole('heading', { name: sight_names[1], exact: true }).waitFor();
   assert.equal(await shellBack(), true);
+  await review_map_place.and(sight_map.locator(':focus')).waitFor();
   await sight_map.getByText(sight_names[1], { exact: true }).waitFor();
   assert.equal(await pin_for(sight_names[1]).getAttribute('aria-pressed'), 'true');
   const reviewed_quick_add = `Add ${sight_names[1]} to day`;
@@ -1930,6 +2021,17 @@ try {
   await page
     .locator('#applet')
     .screenshot({ path: resolve(qa_directory, 'native-sight-results-map.png') });
+  const review_nara_map = nara_map.getByRole('button', { name: 'Review place', exact: true });
+  await review_nara_map.click();
+  await visitor_sheet.getByText(/museum\.example/).waitFor();
+  await checkVisitorMap(
+    museum_name,
+    /7 Gallery Lane(?:, Nara)? 565 m straight line to Nara Park/,
+    'native',
+  );
+  await back_to_results.click();
+  await review_nara_map.and(nara_map.locator(':focus')).waitFor();
+  assert.equal(await national_pin.getAttribute('aria-pressed'), 'true');
   assert.equal(await shellBack(), true);
   await nara_museum.waitFor();
   assert.equal(await nara.getAttribute('aria-pressed'), 'true');
@@ -1937,6 +2039,10 @@ try {
   await place_search.fill(museum_name);
   await search.click();
   await dialog.getByRole('button', { name: /^Nara National Museum/ }).click();
+  await visitor_sheet.getByText(/museum\.example/).waitFor();
+  assert(visitor_requests.includes(inn.directory_ref.provider === 'osm' ? 'N110' : 'fixture-110'));
+  const reads_after_museum_details = visitor_requests.length;
+  await edit_itinerary.click();
   await route_position.click();
   const last_slot = position_sheet.getByRole('button', { name: /^Position .*?, After / });
   assert.equal(await last_slot.getAttribute('aria-pressed'), 'true');
@@ -1954,6 +2060,14 @@ try {
   await dialog.getByLabel('Stop name').fill(custom_museum_title);
   await dialog.getByLabel('Notes').fill(museum_notes);
   await dialog.getByLabel('Time', { exact: true }).fill('14:20');
+  await dialog.getByRole('button', { name: 'Back to visitor details', exact: true }).click();
+  await visitor_sheet.getByRole('heading', { name: museum_name, exact: true }).waitFor();
+  const inspected_position = await edit_itinerary.evaluate(
+    (button) => document.getElementById(button.getAttribute('aria-describedby') ?? '')?.textContent,
+  );
+  assert.match(inspected_position ?? '', /Before Nara Park/i);
+  await edit_itinerary.click();
+  assert.equal(await dialog.getByLabel('Stop name').inputValue(), custom_museum_title);
   await visitor_action.click();
   await visitor_sheet.getByRole('heading', { name: museum_name, exact: true }).waitFor();
   await visitor_sheet.getByText(/museum\.example/).waitFor();
@@ -1974,8 +2088,9 @@ try {
     })
     .waitFor();
   assert.equal(
-    visitor_requests.at(-1),
-    inn.directory_ref.provider === 'osm' ? 'N110' : 'fixture-110',
+    visitor_requests.length,
+    reads_after_museum_details,
+    'Editing and reopening the same venue reuses its facts.',
   );
   assert.equal(await shellBack(), true);
   await visitor_action.and(dialog.locator(':focus')).waitFor();
@@ -2109,6 +2224,7 @@ try {
   await search.click();
   const history_museum = dialog.getByRole('button', { name: /^Nara history museum/ });
   await history_museum.click();
+  await edit_itinerary.click();
   await dialog.getByLabel('Notes').fill('Collect the audio guide.');
   await dialog.getByLabel('Time', { exact: true }).fill('11:30');
   await route_position.click();
@@ -2134,6 +2250,7 @@ try {
   assert.equal(history_stop?.notes, 'Collect the audio guide.');
   assert.equal(history_stop.time, '11:30');
   await dialog.getByRole('button', { name: /^Nara National Museum/ }).click();
+  await edit_itinerary.click();
   assert.equal(await dialog.getByLabel('Notes').inputValue(), '');
   assert.equal(await dialog.getByLabel('Time', { exact: true }).inputValue(), '');
   await route_position.click();
@@ -2176,6 +2293,7 @@ try {
   await kyoto_museum.waitFor();
   await quick_museum.waitFor();
   const writes_before_quick_add = journal_writes;
+  const reads_before_quick_add = visitor_requests.length;
   fail_next_write = true;
   await quick_museum.click();
   await dialog.getByRole('alert').filter({ hasText: 'Simulated storage failure' }).waitFor();
@@ -2203,6 +2321,11 @@ try {
   assert.equal(await sights.getAttribute('aria-pressed'), 'true');
   assert.equal(await place_search.inputValue(), 'museum');
   assert.equal(journal_writes, writes_before_quick_add + 2);
+  assert.equal(
+    visitor_requests.length,
+    reads_before_quick_add,
+    'The sight + skips visitor lookup.',
+  );
   const saved_quickly = journal();
   const previous_ids = new Set(second_save.stops.map((stop) => stop.id));
   const new_sights = saved_quickly.stops.filter((stop) => !previous_ids.has(stop.id));
@@ -2238,10 +2361,12 @@ try {
   await hotel_map.getByText('Nara test inn', { exact: true }).waitFor();
   const review_hotel = hotel_map.getByRole('button', { name: 'Review place', exact: true });
   await review_hotel.click();
+  await visitor_sheet.getByRole('heading', { name: 'Nara test inn', exact: true }).waitFor();
+  await edit_itinerary.click();
   const reviewed_hotel_name = 'Nara inn by the station';
   await dialog.getByLabel('Stop name').fill(reviewed_hotel_name);
   await dialog.getByLabel('Notes').fill('Ask about breakfast.');
-  assert.equal(await shellBack(), true);
+  await backThroughVisitorDetails();
   await hotel_map.getByText('Nara test inn', { exact: true }).waitFor();
   await review_hotel.click();
   assert.equal(await dialog.getByLabel('Stop name').inputValue(), reviewed_hotel_name);
@@ -2320,9 +2445,10 @@ try {
     .locator('#applet')
     .screenshot({ path: resolve(qa_directory, 'native-nara-parks-map.png') });
   await garden_map.getByRole('button', { name: 'Review place', exact: true }).click();
+  await edit_itinerary.click();
   assert.equal(await dialog.getByLabel('Stop name').inputValue(), 'Nara Canal Walk');
   await dialog.getByText('Day 2 · Nara', { exact: true }).waitFor();
-  assert.equal(await shellBack(), true);
+  await backThroughVisitorDetails();
   await garden_map.getByRole('button', { name: 'Search in Kyoto', exact: true }).click();
   await sight_map.getByText('Kyoto test museum', { exact: true }).waitFor();
   await chooseType(sight_map, 'Sight', 'Places of worship');
@@ -2361,8 +2487,9 @@ try {
   await place_search.fill('Annex');
   await search.click();
   await guest.click();
+  await edit_itinerary.click();
   await assertStayDates(day_two, day_three);
-  assert.equal(await shellBack(), true);
+  await backThroughVisitorDetails();
   await dialog.getByRole('heading', { name: 'Guest houses near Kyoto', exact: true }).waitFor();
   assert.equal(await place_search.inputValue(), 'Annex');
   await place_search.fill('Unavailable inn');
@@ -2416,6 +2543,7 @@ try {
   await search.click();
   const reviewed_sight = 'Kyoto Canal Works';
   await results.getByRole('button', { name: /^Kyoto Canal Works/ }).click();
+  await edit_itinerary.click();
   await route_position.click();
   assert.equal(
     await first_slot.getAttribute('aria-pressed'),
@@ -2475,6 +2603,7 @@ try {
   await add_hotel.click();
   await kyoto.click();
   await dialog.getByRole('button', { name: /^Kyoto test inn/ }).click();
+  await edit_itinerary.click();
   await route_position.click();
   assert.equal(await last_slot.getAttribute('aria-pressed'), 'true');
   await position_sheet.getByRole('button', { name: 'Back to stop', exact: true }).click();
@@ -2517,6 +2646,7 @@ try {
   await place_search.fill('Canal Walk');
   await search.click();
   await results.getByRole('button', { name: /^Kyoto Canal Walk/ }).click();
+  await edit_itinerary.click();
   await route_position.click();
   const route_slots = position_sheet.getByRole('list', { name: 'Positions in this day' });
   assert.deepEqual(await route_slots.getByRole('heading').allTextContents(), [
@@ -2859,8 +2989,9 @@ try {
   await place_search.fill('Canal Walk');
   await search.click();
   await results.getByRole('button', { name: /^Kyoto Canal Walk/ }).click();
+  await edit_itinerary.click();
   await dialog.getByLabel('Day', { exact: true }).fill(day_three);
-  assert.equal(await shellBack(), true);
+  await backThroughVisitorDetails();
   await dialog.getByText('Day 3', { exact: true }).waitFor();
   await dialog.getByRole('heading', { name: 'Sights near Nara', exact: true }).waitFor();
   assert.equal(await kyoto.count(), 0);
@@ -2879,12 +3010,14 @@ try {
   await place_search.fill('test inn');
   await search.click();
   await nara_inn.click();
+  await edit_itinerary.click();
   await dialog.getByLabel('Stop name').fill('Nara station booking');
   await change_dates.click();
   await arrival.click();
   await transfer_date.click();
   await apply_dates.click();
-  await dialog.getByRole('button', { name: 'Back to place results', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Back to visitor details', exact: true }).click();
+  await back_to_results.click();
   await dialog.getByText('Day 3', { exact: true }).waitFor();
   await dialog.getByRole('heading', { name: 'Hotels near Nara', exact: true }).waitFor();
   assert.equal(await kyoto.count(), 0);
@@ -2915,6 +3048,7 @@ try {
   const schedule = (surface: Locator, title: string) =>
     surface.getByRole('button', { name: 'Choose stay dates for ' + title, exact: true });
   const writes_before_booking = journal_writes;
+  const reads_before_booking = visitor_requests.length;
   await chooseType(dialog, 'Lodging', 'Guest houses');
   await place_search.fill('Annex');
   await search.click();
@@ -3007,6 +3141,11 @@ try {
 
   const bookings = journal().stops.filter((stop) => stop.kind === 'stay');
   assert.equal(journal_writes, writes_before_booking + 3);
+  assert.equal(
+    visitor_requests.length,
+    reads_before_booking,
+    'Hotel calendar shortcuts go directly to dates.',
+  );
   assert.deepEqual(
     bookings.map((stop) => [
       stop.title,
@@ -3029,8 +3168,9 @@ try {
     assert.equal(ref.subtitle, stop.city);
   }
 
-  // The Osaka result also opens full review. Its untouched dates are confirmed before saving.
+  // The booking editor still allows notes and another hotel after a visitor inspection.
   await dialog.getByRole('button', { name: /^Osaka test inn/ }).click();
+  await edit_itinerary.click();
   await dialog.getByLabel('Notes').fill('Request a quiet room.');
   await add_another.click();
   await stay_dates.getByText('Osaka test inn', { exact: true }).waitFor();
@@ -3082,6 +3222,28 @@ try {
     'Submitting a suggested place cannot offer a duplicate visit by default.',
   );
   assert.equal(journal_writes, writes_before_booking + 5);
+  await hotels.click();
+  await nara.click();
+  await place_search.fill('West Annex');
+  await search.click();
+  await results.getByRole('button', { name: /^Nara West Annex/ }).click();
+  await visitor_sheet.getByRole('heading', { name: 'Nara West Annex', exact: true }).waitFor();
+  await visitor_sheet
+    .getByText('No visitor information is listed for this place.', { exact: true })
+    .waitFor();
+  await checkVisitorMap('Nara West Annex', /^Nara 0 m straight line to Nara East Annex$/, 'button');
+  await inspect_stay_dates.click();
+  await stay_dates.getByRole('heading', { name: 'Nara West Annex', exact: true }).waitFor();
+  await confirm_stay.click();
+  await stay_dates.waitFor({ state: 'hidden' });
+  await visitor_sheet.waitFor({ state: 'hidden' });
+  await dialog.waitFor({ state: 'hidden' });
+  const stay_from_inspection = journal().stops.filter((stop) => stop.title === 'Nara West Annex');
+  assert.deepEqual(
+    stay_from_inspection.map((stop) => [stop.city_id, stop.day, stop.checkout_date]),
+    [[city_locations[1].id, day_two, day_three]],
+  );
+  assert.equal(journal_writes, writes_before_booking + 6);
   assert.deepEqual(errors, [], 'The native applet should not produce uncaught browser errors.');
   for (const method of [
     'photos.pick',
@@ -3140,6 +3302,8 @@ try {
           'scheduling named hotel results from list and map, and adding named sights with their city and directory identity',
           'city-scoped live sight and hotel suggestions, IME composition, explicit search and offline airport completion',
           'exact venue details, regional lookup, admission and access, offline reopen, draft return, and adding a sight or hotel from its listing',
+          'detail-first selection from results and maps, preserved itinerary edits, cached facts and booking directly from a hotel listing',
+          'visitor day maps from sight and hotel details, accessible route distance, return focus and zero extra lookups or writes',
         ],
       },
       null,

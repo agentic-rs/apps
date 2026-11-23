@@ -1,7 +1,9 @@
 import { lazy, Suspense, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { citiesOnDay, cityIndicesOnDay } from '../lib/city-days';
 import { daysBetween, isCalendarDate, itineraryDayLabel } from '../lib/dates';
+import { formatDistance } from '../lib/distance';
 import { createId } from '../lib/identity';
+import { nearestDayPlace } from '../lib/map';
 import { canShowPlaceDetails } from '../lib/place-details';
 import { placeTypeLabel } from '../lib/place-types';
 import {
@@ -23,7 +25,7 @@ import {
 import { CoordinateInputs } from './VisitFields';
 import { Dialog, DiscardPrompt } from './Dialog';
 import { EditorForm } from './EditorForm';
-import { RoutePosition } from './RoutePosition';
+import { RoutePosition, routePositionSummary } from './RoutePosition';
 import { Icon } from './Icon';
 import { StopPlacePicker, type PickerCity } from './StopPlacePicker';
 import { checkoutAfter, continuingStays } from '../lib/hotel-stays';
@@ -202,6 +204,7 @@ function StopEditor({
   onEditPlanned?(stop: PlannedStop): void;
 }) {
   const [draft, setDraft] = useState(() => stopDraft(day, stop));
+  const blank_day = useRef(day);
   const inspected = useRef<typeof draft | null>(null);
   const {
     id: draft_id,
@@ -234,9 +237,14 @@ function StopEditor({
   const [error, setError] = useState('');
   const [discard, setDiscard] = useState(false);
   const [show_map, setShowMap] = useState(false);
-  const [show_details, setShowDetails] = useState(false);
+  const [review_pages, setReviewPages] = useState<('details' | 'editor')[]>(['editor']);
+  const show_details = review_pages.at(-1) === 'details';
+  const inspecting_result = show_details && review_pages.length === 1;
+  const editing_result = !show_details && review_pages.at(-2) === 'details';
+  const focus_edit_on_return = useRef(false);
   const details_button = useRef<HTMLButtonElement>(null);
-  const details_return = useRef<'focus' | 'validate' | null>(null);
+  const editor_heading = useRef<HTMLParagraphElement>(null);
+  const details_return = useRef<'focus' | 'edit' | 'validate' | null>(null);
   const [date_action, setDateAction] = useState<StayDateAction | null>(null);
   const hotel_to_add = date_action && date_action.from !== 'dates' ? date_action.stop : undefined;
   const picking_dates = date_action?.from === 'result';
@@ -254,6 +262,17 @@ function StopEditor({
   const preview_stops = useMemo(
     () => trip_stops.filter((item) => item.day === stop_day),
     [trip_stops, stop_day],
+  );
+  const preview_stays = useMemo(
+    () => continuingStays(trip_stops, stop_day),
+    [trip_stops, stop_day],
+  );
+  const closest = useMemo(
+    () =>
+      inspecting_result && position
+        ? nearestDayPlace(position, preview_stops, preview_stays)
+        : undefined,
+    [inspecting_result, position, preview_stops, preview_stays],
   );
   const picker_stops = useMemo(
     () => trip_stops.filter((item) => item.day === picker_day),
@@ -311,10 +330,10 @@ function StopEditor({
     if (picking && last_pick.current) {
       const target = last_pick.current.isConnected ? last_pick.current : picker_pane.current;
       target?.focus({ preventScroll: true });
-    } else if (!picking && picker_day && (stop || directory_ref)) {
+    } else if (!picking && picker_day && (stop || directory_ref) && !show_details) {
       change_place.current?.focus({ preventScroll: true });
     }
-  }, [picking, picker_day, directory_ref, stop]);
+  }, [picking, picker_day, directory_ref, stop, show_details]);
   useLayoutEffect(() => {
     if (date_action || !date_return_focus.current.length) return;
     // Child dialogs have now reopened. Focusing sooner can leave WebKit on the map's Back button.
@@ -325,6 +344,8 @@ function StopEditor({
   useLayoutEffect(() => {
     if (show_details || !details_return.current) return;
     if (details_return.current === 'validate') primary_button.current?.form?.reportValidity();
+    else if (details_return.current === 'edit')
+      editor_heading.current?.focus({ preventScroll: true });
     else details_button.current?.focus({ preventScroll: true });
     details_return.current = null;
   }, [show_details]);
@@ -345,7 +366,7 @@ function StopEditor({
     city !== stop?.city ||
     city_id !== stop?.city_id ||
     title !== (stop?.title ?? '') ||
-    stop_day !== (stop?.day ?? day) ||
+    stop_day !== (stop?.day ?? blank_day.current) ||
     kind !== (stop?.kind ?? 'sight') ||
     (kind === 'stay' && checkout !== (stop?.checkout_date ?? '')) ||
     time !== (stop?.time ?? '') ||
@@ -401,6 +422,12 @@ function StopEditor({
     return fields.every((field) => draft[field] === choice[field]);
   }
 
+  function resetDraft(date: string) {
+    blank_day.current = date;
+    inspected.current = null;
+    setDraft(stopDraft(date));
+  }
+
   function openResults(mode: 'initial' | 'change') {
     const search_day = isCalendarDate(stop_day) ? stop_day : day;
     if (picker_day !== search_day) {
@@ -411,9 +438,12 @@ function StopEditor({
       setConfirmation(undefined);
     }
     // Inspecting a result leaves the picker ready for a quick add. Keep edited drafts for review.
-    if (mode === 'initial' && !error && onlyInspectedPlace()) {
-      setDraft(stopDraft(search_day));
-      inspected.current = null;
+    if (mode === 'initial') {
+      if (onlyInspectedPlace()) {
+        resetDraft(search_day);
+        setError('');
+      }
+      setReviewPages(['editor']);
     }
     setPicking(mode);
   }
@@ -441,6 +471,7 @@ function StopEditor({
       city === draft.city &&
       city_id === draft.city_id
     ) {
+      setReviewPages(['editor']);
       setPicking(null);
       return;
     }
@@ -455,8 +486,15 @@ function StopEditor({
       longitude: String(place.position.longitude),
       directory_ref: directoryReference(place),
     };
-    inspected.current =
-      !stop && ((!dirty && !source_changed) || onlyInspectedPlace()) ? choice : null;
+    const clean_choice = !stop && ((!dirty && !source_changed) || onlyInspectedPlace());
+    inspected.current = clean_choice ? choice : null;
+    const inspect =
+      picking === 'initial' &&
+      clean_choice &&
+      (place.kind === 'sight' || place.kind === 'stay') &&
+      canShowPlaceDetails(choice.directory_ref, lookup.attribution);
+    focus_edit_on_return.current = false;
+    setReviewPages([inspect ? 'details' : 'editor']);
     setDraft(choice);
     setPicking(null);
     setError('');
@@ -471,6 +509,7 @@ function StopEditor({
   ) {
     last_pick.current = origin;
     inspected.current = null;
+    setReviewPages(['editor']);
     updateDraft({
       title: picking === 'change' && !name ? title : name,
       city,
@@ -507,8 +546,8 @@ function StopEditor({
       id: saved.id,
       message: `${saved.title} added to ${destination}${placement}.`,
     });
-    setDraft(stopDraft(saved.day));
-    inspected.current = null;
+    resetDraft(saved.day);
+    setReviewPages(['editor']);
     setPickerDay(saved.day);
     setPicking('initial');
   }
@@ -589,11 +628,29 @@ function StopEditor({
   function addFromDetails(trigger: HTMLButtonElement) {
     // An edited field can be invalid behind the details sheet. Return to it for validation.
     if (!primary_button.current?.form?.checkValidity()) {
-      details_return.current = 'validate';
-      setShowDetails(false);
+      enterEditorFromDetails('validate');
       return;
     }
     void submit(false, trigger);
+  }
+
+  function openMap(trigger: HTMLButtonElement) {
+    trigger.focus({ preventScroll: true });
+    setShowMap(true);
+  }
+
+  function enterEditorFromDetails(focus: 'validate' | 'edit' | 'focus') {
+    details_return.current = focus;
+    setReviewPages((pages) => (pages.length === 1 ? [...pages, 'editor'] : pages.slice(0, -1)));
+  }
+
+  function backFromEditor() {
+    if (editing_result) {
+      focus_edit_on_return.current = true;
+      setReviewPages((pages) => pages.slice(0, -1));
+    } else {
+      openResults('initial');
+    }
   }
 
   async function saveReviewed(value: PlannedStop, another: boolean) {
@@ -652,7 +709,13 @@ function StopEditor({
         }
         full_screen
         dismiss_disabled={busy}
-        back_label={!stop && !picking && !discard ? 'Back to place results' : undefined}
+        back_label={
+          !stop && !picking && !discard
+            ? editing_result
+              ? 'Back to visitor details'
+              : 'Back to place results'
+            : undefined
+        }
         dismiss_label={
           !stop && !picking && !discard
             ? 'Cancel'
@@ -661,7 +724,7 @@ function StopEditor({
               : undefined
         }
         onDismiss={dismiss}
-        onBack={!stop && !picking && !discard ? () => openResults('initial') : dismiss}
+        onBack={!stop && !picking && !discard ? backFromEditor : dismiss}
       >
         {picker_day !== null && (
           <div
@@ -705,7 +768,7 @@ function StopEditor({
               <>
                 <fieldset className="form-body stop-form" disabled={busy || discard}>
                   <div className="stop-form-heading">
-                    <p className="stop-form-trip">
+                    <p ref={editor_heading} tabIndex={-1} className="stop-form-trip">
                       <Icon name="book" size={17} />
                       {place_context}
                     </p>
@@ -737,7 +800,7 @@ function StopEditor({
                         aria-label="View on map"
                         aria-description={place_description || undefined}
                         disabled={placement_pending}
-                        onClick={() => setShowMap(true)}
+                        onClick={(event) => openMap(event.currentTarget)}
                       >
                         <Icon name="map" size={19} />
                         <span>
@@ -761,7 +824,7 @@ function StopEditor({
                           type="button"
                           className="stop-place-action"
                           aria-haspopup="dialog"
-                          onClick={() => setShowDetails(true)}
+                          onClick={() => setReviewPages((pages) => [...pages, 'details'])}
                         >
                           <Icon name="info" size={19} />
                           <span>Visitor details</span>
@@ -933,6 +996,22 @@ function StopEditor({
           lookup={lookup}
           native={native}
           busy={busy}
+          back_label={inspecting_result ? 'Back to place results' : 'Back to stop'}
+          focus_edit={inspecting_result && focus_edit_on_return.current}
+          onEditItinerary={inspecting_result ? () => enterEditorFromDetails('edit') : undefined}
+          onViewMap={inspecting_result && position && !placement_pending ? openMap : undefined}
+          route_distance={
+            closest && `${formatDistance(closest.km)} straight line to ${closest.title}`
+          }
+          route_summary={
+            !inspecting_result
+              ? undefined
+              : kind === 'stay'
+                ? staySummary()
+                : placement_pending
+                  ? 'Finding route position…'
+                  : routePositionSummary(other_stops, insertion_index, city_labels)
+          }
           action_error={error}
           primary_action={
             stop
@@ -944,8 +1023,8 @@ function StopEditor({
                 }
           }
           onClose={() => {
-            details_return.current = 'focus';
-            setShowDetails(false);
+            if (inspecting_result) openResults('initial');
+            else enterEditorFromDetails('focus');
           }}
         />
       )}
@@ -968,7 +1047,7 @@ function StopEditor({
       {show_map && position && (
         <Dialog
           title="Place map"
-          back_label="Back to stop"
+          back_label={show_details ? 'Back to visitor details' : 'Back to stop'}
           full_screen
           onDismiss={() => setShowMap(false)}
         >
@@ -984,7 +1063,7 @@ function StopEditor({
               position={position}
               context={place_context}
               stops={preview_stops}
-              stays={continuingStays(trip_stops, stop_day)}
+              stays={preview_stays}
               editing_id={draft_id}
               insertion_index={insertion_index}
               native={native}
