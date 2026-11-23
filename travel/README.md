@@ -47,7 +47,9 @@ Use **Choose date later** to keep a destination without assigning it to a day. *
 
 The **Journal** tab brings together all the trip’s entries and lets you search by title, place, area, or notes. Use **Trips** to switch trips or search the library by trip name and city.
 
-A planned stop can have a map position. Check-ins can separately record the actual visit position and a reusable named place with reference coordinates. Checking in at a stop prefills the place name and any reference coordinates. Enter the actual visit location manually or use foreground GPS. **Use current location** measures the device’s present location. All coordinates use WGS84.
+Choose **Check in** at a planned stop to start an entry with its name, city and available map position. For older stops, Fieldnotes fills the city when the itinerary identifies it. You can change the place, add notes and attach photos. **Use current location** records the device’s present position. You can also enter coordinates for an earlier visit. All coordinates use WGS84.
+
+On an overnight or checkout day, **Add entry** beside a hotel opens a check-in for that day. The saved entry appears beside the hotel and in the trip journal. The arrival day keeps the full history for the stay.
 
 ## Place search
 

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type {
   CheckIn,
   PhotoAsset,
@@ -8,7 +8,7 @@ import type {
   Trip,
   VisitLocation,
 } from '../lib/types';
-import { currentOffsetMinutes, fromVisitInput, toVisitInput } from '../lib/dates';
+import { currentOffsetMinutes, fromVisitInput, isCalendarDate, toVisitInput } from '../lib/dates';
 import {
   readCoordinates,
   max_photos_per_check_in,
@@ -16,11 +16,30 @@ import {
   text_limits,
 } from '../lib/model';
 import { createId } from '../lib/identity';
+import { usePlannedCheckInPlace } from '../lib/check-in-place';
 import { Dialog, DiscardPrompt } from './Dialog';
 import { Icon } from './Icon';
 import { DraftPhotos } from './DraftPhotos';
 import { EditorForm } from './EditorForm';
 import { CoordinateInputs, VisitTimeFields } from './VisitFields';
+import '../check-in.css';
+
+const short_day = new Intl.DateTimeFormat(undefined, {
+  weekday: 'short',
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+  timeZone: 'UTC',
+});
+
+function placeFields(place: Pick<Place, 'name' | 'locality' | 'position'>) {
+  return {
+    name: place.name,
+    locality: place.locality,
+    place_latitude: place.position?.latitude.toString() ?? '',
+    place_longitude: place.position?.longitude.toString() ?? '',
+  };
+}
 
 export function CheckInForm({
   trip,
@@ -46,19 +65,9 @@ export function CheckInForm({
   const editing_event = Boolean(check_in?.title);
   const [stop_id, setStopId] = useState(check_in?.stop_id ?? stop?.id ?? '');
   const [title, setTitle] = useState(check_in?.title ?? '');
-  const original_place = places.find((place) => place.id === check_in?.place_id);
-  const [place_id, setPlaceId] = useState(original_place?.id ?? '');
-  const [name, setName] = useState(original_place?.name ?? (!check_in && stop ? stop.title : ''));
-  const [locality, setLocality] = useState(original_place?.locality ?? '');
-  const [place_latitude, setPlaceLatitude] = useState(
-    (original_place?.position ?? (!check_in && stop ? stop.position : null))?.latitude.toString() ??
-      '',
-  );
-  const [place_longitude, setPlaceLongitude] = useState(
-    (
-      original_place?.position ?? (!check_in && stop ? stop.position : null)
-    )?.longitude.toString() ?? '',
-  );
+  const [place_id, setPlaceId] = useState(check_in?.place_id ?? '');
+  const [place_draft, setPlaceDraft] = useState<ReturnType<typeof placeFields> | null>(null);
+  const [place_expanded, setPlaceExpanded] = useState(!stop && !check_in);
   const [edit_place, setEditPlace] = useState(false);
   const [visited, setVisited] = useState(() => {
     if (check_in) return toVisitInput(check_in.visited_at, check_in.utc_offset_minutes);
@@ -78,36 +87,28 @@ export function CheckInForm({
   const camera_input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const error_message = useRef<HTMLParagraphElement>(null);
   const [dirty, setDirty] = useState(false);
   const [discard, setDiscard] = useState(false);
   const selected_place = places.find((place) => place.id === place_id);
+  const selected_stop = stops.find((item) => item.id === stop_id);
+  const { place: planned_place, loading: resolving_place } = usePlannedCheckInPlace(
+    trip,
+    check_in || selected_place || place_draft ? undefined : selected_stop,
+  );
+  const proposed = placeFields(selected_place ?? planned_place);
+  // Once the traveler edits a named place, changing its itinerary link preserves the whole place.
+  const fields = selected_place && !edit_place ? proposed : (place_draft ?? proposed);
+  const { name, locality, place_latitude, place_longitude } = fields;
+  const visit_day = visited.slice(0, 10);
 
-  function chooseStop(id: string) {
-    const previous = stops.find((item) => item.id === stop_id);
-    const next = stops.find((item) => item.id === id);
-    // Follow the plan while the proposed place is untouched. Keep manually entered place details.
-    if (
-      !check_in &&
-      !place_id &&
-      !locality &&
-      name === (previous?.title ?? '') &&
-      place_latitude === (previous?.position?.latitude.toString() ?? '') &&
-      place_longitude === (previous?.position?.longitude.toString() ?? '')
-    ) {
-      setName(next?.title ?? '');
-      setPlaceLatitude(next?.position?.latitude.toString() ?? '');
-      setPlaceLongitude(next?.position?.longitude.toString() ?? '');
-    }
-    setStopId(id);
-  }
+  useEffect(() => {
+    if (error) error_message.current?.focus();
+  }, [error]);
 
   function choosePlace(id: string) {
-    const place = places.find((row) => row.id === id);
     setPlaceId(id);
-    setName(place?.name ?? '');
-    setLocality(place?.locality ?? '');
-    setPlaceLatitude(place?.position?.latitude.toString() ?? '');
-    setPlaceLongitude(place?.position?.longitude.toString() ?? '');
+    setPlaceDraft(null);
     setEditPlace(false);
   }
   async function cancel() {
@@ -175,7 +176,7 @@ export function CheckInForm({
     }
   }
   async function submit() {
-    if (busy) return;
+    if (busy || resolving_place) return;
     setDiscard(false);
     setBusy(true);
     setError('');
@@ -247,21 +248,41 @@ export function CheckInForm({
       <EditorForm onSave={submit} onChange={() => setDirty(true)}>
         {(save) => (
           <>
-            <fieldset disabled={busy || discard} className="form-body check-in-form">
-              <p className="muted">{trip.title}</p>
-              {stops.length > 0 && (
-                <label>
-                  Planned stop <span className="optional">optional</span>
-                  <select value={stop_id} onChange={(event) => chooseStop(event.target.value)}>
-                    <option value="">Unplanned visit</option>
-                    {stops.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.day} · {item.title}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
+            <fieldset
+              disabled={busy || discard}
+              className="form-body check-in-form"
+              onInvalidCapture={(event) => {
+                const field = event.target as HTMLElement;
+                if (
+                  field !==
+                  event.currentTarget.querySelector(
+                    'input:invalid, select:invalid, textarea:invalid',
+                  )
+                )
+                  return;
+                let details = field.closest('details');
+                while (details) {
+                  details.open = true;
+                  details = details.parentElement?.closest('details') ?? null;
+                }
+                // WebKit cannot focus an invalid control until its disclosure has laid out.
+                requestAnimationFrame(() => {
+                  if (!field.isConnected) return;
+                  field.focus({ preventScroll: true });
+                  field.scrollIntoView({ block: 'nearest' });
+                });
+              }}
+            >
+              <header className="check-in-context">
+                <span>
+                  <Icon name="book" size={16} /> {trip.title}
+                </span>
+                {isCalendarDate(visit_day) && (
+                  <time dateTime={visit_day}>
+                    {short_day.format(new Date(visit_day + 'T00:00:00Z'))}
+                  </time>
+                )}
+              </header>
               {editing_event && (
                 <label>
                   Event title
@@ -273,144 +294,126 @@ export function CheckInForm({
                   />
                 </label>
               )}
-              <section className="form-section">
-                <div className="section-heading">
-                  <span className="step">01</span>
-                  <h3>{editing_event ? 'Named place (optional)' : 'The named place'}</h3>
-                </div>
-                {places.length > 0 && (
-                  <label>
-                    Choose a saved place
-                    <select value={place_id} onChange={(e) => choosePlace(e.target.value)}>
-                      <option value="">+ Add a new place</option>
-                      {places.map((place) => (
-                        <option key={place.id} value={place.id}>
-                          {place.name}
-                          {place.locality ? ` · ${place.locality}` : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                )}
-                {selected_place && (
-                  <label className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={edit_place}
-                      onChange={(e) => setEditPlace(e.target.checked)}
-                    />
-                    Edit this place for all its visits
-                  </label>
-                )}
-                {(!selected_place || edit_place) && (
-                  <>
-                    <div className="form-grid">
-                      <label>
-                        Place name
-                        <input
-                          autoFocus={!check_in}
-                          required={
-                            !editing_event ||
-                            !!selected_place ||
-                            !!locality.trim() ||
-                            !!place_latitude ||
-                            !!place_longitude
-                          }
-                          maxLength={text_limits.place_name}
-                          value={name}
-                          onChange={(e) => setName(e.target.value)}
-                          placeholder="West Lake / 西湖"
-                        />
-                      </label>
-                      <label>
-                        City or area <span className="optional">optional</span>
-                        <input
-                          maxLength={text_limits.place_locality}
-                          value={locality}
-                          onChange={(e) => setLocality(e.target.value)}
-                          placeholder="Hangzhou"
-                        />
-                      </label>
-                    </div>
-                    <details>
-                      <summary>
-                        Place reference coordinates <span className="optional">optional</span>
-                      </summary>
-                      <p className="field-help">
-                        The place’s standard position, separate from where your visit happened. Use
-                        WGS84 coordinates.
-                      </p>
-                      <CoordinateInputs
-                        prefix="Place"
-                        latitude={place_latitude}
-                        longitude={place_longitude}
-                        onLatitude={setPlaceLatitude}
-                        onLongitude={setPlaceLongitude}
-                      />
-                    </details>
-                  </>
-                )}
-              </section>
-              <section className="form-section">
-                <div className="section-heading">
-                  <span className="step">02</span>
-                  <h3>Where & when it happened</h3>
-                </div>
-                <p className="field-help">Your actual visit position. Leave it blank if unknown.</p>
-                <button
-                  type="button"
-                  className="secondary locate-button"
-                  onClick={() => void locate()}
+              <details
+                className="check-in-place"
+                open={place_expanded}
+                onToggle={(event) => setPlaceExpanded(event.currentTarget.open)}
+              >
+                <summary
+                  className="check-in-place-summary"
+                  aria-label="Place details"
+                  aria-description={[name, locality].filter(Boolean).join(', ')}
                 >
-                  <Icon name="locate" />
-                  Use current location
-                </button>
-                <p className="field-help">
-                  This records where you are now. For an earlier visit, enter its coordinates.
-                </p>
-                <CoordinateInputs
-                  prefix="Visit"
-                  latitude={latitude}
-                  longitude={longitude}
-                  onLatitude={(value) => {
-                    setLatitude(value);
-                    setFix(null);
-                  }}
-                  onLongitude={(value) => {
-                    setLongitude(value);
-                    setFix(null);
-                  }}
-                />
-                {fix?.source === 'photo' && <p className="location-status">Location from photo</p>}
-                {fix?.source === 'device' && (
-                  <p className="location-status">
-                    <Icon name="check" size={14} />
-                    Device location
-                    {fix.accuracy_m !== null ? ` · ±${Math.round(fix.accuracy_m)} m` : ''}
-                  </p>
-                )}
-                <VisitTimeFields
-                  prefix="Visit"
-                  local_time={visited}
-                  offset={offset}
-                  offset_help="The local time zone during your visit."
-                  onTime={setVisited}
-                  onOffset={setOffset}
-                />
-              </section>
-              <section className="form-section">
-                <div className="section-heading">
-                  <span className="step">03</span>
-                  <h3>A few things to remember</h3>
+                  <span className="check-in-pin">
+                    <Icon name="pin" size={21} />
+                  </span>
+                  <span className="check-in-place-heading">
+                    <strong>
+                      {name.trim() || (editing_event ? 'Add a place' : 'Place details')}
+                    </strong>
+                    {resolving_place ? (
+                      <small role="status">Finding city…</small>
+                    ) : (
+                      locality.trim() && <small>{locality}</small>
+                    )}
+                  </span>
+                  <Icon name="next" size={16} />
+                </summary>
+                <div className="check-in-place-fields">
+                  {stops.length > 0 && (
+                    <label>
+                      Planned stop
+                      <select value={stop_id} onChange={(event) => setStopId(event.target.value)}>
+                        <option value="">Unplanned visit</option>
+                        {stops.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {short_day.format(new Date(item.day + 'T00:00:00Z'))} · {item.title}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  {places.length > 0 && (
+                    <label>
+                      Choose a saved place
+                      <select value={place_id} onChange={(e) => choosePlace(e.target.value)}>
+                        <option value="">+ Add a new place</option>
+                        {places.map((place) => (
+                          <option key={place.id} value={place.id}>
+                            {place.name}
+                            {place.locality ? ` · ${place.locality}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  {selected_place && (
+                    <label className="checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={edit_place}
+                        onChange={(e) => setEditPlace(e.target.checked)}
+                      />
+                      Edit this place for all its visits
+                    </label>
+                  )}
+                  {(!selected_place || edit_place) && (
+                    <>
+                      <div className="check-in-name-fields">
+                        <label>
+                          Place name
+                          <input
+                            required={
+                              !editing_event ||
+                              !!selected_place ||
+                              !!locality.trim() ||
+                              !!place_latitude ||
+                              !!place_longitude
+                            }
+                            maxLength={text_limits.place_name}
+                            value={name}
+                            onChange={(e) => setPlaceDraft({ ...fields, name: e.target.value })}
+                          />
+                        </label>
+                        <label>
+                          City or area
+                          <input
+                            maxLength={text_limits.place_locality}
+                            value={locality}
+                            onChange={(e) => setPlaceDraft({ ...fields, locality: e.target.value })}
+                            placeholder="Optional"
+                          />
+                        </label>
+                      </div>
+                      <details>
+                        <summary>Place reference coordinates</summary>
+                        <p className="field-help">This pin marks the named place on the map.</p>
+                        <CoordinateInputs
+                          prefix="Place"
+                          require_pair
+                          latitude={place_latitude}
+                          longitude={place_longitude}
+                          onLatitude={(value) =>
+                            setPlaceDraft({ ...fields, place_latitude: value })
+                          }
+                          onLongitude={(value) =>
+                            setPlaceDraft({ ...fields, place_longitude: value })
+                          }
+                        />
+                      </details>
+                    </>
+                  )}
                 </div>
+              </details>
+              <section className="check-in-journal" aria-label="Notes and photos">
                 <label>
-                  Notes <span className="optional">optional</span>
+                  Notes
                   <textarea
-                    rows={3}
+                    rows={2}
                     maxLength={text_limits.check_in_notes}
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
-                    placeholder="What made this place worth stopping for?"
+                    placeholder="Add a note"
                   />
                 </label>
                 <div className="photo-tools">
@@ -478,9 +481,55 @@ export function CheckInForm({
                   />
                 )}
               </section>
+              <section className="check-in-visit" aria-labelledby="check-in-visit-heading">
+                <h3 id="check-in-visit-heading">Visit details</h3>
+                <VisitTimeFields
+                  prefix="Visit"
+                  local_time={visited}
+                  offset={offset}
+                  offset_help="Local time at the visit."
+                  onTime={setVisited}
+                  onOffset={setOffset}
+                />
+                <div className="check-in-position">
+                  <button type="button" className="secondary" onClick={() => void locate()}>
+                    <Icon name="locate" size={18} />
+                    Use current location
+                  </button>
+                  <p className="location-status" role="status">
+                    {fix?.source === 'device'
+                      ? `Device location${fix.accuracy_m !== null ? ` · ±${Math.round(fix.accuracy_m)} m` : ''}`
+                      : fix?.source === 'photo'
+                        ? 'Location from photo'
+                        : latitude && longitude
+                          ? 'Manually entered location'
+                          : latitude || longitude
+                            ? 'Incomplete visit location'
+                            : 'No visit location'}
+                  </p>
+                </div>
+                <details>
+                  <summary>Visit coordinates</summary>
+                  <p className="field-help">Enter where you were during this visit.</p>
+                  <CoordinateInputs
+                    prefix="Visit"
+                    require_pair
+                    latitude={latitude}
+                    longitude={longitude}
+                    onLatitude={(value) => {
+                      setLatitude(value);
+                      setFix(null);
+                    }}
+                    onLongitude={(value) => {
+                      setLongitude(value);
+                      setFix(null);
+                    }}
+                  />
+                </details>
+              </section>
             </fieldset>
             {error && (
-              <p role="alert" className="form-error">
+              <p role="alert" className="form-error" tabIndex={-1} ref={error_message}>
                 {error}
               </p>
             )}
@@ -501,6 +550,7 @@ export function CheckInForm({
                 onClick={save}
                 disabled={
                   busy ||
+                  resolving_place ||
                   (editing_event ? !title.trim() : (!selected_place || edit_place) && !name.trim())
                 }
               >

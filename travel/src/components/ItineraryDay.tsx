@@ -103,7 +103,14 @@ export function ItineraryDay({
   for (const visit of trip_visits) {
     if (visit.stop_id) by_stop.get(visit.stop_id)?.push(visit);
   }
-  const journal_entries = visits.filter((visit) => !visit.stop_id || !by_stop.has(visit.stop_id));
+  // The arrival card keeps the whole stay's journal. Later days show only that day's entries.
+  const by_stay = new Map(continuing_stays.map(({ stop }) => [stop.id, [] as CheckIn[]]));
+  const journal_entries: CheckIn[] = [];
+  for (const visit of visits) {
+    const stay_entries = visit.stop_id && by_stay.get(visit.stop_id);
+    if (stay_entries) stay_entries.push(visit);
+    else if (!visit.stop_id || !by_stop.has(visit.stop_id)) journal_entries.push(visit);
+  }
 
   function openPicker(button: HTMLButtonElement, category: 'sight' | 'stay') {
     // Touch WebKit needs an explicit opener to restore focus when the picker closes.
@@ -111,11 +118,17 @@ export function ItineraryDay({
     onAddStop(category);
   }
 
+  function openCheckIn(button: HTMLButtonElement, stop?: PlannedStop) {
+    button.focus({ preventScroll: true });
+    onCheckIn(stop);
+  }
+
   function renderVisit(visit: CheckIn, stop?: PlannedStop) {
     const place = visit.place_id ? by_place.get(visit.place_id) : undefined;
     const title = visitTitle(visit, place);
     if (stop) {
       const photo = visit.photos[0];
+      const journal_entry = stop.kind === 'stay' || Boolean(visit.title);
       return (
         <article className="linked-entry" key={visit.id}>
           <button
@@ -124,8 +137,9 @@ export function ItineraryDay({
             onClick={() => onOpenVisit(visit.id)}
           >
             <span className="linked-entry-time">
-              <Icon name="check" size={14} />
-              Checked in · {formatVisitTime(visit.visited_at, visit.utc_offset_minutes)}
+              <Icon name={journal_entry ? 'book' : 'check'} size={14} />
+              {journal_entry ? 'Journal entry' : 'Checked in'} ·{' '}
+              {formatVisitTime(visit.visited_at, visit.utc_offset_minutes)}
             </span>
             {title !== stop.title && <strong>{title}</strong>}
             {visit.notes && <span className="linked-entry-notes">{visit.notes}</span>}
@@ -212,19 +226,42 @@ export function ItineraryDay({
           </button>
         </div>
       </header>
-      {continuing_stays.map(({ stop, label }) => (
-        <button
-          type="button"
-          className="ongoing-stay"
-          key={stop.id}
-          ref={stop.id === reveal_stop_id ? saved_button : undefined}
-          onClick={() => onEditStop(stop)}
-        >
-          <Icon name="bed" size={17} />
-          <span>{label}</span>
-          <Icon name="next" size={15} />
-        </button>
-      ))}
+      {continuing_stays.map(({ stop, label }) => {
+        const entries = by_stay.get(stop.id)!;
+        return (
+          <div className="ongoing-stay" key={stop.id}>
+            <div className="ongoing-stay-actions">
+              <button
+                type="button"
+                ref={stop.id === reveal_stop_id ? saved_button : undefined}
+                aria-label={label}
+                aria-description={stop.city}
+                onClick={() => onEditStop(stop)}
+              >
+                <Icon name="bed" size={17} />
+                <span>
+                  {label}
+                  {stop.city && <small>{stop.city}</small>}
+                </span>
+                <Icon name="next" size={15} />
+              </button>
+              <button
+                type="button"
+                className="stay-add-entry"
+                aria-label={`Add journal entry at ${stop.title}`}
+                onClick={(event) => openCheckIn(event.currentTarget, stop)}
+              >
+                <Icon name="plus" size={15} /> Add entry
+              </button>
+            </div>
+            {entries.length > 0 && (
+              <div className="stay-journal" role="group" aria-label={`Journal at ${stop.title}`}>
+                {entries.map((visit) => renderVisit(visit, stop))}
+              </div>
+            )}
+          </div>
+        );
+      })}
       {move_error && (
         <p className="form-error" role="alert">
           {move_error}
@@ -275,7 +312,7 @@ export function ItineraryDay({
                       type="button"
                       className="itinerary-check-in"
                       aria-label={`Check in at ${stop.title}`}
-                      onClick={() => onCheckIn(stop)}
+                      onClick={(event) => openCheckIn(event.currentTarget, stop)}
                     >
                       <Icon name="pin" size={15} /> Check in
                     </button>
@@ -366,7 +403,11 @@ export function ItineraryDay({
       <section className="itinerary-journal" aria-label="Day journal">
         <h3>Day journal</h3>
         <div className="itinerary-journal-actions">
-          <button type="button" className="secondary" onClick={() => onCheckIn()}>
+          <button
+            type="button"
+            className="secondary"
+            onClick={(event) => openCheckIn(event.currentTarget)}
+          >
             <Icon name="pin" size={16} /> New check-in
           </button>
           <button type="button" className="secondary" onClick={onPhotoEvents}>

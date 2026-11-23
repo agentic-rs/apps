@@ -731,14 +731,27 @@ try {
   assert.equal(http_urls.length, 0, 'Planning a stop must not request map tiles.');
 
   await frame.getByRole('button', { name: 'Check in at Lakeside park', exact: true }).click();
+  const place_details = dialog.locator('summary[aria-label="Place details"]');
+  const place_name = dialog.getByLabel('Place name', { exact: true });
+  const place_city = dialog.getByLabel('City or area');
+  const planned_stop = dialog.getByLabel('Planned stop');
+  await place_details.click();
+  assert.equal(await place_name.inputValue(), 'Lakeside park');
+  assert.equal(await place_city.inputValue(), 'Tokyo');
+  await place_city.fill('North district');
+  const [park_stop, terrace_stop] = journal().stops;
+  await planned_stop.selectOption(terrace_stop.id);
   assert.equal(
-    await dialog.getByLabel('Place name', { exact: true }).inputValue(),
-    'Lakeside park',
+    await place_city.inputValue(),
+    'North district',
+    'Relinking keeps a typed locality.',
   );
-  await dialog.getByLabel('City or area').fill('North district');
+  await planned_stop.selectOption(park_stop.id);
   await dialog.getByLabel('Visit date & time').fill('2026-05-12T18:30');
   await dialog.getByLabel('Visit time zone').selectOption('480');
-  await dialog.getByLabel('Notes').fill('A native photo and a separate visit position.');
+  await dialog
+    .getByRole('textbox', { name: 'Notes', exact: true })
+    .fill('A native photo and a separate visit position.');
 
   await dialog.getByRole('button', { name: 'Use current location' }).click();
   await dialog.getByRole('button', { name: 'Use current location' }).waitFor({ state: 'visible' });
@@ -772,7 +785,7 @@ try {
     'A failed write must preserve the previous snapshot.',
   );
   assert.equal(
-    await dialog.getByLabel('Notes').inputValue(),
+    await dialog.getByRole('textbox', { name: 'Notes', exact: true }).inputValue(),
     'A native photo and a separate visit position.',
   );
   assert.equal(
@@ -785,6 +798,7 @@ try {
   let saved = journal();
   assert.equal(saved.check_ins.length, 1);
   assert.equal(saved.check_ins[0].stop_id, saved.stops[0].id);
+  assert.equal(saved.places[0].locality, 'North district');
   assert.equal(saved.check_ins[0].photos.length, 2);
   assert.equal(saved.check_ins[0].visited_at, '2026-05-12T10:30:00.000Z');
   assert.deepEqual(saved.places[0].position, { latitude: 12, longitude: 34 });
@@ -801,9 +815,12 @@ try {
   await imageReady(frame.getByRole('img', { name: 'Lakeside park, photo 1', exact: true }));
 
   await frame.getByRole('button', { name: 'New check-in', exact: true }).click();
+  assert.equal(await place_city.inputValue(), '', 'An unplanned visit starts with a blank city.');
   await dialog.getByLabel('Choose a saved place').selectOption(saved.places[0].id);
   await dialog.getByLabel('Visit date & time').fill('2026-05-12T19:30');
-  await dialog.getByLabel('Notes').fill('A return visit without recorded coordinates.');
+  await dialog
+    .getByRole('textbox', { name: 'Notes', exact: true })
+    .fill('A return visit without recorded coordinates.');
   await dialog.getByRole('button', { name: 'Save check-in', exact: true }).click();
   await dialog.waitFor({ state: 'hidden' });
   saved = journal();
@@ -1226,6 +1243,18 @@ try {
     assert(titles.length);
     const stops = itinerary.getByRole('list', { name: 'Planned stops' });
     assert.deepEqual(await stops.getByRole('button', { name: /^Edit / }).allTextContents(), titles);
+    if (example !== 'kyoto') {
+      const title = transfer ? 'JR Nara Station' : 'Ngee Ann City';
+      const expected_city = transfer ? 'Nara' : 'Singapore';
+      await itinerary.getByRole('button', { name: `Check in at ${title}`, exact: true }).click();
+      await place_details.getByText(title, { exact: true }).waitFor();
+      await place_details.getByText(expected_city, { exact: true }).waitFor();
+      assert(!(await place_name.isVisible()), 'The known place is summarized on entry.');
+      await place_details.click();
+      assert.equal(await place_city.inputValue(), expected_city);
+      assert.equal(await dialog.getByLabel('Visit latitude', { exact: true }).inputValue(), '');
+      await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+    }
     assert.deepEqual(journal(), sample, 'Browsing a fixture must preserve its saved itinerary.');
   }
   // The last fixture is open on the first Kansai transfer, with name-only legacy cities.
@@ -2023,6 +2052,14 @@ try {
   await continuing_editor.waitFor({ state: 'hidden' });
   assert.equal(await frame.getByLabel('Choose itinerary date').inputValue(), '2030-05-22');
   await assertReturnedToStop('Staying at Nara test inn');
+  const add_hotel_entry = frame.getByRole('button', {
+    name: 'Add journal entry at Nara test inn',
+    exact: true,
+  });
+  await add_hotel_entry.click();
+  assert((await dialog.getByLabel('Visit date & time').inputValue()).startsWith('2030-05-22T'));
+  assert.equal(await place_city.inputValue(), 'Nara');
+  await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
   await frame.getByRole('button', { name: 'Staying at Nara test inn' }).click();
   await assertStayDates(day_two, '2030-05-23');
   await dialog.getByRole('button', { name: 'Close dialog' }).click();
@@ -2067,6 +2104,33 @@ try {
   await dialog.waitFor({ state: 'hidden' });
   assert.equal(journal_writes, writes_before_checkout_maps);
   assert.deepEqual(journal(), persisted);
+  await add_hotel_entry.click();
+  assert((await dialog.getByLabel('Visit date & time').inputValue()).startsWith('2030-05-23T'));
+  assert.equal(await place_city.inputValue(), 'Nara');
+  assert.equal(await planned_stop.inputValue(), inn.id);
+  await dialog
+    .getByRole('textbox', { name: 'Notes', exact: true })
+    .fill('Left the keys at reception.');
+  await dialog.getByRole('button', { name: 'Save check-in', exact: true }).click();
+  await dialog.waitFor({ state: 'hidden' });
+  const checkout_entry = journal().check_ins.find((entry) => entry.stop_id === inn.id);
+  assert(checkout_entry && checkout_entry.actual_location === null);
+  assert.equal(
+    journal().places.find((place) => place.id === checkout_entry.place_id)?.locality,
+    'Nara',
+  );
+  await frame
+    .getByRole('group', { name: 'Journal at Nara test inn', exact: true })
+    .getByRole('button', { name: 'Open check-in at Nara test inn', exact: true })
+    .getByText(/^Journal entry · /)
+    .waitFor();
+  assert.equal(
+    await frame
+      .getByRole('region', { name: 'Day journal', exact: true })
+      .getByRole('button', { name: 'Open check-in at Nara test inn', exact: true })
+      .count(),
+    0,
+  );
   await frame.getByRole('button', { name: 'Check out of Nara test inn' }).click();
   await dialog.getByLabel('Notes').fill('Arrive after dinner.');
   await dialog.getByRole('button', { name: 'Change place' }).click();
@@ -2314,11 +2378,24 @@ try {
   await frame
     .getByRole('button', { name: 'Check in at Nara National Museum', exact: true })
     .click();
+  await place_details.click();
+  assert.equal(await place_city.inputValue(), 'Nara');
+  await planned_stop.selectOption('');
+  assert.equal(await place_name.inputValue(), '');
+  assert.equal(await place_city.inputValue(), '');
+  await planned_stop.selectOption(new_museum.id);
+  assert.equal(await place_name.inputValue(), museum_name);
+  assert.equal(await place_city.inputValue(), 'Nara');
   await dialog.getByLabel('Visit date & time').fill(day_two + 'T13:00');
   await dialog.getByRole('button', { name: 'Save check-in', exact: true }).click();
   await dialog.waitFor({ state: 'hidden' });
   const before_move = journal();
-  assert(before_move.check_ins.some((entry) => entry.stop_id === new_museum.id));
+  const museum_entry = before_move.check_ins.find((entry) => entry.stop_id === new_museum.id);
+  assert(museum_entry && museum_entry.actual_location === null);
+  assert.equal(
+    before_move.places.find((place) => place.id === museum_entry.place_id)?.locality,
+    'Nara',
+  );
   await native_frame.goto(native_frame.url());
   await frame.getByRole('button', { name: 'Open trip Kansai by rail', exact: true }).click();
   await frame.getByRole('button', { name: 'Day 2, 21 May', exact: true }).click();

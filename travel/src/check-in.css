@@ -1,0 +1,159 @@
+.form-body.check-in-form {
+  width: min(100%, 640px);
+  margin-inline: auto;
+  padding: 16px clamp(12px, 4vw, 24px) 24px;
+}
+.check-in-context {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-bottom: 12px;
+  color: var(--apell-muted);
+  font-size: 0.8rem;
+}
+.check-in-context span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.check-in-context svg,
+.check-in-place-summary svg {
+  flex-shrink: 0;
+}
+.check-in-place {
+  border: 1px solid var(--apell-line);
+  border-radius: 14px;
+  background: var(--apell-surface);
+}
+.check-in-form summary {
+  min-height: 44px;
+  margin: 0;
+  padding-block: 12px;
+  font-size: 0.88rem;
+}
+.check-in-place > .check-in-place-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: inherit;
+  list-style: none;
+}
+.check-in-place-summary::-webkit-details-marker {
+  display: none;
+}
+.check-in-place[open] > summary > svg {
+  transform: rotate(90deg);
+}
+.check-in-pin {
+  display: grid;
+  place-items: center;
+  flex: 0 0 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: var(--apell-primary-soft);
+}
+.check-in-place-heading {
+  flex: 1;
+  min-width: 0;
+  color: var(--apell-text);
+  overflow-wrap: anywhere;
+}
+.check-in-place-heading strong,
+.check-in-place-heading small {
+  display: block;
+}
+.check-in-place-heading strong {
+  font-size: 1.06rem;
+  line-height: 1.25;
+}
+.check-in-place-heading small {
+  margin-top: 3px;
+  color: var(--apell-muted);
+  font-size: 0.86rem;
+}
+.check-in-place-fields {
+  padding: 14px 12px 2px;
+  border-top: 1px solid var(--apell-line);
+}
+.check-in-form label {
+  min-width: 0;
+  gap: 5px;
+  margin: 0 0 12px;
+  font-size: 0.85rem;
+}
+.check-in-form select {
+  appearance: none;
+  min-height: 44px;
+  overflow: hidden;
+  padding-inline-end: 32px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--apell-muted) 50%),
+    linear-gradient(135deg, var(--apell-muted) 50%, transparent 50%);
+  background-position:
+    right 18px center,
+    right 12px center;
+  background-size: 6px 6px;
+  background-repeat: no-repeat;
+  text-overflow: ellipsis;
+}
+.check-in-form .field-help {
+  margin: 0 0 9px;
+}
+.check-in-name-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  gap: 0 12px;
+}
+.check-in-journal,
+.check-in-visit {
+  margin-top: 18px;
+}
+.check-in-journal textarea {
+  min-height: 72px;
+}
+.check-in-form .photo-tools {
+  margin: 0;
+}
+.check-in-form .draft-photos {
+  margin-top: 12px;
+}
+.check-in-visit {
+  padding-top: 16px;
+  border-top: 1px solid var(--apell-line);
+}
+.check-in-visit h3 {
+  margin: 0 0 12px;
+  font-size: 1.05rem;
+}
+.check-in-visit .time-fields {
+  margin-top: 0;
+}
+.check-in-position {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 10px;
+}
+.check-in-position .location-status {
+  margin: 0;
+  color: var(--apell-muted);
+  font-size: 0.8rem;
+}
+.check-in-form .coordinate-pair-error {
+  grid-column: 1 / -1;
+  margin: 0 0 12px;
+  color: var(--apell-danger);
+  font-size: 0.82rem;
+}
+.dialog:has(.check-in-form) .discard-prompt .button-row {
+  flex-wrap: wrap;
+}
+.dialog:has(.check-in-form) .discard-prompt button {
+  max-width: 100%;
+  white-space: normal;
+}

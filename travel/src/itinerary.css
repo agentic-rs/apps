@@ -655,24 +655,61 @@
 }
 .ongoing-stay,
 .itinerary-add-stay {
-  display: flex;
-  align-items: center;
-  gap: 9px;
   width: 100%;
   margin-bottom: 8px;
-  padding: 9px 12px;
   background: var(--apell-subtle);
   border: 1px solid var(--apell-line);
   border-radius: 9px;
   text-align: start;
   font-size: 0.84rem;
 }
-.ongoing-stay span,
+.ongoing-stay-actions,
+.ongoing-stay-actions button,
+.itinerary-add-stay {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.ongoing-stay-actions {
+  gap: 0;
+}
+.ongoing-stay-actions button {
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  font-size: inherit;
+  text-align: start;
+}
+.ongoing-stay-actions button:first-child {
+  flex: 1;
+}
+.ongoing-stay-actions span,
 .itinerary-add-stay span {
   flex: 1;
   overflow-wrap: anywhere;
 }
+.ongoing-stay-actions small {
+  display: block;
+  margin-top: 2px;
+  color: var(--apell-muted);
+}
+.ongoing-stay-actions .stay-add-entry {
+  color: var(--apell-primary);
+  font-weight: 550;
+  gap: 3px;
+}
+.stay-journal {
+  padding: 4px 8px 2px;
+  border-top: 1px solid var(--apell-line);
+}
+.stay-journal .linked-entry {
+  background: var(--apell-surface);
+}
 .itinerary-add-stay {
+  padding: 9px 12px;
   min-height: 44px;
   background: var(--apell-surface);
   color: var(--apell-primary);

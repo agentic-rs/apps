@@ -567,16 +567,22 @@ try {
   await button('Save changes').click();
   await waitClosed();
   await button('Check in at Old harbour').click();
+  const place_details = page.locator('summary[aria-label="Place details"]');
+  const visit_coordinates = page.locator('summary').filter({ hasText: 'Visit coordinates' });
+  await place_details.click();
   assert.equal(await page.getByLabel('Place name', { exact: true }).inputValue(), 'Old harbour');
+  assert.equal(await page.getByLabel('City or area').inputValue(), 'Tokyo');
   await page.getByLabel('City or area').fill('Seaside');
-  await page.locator('summary').click();
+  await page.locator('summary').filter({ hasText: 'Place reference coordinates' }).click();
   await page.getByLabel('Place latitude', { exact: true }).fill('10.12');
   await page.getByLabel('Place longitude', { exact: true }).fill('20.54');
   await page.getByRole('button', { name: 'Use current location' }).click();
   await page.getByText('Device location · ±12 m').waitFor();
   await page.getByLabel('Visit date & time').fill('2026-05-01T09:35');
   await page.getByLabel('Visit time zone').selectOption('480');
-  await page.getByLabel('Notes').fill('Salt in the air. A good place to slow down.');
+  await page
+    .getByRole('textbox', { name: 'Notes', exact: true })
+    .fill('Salt in the air. A good place to slow down.');
   const photo = await page.evaluate(() => {
     const canvas = document.createElement('canvas');
     canvas.width = 900;
@@ -614,7 +620,7 @@ try {
   await page.getByRole('alert').filter({ hasText: 'Test storage is full' }).waitFor();
   assert.equal(await readPhotoCount(), 0);
   assert.equal(
-    await page.getByLabel('Notes').inputValue(),
+    await page.getByRole('textbox', { name: 'Notes', exact: true }).inputValue(),
     'Salt in the air. A good place to slow down.',
   );
   await page.getByRole('button', { name: 'Save check-in', exact: true }).click();
@@ -633,10 +639,13 @@ try {
   assert.equal(await readPhotoCount(), 1);
   await page.getByRole('button', { name: 'New check-in', exact: true }).click();
   await page.getByLabel('Choose a saved place').selectOption(journal.places[0].id);
+  await visit_coordinates.click();
   await page.getByLabel('Visit latitude', { exact: true }).fill('10.13');
   await page.getByLabel('Visit longitude', { exact: true }).fill('20.55');
   await page.getByLabel('Visit date & time').fill('2026-05-02T17:20');
-  await page.getByLabel('Notes').fill('Back again, this time at sunset.');
+  await page
+    .getByRole('textbox', { name: 'Notes', exact: true })
+    .fill('Back again, this time at sunset.');
   await page.getByRole('button', { name: 'Save check-in', exact: true }).click();
   await waitClosed();
   journal = await readJournal();
@@ -659,17 +668,20 @@ try {
     .getByRole('button', { name: 'Open check-in at Old harbour' })
     .click();
   await page.getByRole('button', { name: 'Edit check-in', exact: true }).click();
+  await place_details.click();
   await page.getByLabel('Edit this place for all its visits').check();
   await page.getByLabel('Place name', { exact: true }).fill('');
   await page.getByLabel('Edit this place for all its visits').uncheck();
   assert.equal(await page.getByRole('button', { name: 'Save check-in' }).isEnabled(), true);
-  await page.getByLabel('Notes').fill('Salt in the air. The best kind of morning.');
+  await page
+    .getByRole('textbox', { name: 'Notes', exact: true })
+    .fill('Salt in the air. The best kind of morning.');
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   await page.getByText('Discard your unsaved changes?').waitFor();
   assert(await page.getByLabel('Visit date & time').isDisabled());
   await page.getByRole('button', { name: 'Keep editing', exact: true }).click();
   assert.equal(
-    await page.getByLabel('Notes').inputValue(),
+    await page.getByRole('textbox', { name: 'Notes', exact: true }).inputValue(),
     'Salt in the air. The best kind of morning.',
   );
   await page.getByRole('button', { name: 'Save check-in' }).click();
@@ -688,7 +700,9 @@ try {
   await page.getByRole('button', { name: 'New check-in', exact: true }).click();
   await page.getByLabel('Place name', { exact: true }).fill('Unknown stop');
   await page.getByLabel('Visit date & time').fill('2026-05-03T11:00');
-  await page.getByLabel('Notes').fill('A remembered stop without coordinates.');
+  await page
+    .getByRole('textbox', { name: 'Notes', exact: true })
+    .fill('A remembered stop without coordinates.');
   await page.getByRole('button', { name: 'Save check-in', exact: true }).click();
   await waitClosed();
   await page.getByRole('button', { name: 'Trips', exact: true }).click();
@@ -791,13 +805,16 @@ try {
   await page.getByRole('button', { name: 'New check-in', exact: true }).click();
   await assertFullScreenEditor(page.getByRole('dialog', { name: 'New check-in', exact: true }));
   await page.getByLabel('Choose a saved place').selectOption(place_id);
+  await visit_coordinates.click();
   await page.getByLabel('Visit latitude', { exact: true }).fill('12');
   await page.screenshot({ path: resolve(output, 'mobile-form.png'), fullPage: true });
   await page.setViewportSize({ width: 390, height: 500 });
   await assertFullScreenEditor(page.getByRole('dialog', { name: 'New check-in', exact: true }));
   await page.screenshot({ path: resolve(output, 'compact-form.png'), fullPage: true });
+  await visit_coordinates.click();
   await page.getByRole('button', { name: 'Save check-in' }).click();
   await page.getByRole('alert').filter({ hasText: 'Enter both latitude and longitude' }).waitFor();
+  await page.getByLabel('Visit longitude', { exact: true }).and(page.locator(':focus')).waitFor();
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   await page.getByRole('button', { name: 'Keep editing', exact: true }).click();
   assert.equal(await page.getByLabel('Visit latitude', { exact: true }).inputValue(), '12');
