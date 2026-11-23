@@ -1,7 +1,13 @@
 import { searchDirectoryAirports, searchDirectoryCities } from './offline-directory';
 import { distanceKm } from './distance';
-import { placeSearchRadiusKm, placeSearchUrl, readPlaceResults } from './place-providers';
-import type { Coordinates, DirectoryRef, StopKind, TripCityLocation } from './types';
+import { directoryKey } from './directory-format';
+import {
+  named_search_radius_km,
+  placeSearchRadiusKm,
+  placeSearchUrl,
+  readPlaceResults,
+} from './place-providers';
+import type { Coordinates, DirectoryRef, StopKind, Trip, TripCityLocation } from './types';
 
 export type StopSearchCategory = 'all' | 'sight' | 'food' | 'stay' | 'airport';
 export interface StopSearchRequest {
@@ -17,10 +23,62 @@ export interface StopSearchResult {
   source: DirectoryRef['provider'];
   kind: StopKind;
   position: Coordinates;
+  locality?: string;
+  country_code?: string;
+  distance_km?: number;
 }
 export interface StopLookup {
   attribution: 'Geoapify' | 'Photon';
   search(request: StopSearchRequest, signal: AbortSignal): Promise<StopSearchResult[]>;
+}
+
+export function filterNearbyPlaces(places: StopSearchResult[], query: string): StopSearchResult[] {
+  const tokens = directoryKey(query).split(' ').filter(Boolean);
+  if (!tokens.length) return [];
+  return places.filter((place) => {
+    const label = directoryKey(place.title + ' ' + place.subtitle);
+    return tokens.every((token) => label.includes(token));
+  });
+}
+
+/** A day trip to an unlisted town still belongs to the selected itinerary city. */
+export function groupPlacesForCity(
+  places: StopSearchResult[],
+  trip: Pick<Trip, 'cities' | 'city_locations'>,
+  options: number[],
+  selected: number,
+): { places: StopSearchResult[]; other_cities: number[] } {
+  if (options.length < 2) return { places, other_cities: [] };
+  const scopes = options.map((index) => ({
+    index,
+    name: directoryKey(trip.cities?.[index] ?? ''),
+    location: trip.city_locations?.[index],
+  }));
+  const selected_id = trip.city_locations?.[selected]?.id;
+  const other_cities = new Set<number>();
+  const visible = places.filter((place) => {
+    if (!place.locality) return true;
+    const locality = directoryKey(place.locality);
+    if (!locality) return true;
+    const matches = scopes.filter(({ name, location }) => {
+      if (name !== locality) return false;
+      if (!location) return true;
+      if (place.country_code && location.country_code !== place.country_code) return false;
+      return distanceKm(location, place.position) <= named_search_radius_km;
+    });
+    if (
+      !matches.length ||
+      matches.some(
+        ({ index, location }) =>
+          index === selected || (selected_id && location?.id === selected_id),
+      )
+    )
+      return true;
+    // An ambiguous namesake cannot offer a specific destination for the search.
+    if (matches.length === 1) other_cities.add(matches[0].index);
+    return false;
+  });
+  return { places: visible, other_cities: options.filter((index) => other_cities.has(index)) };
 }
 
 async function requestPlaces(url: URL, signal: AbortSignal, native: boolean): Promise<unknown> {
@@ -68,6 +126,8 @@ export function createStopLookup(
   native: boolean,
   public_key = import.meta.env?.VITE_GEOAPIFY_PUBLIC_KEY?.trim() ?? '',
 ): StopLookup {
+  // Sheet dismissal should not make comparing another stop in the same city wait on the network.
+  const cache = new Map<string, { expires_at: number; places: StopSearchResult[] }>();
   return {
     attribution: public_key ? 'Geoapify' : 'Photon',
     async search({ query, category, city, location }, signal) {
@@ -93,6 +153,18 @@ export function createStopLookup(
           position: { latitude: airport.latitude, longitude: airport.longitude },
         }));
       }
+      const key = JSON.stringify([
+        category,
+        city,
+        location?.id,
+        location?.latitude,
+        location?.longitude,
+        query,
+      ]);
+      const cached = cache.get(key);
+      if (cached && cached.expires_at > Date.now()) return cached.places;
+      if (globalThis.navigator?.onLine === false)
+        throw new Error('You’re offline. Search airports or enter a stop manually.');
       // Older trips store names only. Prefer an exact directory match and
       // retain the city text in the remote query if it is a custom location.
       const center =
@@ -101,10 +173,17 @@ export function createStopLookup(
       signal.throwIfAborted();
       const url = placeSearchUrl(query, category, city, center, public_key);
       const payload = await requestPlaces(url, signal, native);
+      signal.throwIfAborted();
       const radius_km = placeSearchRadiusKm(query);
-      return readPlaceResults(payload, Boolean(public_key), category).filter(
-        (place) => !center || distanceKm(center, place.position) <= radius_km,
-      );
+      const places = readPlaceResults(payload, Boolean(public_key), category).flatMap((place) => {
+        if (!center) return [place];
+        const distance_km = distanceKm(center, place.position);
+        return distance_km <= radius_km ? [{ ...place, distance_km }] : [];
+      });
+      cache.delete(key);
+      if (cache.size >= 40) cache.delete(cache.keys().next().value!);
+      cache.set(key, { expires_at: Date.now() + 5 * 60_000, places });
+      return places;
     },
   };
 }

@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'react';
-import { daysBetween, isCalendarDate, offsetDay } from '../lib/dates';
+import { daysBetween, isCalendarDate, itineraryDayLabel, offsetDay } from '../lib/dates';
 import { createId } from '../lib/identity';
 import { readCoordinates, text_limits } from '../lib/model';
 import type { StopLookup, StopSearchCategory, StopSearchResult } from '../lib/stop-lookup';
@@ -33,6 +33,77 @@ function checkoutAfter(day: string, nights: number) {
   return offsetDay(day, Math.min(nights, daysBetween(day, '9999-12-31')));
 }
 
+const date_format = new Intl.DateTimeFormat(undefined, {
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+  timeZone: 'UTC',
+});
+const time_format = new Intl.DateTimeFormat(undefined, {
+  hour: 'numeric',
+  minute: '2-digit',
+  timeZone: 'UTC',
+});
+const search_categories: Record<StopKind, StopSearchCategory> = {
+  sight: 'sight',
+  stay: 'stay',
+  food: 'food',
+  other: 'all',
+  transport: 'all',
+};
+const picker_titles: Record<StopSearchCategory, string> = {
+  sight: 'Choose a sight',
+  stay: 'Choose a hotel',
+  food: 'Choose a food stop',
+  airport: 'Choose an airport',
+  all: 'Choose a place',
+};
+
+function ScheduleField({
+  label,
+  type,
+  value,
+  onChange,
+  min,
+  required,
+  detail,
+}: {
+  label: string;
+  type: 'date' | 'time';
+  value: string;
+  onChange(value: string): void;
+  min?: string;
+  required?: boolean;
+  detail?: string;
+}) {
+  let formatted = type === 'date' ? 'Set date' : 'Set time';
+  if (type === 'date' && isCalendarDate(value))
+    formatted = date_format.format(new Date(value + 'T00:00:00Z'));
+  if (type === 'time' && value)
+    formatted = time_format.format(new Date('2000-01-01T' + value + 'Z'));
+  return (
+    <label className="stop-setting">
+      <span>
+        {label}
+        {detail && <small>{detail}</small>}
+      </span>
+      <span className="stop-setting-control">
+        <span className="stop-touch-value" aria-hidden="true">
+          {formatted}
+        </span>
+        <input
+          aria-label={label}
+          type={type}
+          value={value}
+          min={min}
+          required={required}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      </span>
+    </label>
+  );
+}
+
 export function StopForm({
   trip,
   trip_stops,
@@ -45,12 +116,20 @@ export function StopForm({
   onDelete,
 }: StopFormProps) {
   const [picking, setPicking] = useState<'initial' | 'change' | null>(stop ? null : 'initial');
-  const [picker_day, setPickerDay] = useState(day);
+  const [picker_day, setPickerDay] = useState<string | null>(stop ? null : day);
   const [directory_ref, setDirectoryRef] = useState(stop?.directory_ref);
+  const [city, setCity] = useState(stop?.city);
+  const [city_id, setCityId] = useState(stop?.city_id);
   const [title, setTitle] = useState(stop?.title ?? '');
   const [stop_day, setDay] = useState(stop?.day ?? day);
   const [checkout, setCheckout] = useState(stop?.checkout_date ?? '');
   const [kind, setKind] = useState<StopKind>(stop?.kind ?? 'sight');
+  const [picker_category, setPickerCategory] = useState<StopSearchCategory>(
+    initial_category ??
+      (stop?.directory_ref?.provider === 'ourairports'
+        ? 'airport'
+        : search_categories[stop?.kind ?? 'sight']),
+  );
   const [time, setTime] = useState(stop?.time ?? '');
   const [notes, setNotes] = useState(stop?.notes ?? '');
   const [latitude, setLatitude] = useState(stop?.position?.latitude.toString() ?? '');
@@ -61,13 +140,19 @@ export function StopForm({
   const last_pick = useRef<HTMLElement | null>(null);
   const change_place = useRef<HTMLButtonElement>(null);
   useLayoutEffect(() => {
-    if (picking === 'change' && last_pick.current?.isConnected) {
+    if (picking && last_pick.current?.isConnected) {
       last_pick.current.focus({ preventScroll: true });
-    } else if (!picking && directory_ref && !stop) {
+    } else if (!picking && picker_day && (stop || directory_ref)) {
       change_place.current?.focus({ preventScroll: true });
     }
-  }, [picking, directory_ref, stop]);
+  }, [picking, picker_day, directory_ref, stop]);
+  const nights =
+    kind === 'stay' && isCalendarDate(stop_day) && isCalendarDate(checkout)
+      ? daysBetween(stop_day, checkout)
+      : 0;
   const dirty =
+    city !== stop?.city ||
+    city_id !== stop?.city_id ||
     title !== (stop?.title ?? '') ||
     stop_day !== (stop?.day ?? day) ||
     kind !== (stop?.kind ?? 'sight') ||
@@ -76,6 +161,12 @@ export function StopForm({
     notes !== (stop?.notes ?? '') ||
     latitude !== (stop?.position?.latitude.toString() ?? '') ||
     longitude !== (stop?.position?.longitude.toString() ?? '');
+  const source_changed =
+    directory_ref?.id !== stop?.directory_ref?.id ||
+    directory_ref?.provider !== stop?.directory_ref?.provider ||
+    directory_ref?.subtitle !== stop?.directory_ref?.subtitle;
+  const day_label =
+    trip.start_date && isCalendarDate(stop_day) ? itineraryDayLabel(stop_day, day, trip) : '';
 
   function chooseKind(value: StopKind) {
     if (value === 'stay' && kind !== 'stay') setCheckout(checkoutAfter(stop_day, 1));
@@ -90,10 +181,12 @@ export function StopForm({
     setDay(value);
   }
 
-  function choosePlace(place: StopSearchResult) {
+  function choosePlace(place: StopSearchResult, city?: string, city_id?: string) {
     last_pick.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setTitle(place.title);
+    setCity(city);
+    setCityId(city_id);
     chooseKind(place.kind);
     setLatitude(String(place.position.latitude));
     setLongitude(String(place.position.longitude));
@@ -106,13 +199,17 @@ export function StopForm({
     setError('');
   }
 
-  function enterManually(name: string, suggested_kind: StopKind) {
+  function enterManually(name: string, suggested_kind: StopKind, city?: string, city_id?: string) {
     last_pick.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    setTitle(name);
+    if (picking !== 'change' || name) setTitle(name);
+    setCity(city);
+    setCityId(city_id);
     chooseKind(suggested_kind);
-    setLatitude('');
-    setLongitude('');
+    if (picking !== 'change' || (name && name !== title)) {
+      setLatitude('');
+      setLongitude('');
+    }
     setDirectoryRef(undefined);
     setPicking(null);
     setError('');
@@ -120,8 +217,14 @@ export function StopForm({
 
   function dismiss() {
     if (busy) return;
-    if (dirty) setDiscard(true);
-    else onCancel();
+    if (picking === 'change') {
+      setPicking(null);
+    } else if (dirty || source_changed) {
+      setPicking(null);
+      setDiscard(true);
+    } else {
+      onCancel();
+    }
   }
 
   async function submit() {
@@ -134,6 +237,8 @@ export function StopForm({
         id: stop?.id ?? createId(),
         trip_id: trip.id,
         day: stop_day,
+        ...(city && { city }),
+        ...(city_id && { city_id }),
         ...(kind === 'stay' && checkout && { checkout_date: checkout }),
         title: title.trim(),
         kind,
@@ -151,18 +256,30 @@ export function StopForm({
 
   return (
     <Dialog
-      title={stop ? 'Edit stop' : !picking && kind === 'stay' ? 'Hotel stay' : 'Add stop'}
+      title={
+        picking
+          ? picker_titles[picker_category]
+          : stop
+            ? 'Edit stop'
+            : !picking && kind === 'stay'
+              ? 'Hotel stay'
+              : 'Add stop'
+      }
       full_screen
       dismiss_disabled={busy}
-      onDismiss={picking === 'change' ? () => setPicking(null) : picking ? onCancel : dismiss}
+      onDismiss={dismiss}
+      onBack={!stop && !picking && !discard ? () => setPicking('initial') : dismiss}
     >
-      {!stop && (
+      {picker_day !== null && (
         <div className="stop-picker-pane" hidden={!picking}>
           <StopPlacePicker
             key={picker_day}
             trip={trip}
             day={picker_day}
-            initial_category={initial_category}
+            initial_city={city}
+            initial_city_id={city_id}
+            initial_category={picker_category}
+            onCategoryChange={setPickerCategory}
             day_stops={trip_stops.filter((item) => item.day === picker_day)}
             lookup={lookup}
             onPick={choosePlace}
@@ -178,82 +295,91 @@ export function StopForm({
                 <div className="stop-form-heading">
                   <p className="stop-form-trip">
                     <Icon name="book" size={17} />
-                    {trip.title}
+                    {[day_label, city ?? trip.title].filter(Boolean).join(' · ')}
                   </p>
-                  {!stop && (
-                    <button
-                      ref={change_place}
-                      className="stop-form-lookup"
-                      type="button"
-                      onClick={() => {
-                        setPickerDay(stop_day);
-                        setPicking('change');
-                      }}
-                    >
-                      <Icon name="search" size={16} />{' '}
-                      {directory_ref ? 'Change place' : 'Find a place'}
-                    </button>
-                  )}
+                  <button
+                    ref={change_place}
+                    className="stop-form-lookup"
+                    type="button"
+                    onClick={() => {
+                      const search_day = isCalendarDate(stop_day) ? stop_day : day;
+                      if (picker_day !== search_day) {
+                        setPickerCategory(
+                          directory_ref?.provider === 'ourairports'
+                            ? 'airport'
+                            : search_categories[kind],
+                        );
+                      }
+                      setPickerDay(search_day);
+                      setPicking('change');
+                    }}
+                  >
+                    <Icon name="search" size={16} />{' '}
+                    {directory_ref ? 'Change place' : 'Find a place'}
+                  </button>
                 </div>
-                <label>
-                  Stop name
-                  <input
-                    required
-                    autoFocus={!directory_ref}
-                    maxLength={text_limits.stop_title}
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                  />
-                </label>
-                {directory_ref?.subtitle && (
-                  <p className="stop-place-address">
-                    <Icon name="pin" size={15} /> {directory_ref.subtitle}
-                  </p>
-                )}
-                <label>
-                  Category
-                  <select value={kind} onChange={(e) => chooseKind(e.target.value as StopKind)}>
-                    {stop_kinds.map((value) => (
-                      <option key={value} value={value}>
-                        {stop_kind_labels[value]}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <div className="form-grid">
-                  <label>
-                    {kind === 'stay' ? 'Check-in date' : 'Day'}
+                <div className="stop-place-fields">
+                  <label className="stop-name-field">
+                    Stop name
                     <input
-                      type="date"
                       required
-                      value={stop_day}
-                      onChange={(e) => changeDay(e.target.value)}
+                      autoFocus={!directory_ref && !stop}
+                      maxLength={text_limits.stop_title}
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
                     />
                   </label>
-                  {kind === 'stay' && (
-                    <label>
-                      Check-out date
-                      <input
-                        type="date"
-                        min={checkoutAfter(stop_day, 1) || undefined}
-                        value={checkout}
-                        onChange={(e) => setCheckout(e.target.value)}
-                      />
-                    </label>
+                  {directory_ref?.subtitle && (
+                    <p className="stop-place-address">
+                      <Icon name="pin" size={15} /> {directory_ref.subtitle}
+                    </p>
                   )}
-                  <label>
-                    <span>
-                      Time <span className="optional">(optional)</span>
+                  <label className="stop-setting">
+                    Category
+                    <span className="stop-setting-control stop-category-control">
+                      <select value={kind} onChange={(e) => chooseKind(e.target.value as StopKind)}>
+                        {stop_kinds.map((value) => (
+                          <option key={value} value={value}>
+                            {stop_kind_labels[value]}
+                          </option>
+                        ))}
+                      </select>
+                      <Icon name="next" size={14} />
                     </span>
-                    <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
                   </label>
                 </div>
-                <label>
+                <div
+                  className="stop-schedule"
+                  role="group"
+                  aria-label={kind === 'stay' ? 'Stay dates and time' : 'Stop date and time'}
+                >
+                  <ScheduleField
+                    label={kind === 'stay' ? 'Check-in date' : 'Day'}
+                    type="date"
+                    required
+                    value={stop_day}
+                    onChange={changeDay}
+                  />
+                  {kind === 'stay' && (
+                    <ScheduleField
+                      label="Check-out date"
+                      type="date"
+                      min={checkoutAfter(stop_day, 1) || undefined}
+                      value={checkout}
+                      onChange={setCheckout}
+                      detail={
+                        nights > 0 ? `${nights} ${nights === 1 ? 'night' : 'nights'}` : undefined
+                      }
+                    />
+                  )}
+                  <ScheduleField label="Time" type="time" value={time} onChange={setTime} />
+                </div>
+                <label className="stop-notes">
                   <span>
                     Notes <span className="optional">(optional)</span>
                   </span>
                   <textarea
-                    rows={3}
+                    rows={2}
                     maxLength={text_limits.stop_notes}
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
@@ -277,30 +403,39 @@ export function StopForm({
                   </button>
                 )}
               </fieldset>
-              {error && (
-                <p className="form-error" role="alert">
-                  {error}
-                </p>
-              )}
-              {discard && (
-                <DiscardPrompt
-                  disabled={busy}
-                  onKeep={() => setDiscard(false)}
-                  onDiscard={onCancel}
-                />
-              )}
-              <footer className="dialog-footer">
-                <button type="button" className="secondary" disabled={busy} onClick={dismiss}>
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  className="primary"
-                  disabled={busy || !title.trim() || !stop_day}
-                  onClick={save}
-                >
-                  {busy ? 'Saving…' : 'Save stop'}
-                </button>
+              <footer className="dialog-footer stop-form-footer">
+                {error && (
+                  <p className="form-error" role="alert">
+                    {error}
+                  </p>
+                )}
+                {discard ? (
+                  <DiscardPrompt
+                    disabled={busy}
+                    onKeep={() => setDiscard(false)}
+                    onDiscard={onCancel}
+                  />
+                ) : (
+                  <div className="stop-form-actions">
+                    <button type="button" className="secondary" disabled={busy} onClick={dismiss}>
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="primary"
+                      disabled={busy || !title.trim() || !stop_day}
+                      onClick={save}
+                    >
+                      {busy
+                        ? 'Saving…'
+                        : stop
+                          ? 'Save changes'
+                          : day_label.startsWith('Day ')
+                            ? `Add to ${day_label}`
+                            : 'Add to itinerary'}
+                    </button>
+                  </div>
+                )}
               </footer>
             </>
           )}

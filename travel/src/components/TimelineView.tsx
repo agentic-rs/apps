@@ -1,7 +1,7 @@
 import { formatVisitDate, toVisitInput } from '../lib/dates';
 import { formatEntryCount, visitTitle } from '../lib/model';
 import type { CheckIn, PhotoAsset, Place, TravelPlatform, Trip } from '../lib/types';
-import { Icon } from './Icon';
+import { SearchField } from './SearchField';
 import { VisitCard } from './VisitCard';
 
 export function TimelineView({
@@ -47,25 +47,16 @@ export function TimelineView({
     <section className="timeline-view" aria-label="Travel timeline">
       {visits.length > 0 && (
         <div className="timeline-tools">
-          <label className="search-box">
-            <Icon name="search" size={18} />
-            <input
-              aria-label="Search timeline"
-              placeholder="Search journal"
-              value={search}
-              onChange={(e) => onSearch(e.target.value)}
-            />
-            {search && (
-              <button
-                className="icon-button"
-                aria-label="Clear search"
-                onClick={() => onSearch('')}
-              >
-                <Icon name="close" size={16} />
-              </button>
-            )}
-          </label>
-          <span className="timeline-count">{formatEntryCount(count)}</span>
+          <SearchField
+            label="Search timeline"
+            placeholder="Search journal"
+            clear_label="Clear search"
+            value={search}
+            onChange={onSearch}
+          />
+          <span className="timeline-count" role="status">
+            {formatEntryCount(count)}
+          </span>
         </div>
       )}
       {count === 0 ? (

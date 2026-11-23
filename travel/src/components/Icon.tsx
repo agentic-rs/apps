@@ -1,6 +1,12 @@
 import type { CSSProperties } from 'react';
 
 const paths = {
+  calendar: (
+    <>
+      <rect x="3" y="5" width="18" height="16" rx="3" />
+      <path d="M7 3v4m10-4v4M3 10h18m-13 4h2m4 0h2" />
+    </>
+  ),
   landmark: <path d="m3 9 9-6 9 6ZM3 21h18M5 18h14M7 12v6m5-6v6m5-6v6" />,
   bed: (
     <>

@@ -35,6 +35,7 @@ import {
   type TravelPlatform,
 } from '../lib/types';
 import { Icon } from './Icon';
+import { useBackLayer } from '../lib/back-navigation';
 import { Photo } from './Photo';
 import { MapStopButton, MapStopList } from './MapStopList';
 import type { MoveStop } from './StopOrderButtons';
@@ -239,6 +240,11 @@ export default function MapView({
   const numbers = useMemo(() => new Map(stops.map((stop, index) => [stop.id, index + 1])), [stops]);
   const fit_key = `${mode}:${groups.map((group) => group.key).join(';')}`;
   const selected = groups.find((group) => group.key === selected_key);
+  function closeSelection() {
+    setSelectedKey(null);
+    setUnlocatedOpen(false);
+  }
+  useBackLayer(Boolean(selected) || unlocated_open, closeSelection);
   const visible_ids = new Set(unlocated_open ? data.unlocated_ids : (selected?.entry_ids ?? []));
   const selected_visits = (mode === 'stops' ? [] : visits)
     .filter((visit) => visible_ids.has(visit.id))
@@ -578,10 +584,7 @@ export default function MapView({
                 type="button"
                 className="icon-button"
                 aria-label="Close map selection"
-                onClick={() => {
-                  setSelectedKey(null);
-                  setUnlocatedOpen(false);
-                }}
+                onClick={closeSelection}
               >
                 <Icon name="close" size={19} />
               </button>

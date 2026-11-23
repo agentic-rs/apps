@@ -1,4 +1,5 @@
-import { lazy, Suspense, useMemo, useState } from 'react';
+import { lazy, Suspense, useLayoutEffect, useMemo, useState } from 'react';
+import { dismissBackLayer } from './lib/back-navigation';
 import { useJournal } from './lib/useJournal';
 import { currentOffsetMinutes, offsetDay, toVisitInput } from './lib/dates';
 import {
@@ -68,6 +69,7 @@ export function App() {
   const [view, setView] = useState<View>('Itinerary');
   const [chosen_day, setChosenDay] = useState('');
   const [search, setSearch] = useState('');
+  const [trip_search, setTripSearch] = useState('');
   const [editor, setEditor] = useState<Editor | null>(null);
   const [detail_id, setDetailId] = useState('');
   const [open_photo, setOpenPhoto] = useState<{ asset: PhotoAsset; caption: string } | null>(null);
@@ -132,6 +134,18 @@ export function App() {
     setNotice('');
     setDetailId('');
   }
+
+  useLayoutEffect(
+    () =>
+      platform?.onBack?.(() => {
+        if (dismissBackLayer()) return true;
+        if (!trip) return false;
+        if (view === 'Itinerary') openTrip('');
+        else setView('Itinerary');
+        return true;
+      }),
+    [platform, trip, view],
+  );
 
   function updateTrip(id: string, update: (current: Trip) => Trip) {
     return persist((snapshot) => {
@@ -208,18 +222,26 @@ export function App() {
   return (
     <div className={`app-shell${platform.native ? ' native' : ''}`}>
       {(trip || !platform.native) && (
-        <header className="view-header">
+        <header className={trip ? 'view-header trip-navigation' : 'view-header'}>
           {trip && (
-            <button className="trip-back" onClick={() => openTrip('')}>
-              <Icon name="back" size={15} />
-              Trips
+            <button className="trip-back" aria-label="Trips" onClick={() => openTrip('')}>
+              <Icon name="back" size={20} />
+              <span>Trips</span>
             </button>
           )}
           <div className="view-title">
             {!trip && <img className="brand-symbol" src={fieldnotes_icon} alt="" />}
             {trip ? (
               <div className="trip-header-copy">
-                <h1>{trip.title}</h1>
+                <div className="trip-title-line">
+                  <h1>{trip.title}</h1>
+                  <Icon name="edit" size={15} />
+                  <button
+                    className="trip-title-edit"
+                    aria-label="Edit trip"
+                    onClick={() => setEditor({ kind: 'edit_trip' })}
+                  />
+                </div>
                 {route_summary && route_summary !== day_cities && <p>{route_summary}</p>}
               </div>
             ) : (
@@ -227,18 +249,16 @@ export function App() {
             )}
           </div>
           {trip && view === 'Itinerary' && (
-            <button className="trip-add-city" onClick={() => setEditor({ kind: 'add_city' })}>
-              <Icon name="plus" size={15} />
-              Add a city
-            </button>
-          )}
-          {trip && (
             <button
-              className="icon-button"
-              aria-label="Edit trip"
-              onClick={() => setEditor({ kind: 'edit_trip' })}
+              className="trip-add-city"
+              aria-label="Add a city"
+              onClick={() => setEditor({ kind: 'add_city' })}
             >
-              <Icon name="edit" size={19} />
+              <Icon name="plus" size={15} />
+              <span className="add-city-label">Add a city</span>
+              <span className="add-city-short" aria-hidden="true">
+                City
+              </span>
             </button>
           )}
         </header>
@@ -257,6 +277,8 @@ export function App() {
             <TripLibrary
               journal={journal}
               platform={platform}
+              search={trip_search}
+              onSearch={setTripSearch}
               onOpen={(value) => openTrip(value.id)}
               onCreate={() => setEditor({ kind: 'new_trip' })}
             />
@@ -414,6 +436,7 @@ export function App() {
           onCancel={() => setEditor(null)}
           onSave={async (value) => {
             await persist((snapshot) => upsertTrip(snapshot, value));
+            setTripSearch('');
             openTrip(value.id);
             setEditor(null);
           }}

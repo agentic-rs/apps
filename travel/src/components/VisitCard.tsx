@@ -23,6 +23,7 @@ export function VisitCard({
 }) {
   const photos = detail ? visit.photos : visit.photos.slice(0, 2);
   const title = visitTitle(visit, place);
+  const locality = (visit.title && place?.name) || place?.locality;
   return (
     <article className={`visit-card${detail ? ' visit-detail' : ''}`}>
       <header className="visit-header">
@@ -43,8 +44,12 @@ export function VisitCard({
             </button>
           )}
           <p>
-            {(visit.title && place?.name) || place?.locality || trip.title}
-            <span>·</span>
+            {locality && (
+              <>
+                {locality}
+                <span>·</span>
+              </>
+            )}
             {formatVisitTime(visit.visited_at, visit.utc_offset_minutes)}
           </p>
         </div>
@@ -69,15 +74,6 @@ export function VisitCard({
             </button>
           )}
         </div>
-      )}
-      {!detail && (
-        <footer className="visit-footer">
-          <span>{trip.title}</span>
-          <button onClick={onOpen}>
-            <Icon name={visit.actual_location ? 'locate' : 'pin'} size={13} />
-            {visit.actual_location ? 'Visit recorded' : 'No visit coordinates'}
-          </button>
-        </footer>
       )}
       {detail && (
         <>

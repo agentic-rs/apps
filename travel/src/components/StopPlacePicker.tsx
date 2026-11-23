@@ -1,9 +1,16 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { confirmsInput } from '../lib/keyboard';
 import { cityIndicesOnDay } from '../lib/city-days';
 import { isCalendarDate, itineraryDayLabel } from '../lib/dates';
-import { distanceKm } from '../lib/distance';
+import { distanceKm, formatDistance } from '../lib/distance';
 import { text_limits } from '../lib/model';
-import type { StopLookup, StopSearchRequest, StopSearchResult } from '../lib/stop-lookup';
+import {
+  filterNearbyPlaces,
+  groupPlacesForCity,
+  type StopLookup,
+  type StopSearchRequest,
+  type StopSearchResult,
+} from '../lib/stop-lookup';
 import type { PlannedStop, StopKind, Trip } from '../lib/types';
 import { Icon } from './Icon';
 import '../stop-place-picker.css';
@@ -35,12 +42,26 @@ type SearchState =
   | { request: StopSearchRequest; places: StopSearchResult[] }
   | { request: StopSearchRequest; error: string };
 
+type SearchInput = { text: string; submitted: string | null };
+const empty_search: SearchInput = { text: '', submitted: '' };
+
+function searchKey(
+  category: StopSearchRequest['category'],
+  index: number | undefined,
+  city: string,
+) {
+  return category === 'airport' ? 'airport' : JSON.stringify([category, index, city]);
+}
+
 export function StopPlacePicker({
   trip,
   day,
   lookup,
   initial_category = 'sight',
+  initial_city,
+  initial_city_id,
   day_stops = [],
+  onCategoryChange,
   onPick,
   onManual,
 }: {
@@ -48,22 +69,32 @@ export function StopPlacePicker({
   day: string;
   lookup: StopLookup;
   initial_category?: StopSearchRequest['category'];
+  initial_city?: string;
+  initial_city_id?: string;
   day_stops?: PlannedStop[];
-  onPick(place: StopSearchResult): void;
-  onManual(name: string, kind: StopKind): void;
+  onCategoryChange?(category: StopSearchRequest['category']): void;
+  onPick(place: StopSearchResult, city?: string, city_id?: string): void;
+  onManual(name: string, kind: StopKind, city?: string, city_id?: string): void;
 }) {
   const cities = trip.cities ?? [];
   const day_indices = cityIndicesOnDay(trip, day);
   const options = day_indices.length ? day_indices : cities.map((_, index) => index);
   const [category, setCategory] = useState(initial_category);
-  const [chosen_city, setChosenCity] = useState<number>();
-  const [custom_city, setCustomCity] = useState('');
-  const [query, setQuery] = useState('');
-  // An empty submitted query browses the category. A null one waits for the traveler to submit.
-  const [submitted_query, setSubmittedQuery] = useState<string | null>('');
+  const [chosen_city, setChosenCity] = useState<number | undefined>(() => {
+    if (initial_city_id) {
+      const match = options.find((index) => trip.city_locations?.[index]?.id === initial_city_id);
+      if (match !== undefined) return match;
+    }
+    const names = options.filter(
+      (index) =>
+        cities[index] === initial_city && (!initial_city_id || !trip.city_locations?.[index]?.id),
+    );
+    return names.length === 1 ? names[0] : undefined;
+  });
+  const [custom_city, setCustomCity] = useState(!cities.length ? (initial_city ?? '') : '');
+  const [searches, setSearches] = useState<Record<string, SearchInput>>({});
   const [retry, setRetry] = useState(0);
   const [state, setState] = useState<SearchState>();
-  const browse_cache = useRef(new Map<string, StopSearchResult[]>());
   const input = useRef<HTMLInputElement>(null);
   const airports = category === 'airport';
   const is_browsable = category === 'sight' || category === 'stay';
@@ -71,47 +102,48 @@ export function StopPlacePicker({
   const city_index = chosen_city ?? default_city;
   const city = city_index === undefined ? custom_city.trim() : cities[city_index];
   const location = city_index === undefined ? null : trip.city_locations?.[city_index];
+  const scoped_city = airports || !city ? undefined : city;
+  const scoped_id = airports ? undefined : location?.id;
+  const scope_key = searchKey(category, city_index, city);
+  const { text: query, submitted: submitted_query } = searches[scope_key] ?? empty_search;
   const can_search = Boolean(query.trim() && (airports || city));
   const can_browse = is_browsable && city_index !== undefined;
+  // While composing, keep the nearby request alive and match its rows on device.
+  const search_term = submitted_query ?? (can_browse ? '' : null);
   const request = useMemo<StopSearchRequest | null>(() => {
-    if (submitted_query === null || (!airports && !city) || (!submitted_query && !can_browse))
-      return null;
+    if (search_term === null || (!airports && !city) || (!search_term && !can_browse)) return null;
     return {
       category,
       city: airports ? '' : city,
       location: airports ? null : location,
-      query: submitted_query,
+      query: search_term,
     };
-  }, [airports, can_browse, category, city, location, submitted_query]);
+  }, [airports, can_browse, category, city, location, search_term]);
   const current = state?.request === request ? state : undefined;
   const loading = Boolean(request && !current);
-  const places = current && 'places' in current ? current.places : undefined;
+  const response_places = current && 'places' in current ? current.places : undefined;
+  const scoped =
+    response_places && !airports && city_index !== undefined
+      ? groupPlacesForCity(response_places, trip, options, city_index)
+      : undefined;
+  const results = scoped?.places ?? response_places;
+  const other_cities = submitted_query ? (scoped?.other_cities ?? []) : [];
+  const filtering = submitted_query === null && can_browse;
+  const places = results && filtering ? filterNearbyPlaces(results, query) : results;
   const error = current && 'error' in current ? current.error : '';
   const category_label = categories.find(([key]) => key === category)![1];
-  const heading = submitted_query
-    ? `Results for “${submitted_query}”`
-    : !airports && city
-      ? `${category_label} near ${city}`
-      : category_label;
+  const scoped_label = city_index === undefined ? city : cityLabel(city_index);
+  const heading = scoped_city ? `${category_label} near ${scoped_label}` : category_label;
 
   useEffect(() => {
     if (!request) return;
     const controller = new AbortController();
-    const browse_key = request.query ? '' : JSON.stringify(request);
     async function search(active: StopSearchRequest) {
       await Promise.resolve();
       if (controller.signal.aborted) return;
-      const cached = browse_key && browse_cache.current.get(browse_key);
-      if (cached) {
-        setState({ request: active, places: cached });
-        return;
-      }
       try {
-        if (active.category !== 'airport' && navigator.onLine === false)
-          throw new Error('You’re offline. Search airports or enter a stop manually.');
         const results = await lookup.search(active, controller.signal);
         if (controller.signal.aborted) return;
-        if (browse_key) browse_cache.current.set(browse_key, results);
         setState({ request: active, places: results });
       } catch (reason) {
         if (!controller.signal.aborted)
@@ -144,9 +176,13 @@ export function StopPlacePicker({
     });
   }
 
-  function clearSearch() {
-    setQuery('');
-    setSubmittedQuery('');
+  function changeSearch(text: string, submitted: string | null, key = scope_key) {
+    setSearches((previous) => ({ ...previous, [key]: { text, submitted } }));
+  }
+
+  function searchOtherCity(index: number, term: string) {
+    changeSearch(term, term, searchKey(category, index, cities[index]));
+    setChosenCity(index);
   }
 
   function tryAgain() {
@@ -161,7 +197,7 @@ export function StopPlacePicker({
     if (submitted_query === term) {
       if (!loading) tryAgain();
     } else {
-      setSubmittedQuery(term);
+      changeSearch(query, term);
     }
   }
 
@@ -197,10 +233,7 @@ export function StopPlacePicker({
                         type="button"
                         aria-label={`Search in ${cityLabel(index)}`}
                         aria-pressed={city_index === index}
-                        onClick={() => {
-                          if (city_index !== index) clearSearch();
-                          setChosenCity(index);
-                        }}
+                        onClick={() => setChosenCity(index)}
                       >
                         <Icon name={city_index === index ? 'check' : 'pin'} size={16} />
                         {cityLabel(index)}
@@ -216,10 +249,7 @@ export function StopPlacePicker({
                   value={custom_city}
                   maxLength={text_limits.city_name}
                   placeholder="City name"
-                  onChange={(event) => {
-                    setCustomCity(event.target.value);
-                    setSubmittedQuery(query.trim() ? null : '');
-                  }}
+                  onChange={(event) => setCustomCity(event.target.value)}
                 />
               </label>
             ))}
@@ -230,10 +260,9 @@ export function StopPlacePicker({
                 key={value}
                 aria-pressed={value === category}
                 onClick={() => {
-                  if (category !== value) {
-                    clearSearch();
-                    setCategory(value);
-                  }
+                  if (value === category) return;
+                  setCategory(value);
+                  onCategoryChange?.(value);
                 }}
               >
                 <Icon name={icon} size={20} />
@@ -259,15 +288,10 @@ export function StopPlacePicker({
                 value={query}
                 onChange={(event) => {
                   const value = event.target.value;
-                  setQuery(value);
-                  setSubmittedQuery(value.trim() ? null : '');
+                  changeSearch(value, value.trim() ? null : '');
                 }}
                 onKeyDown={(event) => {
-                  if (
-                    event.key === 'Enter' &&
-                    !event.nativeEvent.isComposing &&
-                    event.nativeEvent.keyCode !== 229
-                  ) {
+                  if (confirmsInput(event.nativeEvent)) {
                     event.preventDefault();
                     submitSearch();
                   }
@@ -278,7 +302,10 @@ export function StopPlacePicker({
                   className="stop-picker-clear"
                   type="button"
                   aria-label="Clear search"
-                  onClick={clearSearch}
+                  onClick={() => {
+                    changeSearch('', '');
+                    input.current?.focus({ preventScroll: true });
+                  }}
                 >
                   <Icon name="close" size={16} />
                 </button>
@@ -288,7 +315,7 @@ export function StopPlacePicker({
               <button
                 className="primary"
                 type="button"
-                disabled={!can_search || loading}
+                disabled={!can_search || (loading && submitted_query !== null)}
                 onClick={submitSearch}
               >
                 Search
@@ -308,12 +335,17 @@ export function StopPlacePicker({
               (places.length ? (
                 <p className="sr-only">
                   {places.length} {places.length === 1 ? 'place' : 'places'} found.
+                  {filtering && ' Matching nearby places.'}
                 </p>
               ) : (
                 <p className="stop-picker-status">
-                  {submitted_query
-                    ? 'No matches. Try another name or enter the stop manually.'
-                    : 'No nearby places found. Search by name or enter the stop manually.'}
+                  {filtering
+                    ? 'No nearby matches. Tap Search to look farther afield.'
+                    : other_cities.length
+                      ? `No matches in ${scoped_label}.`
+                      : submitted_query
+                        ? 'No matches. Try another name or enter the stop manually.'
+                        : 'No nearby places found. Search by name or enter the stop manually.'}
                 </p>
               ))}
           </div>
@@ -340,13 +372,20 @@ export function StopPlacePicker({
             <ul className="stop-picker-results" aria-label="Place results">
               {places.map((place) => (
                 <li key={place.id}>
-                  <button type="button" onClick={() => onPick(place)}>
+                  <button type="button" onClick={() => onPick(place, scoped_city, scoped_id)}>
                     <span className="stop-picker-pin" data-kind={place.kind}>
                       <Icon name={airports ? 'plane' : place_icons[place.kind]} size={21} />
                     </span>
                     <span className="stop-picker-label">
                       <strong>{place.title}</strong>
-                      {place.subtitle && <small>{place.subtitle}</small>}
+                      {(place.subtitle || place.distance_km !== undefined) && (
+                        <small>
+                          {place.subtitle}
+                          {place.subtitle && place.distance_km !== undefined && ' · '}
+                          {place.distance_km !== undefined &&
+                            `${formatDistance(place.distance_km)} from city center`}
+                        </small>
+                      )}
                       {onThisDay(place) && (
                         <span className="stop-picker-planned">
                           <Icon name="check" size={12} /> On this day
@@ -359,6 +398,18 @@ export function StopPlacePicker({
               ))}
             </ul>
           )}
+          {submitted_query &&
+            other_cities.map((index) => (
+              <button
+                key={index}
+                type="button"
+                className="secondary stop-picker-other-city"
+                aria-label={`Search for “${submitted_query}” in ${cityLabel(index)}`}
+                onClick={() => searchOtherCity(index, submitted_query)}
+              >
+                <Icon name="search" size={16} /> Search in {cityLabel(index)}
+              </button>
+            ))}
           {airports ? (
             <p className="stop-picker-credit">
               <a href="https://ourairports.com/data/" target="_blank" rel="noopener noreferrer">
@@ -401,6 +452,8 @@ export function StopPlacePicker({
             onManual(
               query.trim(),
               category === 'airport' ? 'transport' : category === 'all' ? 'sight' : category,
+              scoped_city,
+              scoped_id,
             )
           }
         >

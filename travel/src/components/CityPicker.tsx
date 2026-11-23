@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { confirmsInput } from '../lib/keyboard';
 import {
   cityKey,
   directoryCityOptions,
@@ -150,7 +151,7 @@ export function CityPicker({ title, excluded_cities = [], onSelect, onDismiss }:
                 setFailure(null);
               }}
               onKeyDown={(event) => {
-                if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+                if (confirmsInput(event.nativeEvent)) {
                   event.preventDefault();
                   event.currentTarget.blur();
                 }

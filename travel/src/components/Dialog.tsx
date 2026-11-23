@@ -1,10 +1,12 @@
 import { useId, useLayoutEffect, useRef, type ReactNode } from 'react';
 import { Icon } from './Icon';
+import { dismissBackLayer, useBackLayer } from '../lib/back-navigation';
 
 export function Dialog({
   title,
   children,
   onDismiss,
+  onBack = onDismiss,
   wide = false,
   full_screen = false,
   dismiss_disabled = false,
@@ -12,6 +14,7 @@ export function Dialog({
   title: string;
   children: ReactNode;
   onDismiss(): void;
+  onBack?(): void;
   wide?: boolean;
   full_screen?: boolean;
   dismiss_disabled?: boolean;
@@ -19,6 +22,9 @@ export function Dialog({
   const ref = useRef<HTMLDialogElement>(null);
   const outside_press = useRef(false);
   const id = useId();
+  useBackLayer(true, () => {
+    if (!dismiss_disabled) onBack();
+  });
   useLayoutEffect(() => {
     const dialog = ref.current!;
     dialog.showModal();
@@ -56,7 +62,7 @@ export function Dialog({
       }}
       onCancel={(event) => {
         event.preventDefault();
-        if (!dismiss_disabled) onDismiss();
+        dismissBackLayer();
       }}
     >
       <header className="dialog-header">
@@ -87,6 +93,9 @@ export function DiscardPrompt({
 }) {
   const prompt = useRef<HTMLDivElement>(null);
   const keep = useRef<HTMLButtonElement>(null);
+  useBackLayer(true, () => {
+    if (!disabled) onKeep();
+  });
   useLayoutEffect(() => {
     prompt.current?.scrollIntoView({ block: 'center' });
     keep.current?.focus({ preventScroll: true });

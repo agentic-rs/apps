@@ -1,7 +1,7 @@
 .itinerary-day {
   width: min(100%, 760px);
   margin-inline: auto;
-  padding: 22px clamp(14px, 4vw, 32px) 36px;
+  padding: 16px clamp(14px, 4vw, 32px) 36px;
 }
 
 .itinerary-day-heading {
@@ -21,17 +21,40 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-top: 7px;
+  margin-bottom: 12px;
+}
+
+.day-summary {
+  min-width: 0;
+}
+
+.day-summary h2 + p {
+  margin-top: 4px;
+}
+
+.day-map-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  gap: 5px;
+  min-width: 44px;
+  padding: 4px 9px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--apell-primary-soft);
+  color: var(--apell-primary);
+  font-size: 0.85rem;
+  font-weight: 550;
 }
 
 .itinerary-day-heading h2,
 .itinerary-journal h3 {
   margin: 0;
-  font-family: Georgia, 'Times New Roman', serif;
   font-size: clamp(1.4rem, 4.4vw, 1.85rem);
-  line-height: 1.12;
-  font-weight: 500;
-  letter-spacing: -0.035em;
+  line-height: 1.15;
+  font-weight: 680;
+  letter-spacing: -0.03em;
 }
 
 .itinerary-day-heading p {
@@ -108,7 +131,9 @@
 }
 
 .itinerary-stop-meta {
-  gap: 9px;
+  flex-wrap: wrap;
+  gap: 3px 9px;
+  overflow-wrap: anywhere;
   color: var(--apell-muted);
   font-size: 0.73rem;
 }
@@ -273,6 +298,157 @@
 
 .stop-form-trip svg {
   flex: none;
+}
+
+.stop-form {
+  background: var(--apell-canvas);
+}
+.stop-form > * {
+  max-width: 580px;
+  margin-inline: auto;
+}
+.stop-form .stop-form-heading {
+  gap: 0 8px;
+  margin-bottom: 8px;
+}
+.stop-form .stop-form-trip {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.85rem;
+}
+.stop-form .stop-form-lookup {
+  color: var(--apell-primary);
+}
+.stop-place-fields,
+.stop-schedule {
+  margin-bottom: 16px;
+  padding-inline: 14px;
+  border: 1px solid var(--apell-line);
+  border-radius: 14px;
+  background: var(--apell-surface);
+}
+.stop-form .stop-name-field {
+  margin: 0;
+  padding-top: 11px;
+  gap: 0;
+  color: var(--apell-muted);
+  font-size: 0.8rem;
+}
+.stop-name-field input {
+  padding: 4px 0;
+  border: 0;
+  border-radius: 5px;
+  min-height: 44px;
+  font-size: 1.2rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.stop-place-fields .stop-place-address {
+  margin: 0 0 10px;
+  line-height: 1.4;
+}
+.stop-setting {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 57%);
+  align-items: center;
+  gap: 8px;
+  min-height: 49px;
+  margin: 0;
+  color: var(--apell-text);
+  font-size: 0.95rem;
+  font-weight: 400;
+}
+.stop-setting small {
+  display: block;
+  margin-top: 2px;
+  color: var(--apell-muted);
+  font-size: 0.75rem;
+}
+.stop-schedule .stop-setting + .stop-setting,
+.stop-place-fields .stop-setting {
+  border-top: 1px solid var(--apell-line);
+}
+.stop-setting-control {
+  position: relative;
+  display: grid;
+  align-items: center;
+  min-width: 0;
+  min-height: 46px;
+}
+.stop-setting-control > :is(input, select) {
+  min-height: 44px;
+  width: 100%;
+  margin: 0;
+  padding: 6px 2px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--apell-primary);
+  font: inherit;
+  font-size: 1rem;
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+.stop-category-control select {
+  appearance: none;
+  padding-inline-end: 23px;
+  text-align-last: end;
+}
+.stop-category-control svg {
+  position: absolute;
+  inset-inline-end: 1px;
+  pointer-events: none;
+  transform: rotate(90deg);
+  color: var(--apell-muted);
+}
+.stop-touch-value {
+  display: none;
+}
+/* WebKit presents the system picker on tap. Give the date a single line and
+   an empty time a visible value while keeping the real input interactive. */
+@media (pointer: coarse) {
+  .stop-touch-value {
+    display: block;
+    padding-block: 7px;
+    color: var(--apell-primary);
+    text-align: end;
+    font-variant-numeric: tabular-nums;
+  }
+  .stop-setting-control > input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+  }
+  .stop-setting-control:has(input:focus-visible) {
+    outline: 2px solid var(--apell-focus);
+    border-radius: 6px;
+  }
+}
+.stop-notes {
+  gap: 6px;
+  margin-bottom: 12px;
+  font-size: 0.88rem;
+}
+.stop-notes textarea {
+  min-height: 64px;
+  border-color: var(--apell-line);
+}
+.stop-form-footer {
+  flex-direction: column;
+}
+.stop-form-footer > * {
+  width: min(100%, 580px);
+  margin: 0 auto;
+}
+.stop-form-actions {
+  display: grid;
+  grid-template-columns: minmax(5rem, 1fr) 2fr;
+  gap: 9px;
+}
+.stop-form-actions button {
+  justify-content: center;
 }
 
 .stop-coordinates {

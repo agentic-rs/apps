@@ -1,4 +1,5 @@
 import { useRef, type ReactNode } from 'react';
+import { confirmsInput } from '../lib/keyboard';
 
 /** Apell's opaque iframe disallows browser form submission, including implicit Enter submits. */
 export function EditorForm({
@@ -21,8 +22,7 @@ export function EditorForm({
       onSubmit={(event) => event.preventDefault()}
       onKeyDown={(event) => {
         if (
-          event.key === 'Enter' &&
-          !event.nativeEvent.isComposing &&
+          confirmsInput(event.nativeEvent) &&
           event.target instanceof HTMLInputElement &&
           !['checkbox', 'file', 'button', 'submit'].includes(event.target.type)
         ) {

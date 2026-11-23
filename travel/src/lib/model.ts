@@ -121,14 +121,18 @@ export function parseVisitLocation(value: unknown): VisitLocation {
   };
 }
 
+function cityIdentifier(value: unknown): string {
+  if (typeof value !== 'string' || !/^geonames:\d+$/.test(value))
+    throw new Error('Invalid GeoNames city identifier.');
+  return value;
+}
+
 function parseTripCityLocation(value: unknown): TripCityLocation | null {
   if (value === null) return null;
   const row = record(value, 'City location');
-  if (typeof row.id !== 'string' || !/^geonames:\d+$/.test(row.id))
-    throw new Error('Invalid GeoNames city identifier.');
   if (typeof row.country_code !== 'string' || !/^[A-Z]{2}$/.test(row.country_code))
     throw new Error('Invalid city country code.');
-  return { id: row.id, country_code: row.country_code, ...parseCoordinates(row) };
+  return { id: cityIdentifier(row.id), country_code: row.country_code, ...parseCoordinates(row) };
 }
 
 export function parseTrip(value: unknown): Trip {
@@ -236,6 +240,12 @@ export function parseStop(value: unknown): PlannedStop {
     throw new Error('Enter a valid stop time or leave the time blank.');
   const kind = stop_kinds.find((option) => option === row.kind);
   if (!kind) throw new Error('Choose a valid stop category.');
+  const city =
+    row.city === undefined
+      ? undefined
+      : text(row.city, 'Stop city', text_limits.city_name, true).trim();
+  if (row.city_id !== undefined && !city)
+    throw new Error('A stop city identifier requires a city name.');
   const checkout = row.checkout_date;
   if (
     checkout !== undefined &&
@@ -249,6 +259,8 @@ export function parseStop(value: unknown): PlannedStop {
     id: id(row.id, 'Planned stop'),
     trip_id: id(row.trip_id, 'Trip'),
     day: row.day,
+    ...(city && { city }),
+    ...(row.city_id !== undefined && { city_id: cityIdentifier(row.city_id) }),
     ...(checkout !== undefined && { checkout_date: checkout }),
     title: text(row.title, 'Stop title', text_limits.stop_title, true).trim(),
     kind,

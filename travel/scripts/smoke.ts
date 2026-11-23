@@ -181,13 +181,14 @@ try {
   const openTrip = () => button('Open trip Coastal days').click();
   const addStop = async (name: string, latitude: string, longitude: string) => {
     await button('Add stop').click();
-    const editor = page.getByRole('dialog', { name: 'Add stop', exact: true });
+    const editor = page.getByRole('dialog');
+    await editor.getByRole('heading', { name: 'Choose a sight' }).waitFor();
     await editor.getByRole('button', { name: 'Enter manually' }).click();
     await editor.getByLabel('Stop name').fill(name);
     await editor.getByText('Map coordinates', { exact: false }).click();
     await editor.getByLabel('Stop latitude').fill(latitude);
     await editor.getByLabel('Stop longitude').fill(longitude);
-    await editor.getByRole('button', { name: 'Save stop' }).click();
+    await editor.getByRole('button', { name: /^Add to (Day \d+|itinerary)$/ }).click();
     await waitClosed();
   };
   const assertFullScreenEditor = async (editor: Locator) => {
@@ -295,8 +296,18 @@ try {
   await second_tab.getByRole('button', { name: 'Add stop', exact: true }).click();
   await second_tab.getByRole('button', { name: 'Enter manually' }).click();
   await second_tab.getByLabel('Stop name').fill('Draft in another tab');
+  await second_tab.getByLabel('Stop name').dispatchEvent('keydown', {
+    key: 'Enter',
+    keyCode: 229,
+    isComposing: false,
+  });
+  assert.equal(
+    (await readJournal()).stops.length,
+    0,
+    'Confirming IME text must keep the draft open.',
+  );
   await addStop('Lookout', '10.14', '20.56');
-  await second_tab.getByRole('button', { name: 'Save stop' }).click();
+  await second_tab.getByRole('button', { name: /^Add to Day \d+$/ }).click();
   await second_tab.getByRole('alert').filter({ hasText: 'changed in another window' }).waitFor();
   assert.equal((await readJournal()).stops.length, 1);
   await second_tab.close();
@@ -329,6 +340,37 @@ try {
   assert.equal(await day_title.innerText(), 'Tokyo → Kyoto');
   await page.screenshot({ path: resolve(output, 'mobile-multi-city.png') });
   await page.screenshot({ path: resolve(output, 'mobile-transfer-day.png') });
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.evaluate(() => (document.documentElement.style.fontSize = '200%'));
+  await button('Next day').click();
+  await button('Previous day').click();
+  const selected_day = page
+    .getByRole('navigation', { name: 'Choose day' })
+    .locator('[aria-current="date"]');
+  assert(
+    await selected_day.evaluate((item) => {
+      const bounds = item.getBoundingClientRect();
+      const strip = item.parentElement!.getBoundingClientRect();
+      return (
+        bounds.width >= 44 &&
+        bounds.height >= 44 &&
+        bounds.left >= strip.left - 1 &&
+        bounds.right <= strip.right + 1
+      );
+    }),
+    'Large text must leave the selected day fully visible and tappable.',
+  );
+  await button('Next day').focus();
+  await page.keyboard.press('Tab');
+  const date_field = page.getByLabel('Choose itinerary date');
+  assert(
+    await date_field.evaluate(
+      (field) => document.activeElement === field && getComputedStyle(field).opacity === '1',
+    ),
+    'A keyboard user must see the focused date editor.',
+  );
+  await page.evaluate(() => document.documentElement.style.removeProperty('font-size'));
+  await page.setViewportSize({ width: 390, height: 844 });
   const overview = page.getByRole('dialog', { name: 'Trip overview', exact: true });
   const overviewDay = (date: string) =>
     overview.getByRole('button', { name: `Open itinerary for ${date}`, exact: true });
@@ -364,9 +406,9 @@ try {
   );
   await button('Edit Lookout').click();
   await page.getByLabel('Category').selectOption('food');
-  await page.getByLabel('Time').fill('12:45');
+  await page.getByLabel('Time', { exact: true }).fill('12:45');
   await page.getByLabel('Notes').fill('A picnic above the bay.');
-  await button('Save stop').click();
+  await button('Save changes').click();
   await waitClosed();
   await button('Check in at Old harbour').click();
   assert.equal(await page.getByLabel('Place name', { exact: true }).inputValue(), 'Old harbour');
@@ -504,6 +546,17 @@ try {
   assert.equal(await page.locator('.visit-card').count(), 0);
   await page.reload();
   await button('Open trip City wander').getByText('Saltwind Bay', { exact: true }).waitFor();
+  const trip_search = page.getByRole('searchbox', { name: 'Search trips' });
+  await trip_search.fill('kyoto');
+  await openTrip();
+  await button('Trips').click();
+  assert.equal(await trip_search.inputValue(), 'kyoto');
+  assert.equal(await button('Open trip City wander').count(), 0);
+  await trip_search.fill('nonexistent destination');
+  await page.getByText('No matching trips.').waitFor();
+  await button('Clear trip search').click();
+  assert(await trip_search.evaluate((input) => input === document.activeElement));
+  await button('Open trip City wander').waitFor();
   await openTrip();
   await button('Edit trip').click();
   await button('Add city').click();
@@ -665,7 +718,7 @@ try {
   await goTo('Itinerary');
   await button('Edit Lookout').click();
   await page.getByLabel('Day', { exact: true }).fill('2026-05-04');
-  await button('Save stop').click();
+  await button('Save changes').click();
   await waitClosed();
   assert.equal(await page.getByLabel('Choose itinerary date').inputValue(), '2026-05-04');
   await button('Edit Lookout').waitFor();
@@ -673,7 +726,7 @@ try {
   await chooseDay('2026-05-01');
   await button('Edit Old harbour').click();
   await page.getByLabel('Day', { exact: true }).fill('2026-05-04');
-  await button('Save stop').click();
+  await button('Save changes').click();
   await waitClosed();
   const linked = page.getByRole('group', { name: 'Journal at Old harbour' });
   await linked.getByText('Recorded 1 May 2026').waitFor();
@@ -916,8 +969,8 @@ try {
   await page.getByText('Map coordinates', { exact: false }).click();
   await page.getByLabel('Stop latitude').fill('30');
   await page.getByLabel('Stop longitude').fill('100.02');
-  await page.getByLabel('Time', { exact: false }).fill('12:30');
-  await button('Save stop').click();
+  await page.getByLabel('Time', { exact: true }).fill('12:30');
+  await button('Save changes').click();
   await waitClosed();
   const original_route = await readJournal();
   const city_id = original_route.trips.find((trip) => trip.title === 'City wander')!.id;

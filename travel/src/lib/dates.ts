@@ -106,18 +106,18 @@ export function formatVisitTime(iso: string, offset: number): string {
   }).format(shiftedDate(iso, offset));
 }
 
+const trip_date_format = new Intl.DateTimeFormat('en-GB', {
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+  timeZone: 'UTC',
+});
+
 export function formatTripDates(start_date: string, end_date: string): string {
-  const format = (value: string) => {
-    if (!isCalendarDate(value)) throw new Error('The trip date is invalid.');
-    return new Intl.DateTimeFormat('en-GB', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-      timeZone: 'UTC',
-    }).format(new Date(`${value}T00:00:00.000Z`));
-  };
   if (!start_date && !end_date) return 'Dates open';
-  if (!start_date) return `Until ${format(end_date)}`;
-  if (!end_date || start_date === end_date) return format(start_date);
-  return `${format(start_date)} – ${format(end_date)}`;
+  if (!start_date) return `Until ${trip_date_format.format(calendarDayMillis(end_date))}`;
+  const start = calendarDayMillis(start_date);
+  return end_date && end_date !== start_date
+    ? trip_date_format.formatRange(start, calendarDayMillis(end_date))
+    : trip_date_format.format(start);
 }

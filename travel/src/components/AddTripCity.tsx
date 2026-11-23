@@ -48,6 +48,10 @@ export function AddTripCity({
   }
 
   const { name, location } = selected;
+  function backToCities() {
+    setError('');
+    setSelected(null);
+  }
   async function submit() {
     if (saving.current) return;
     saving.current = true;
@@ -64,7 +68,7 @@ export function AddTripCity({
   }
 
   return (
-    <Dialog title="Travel day" dismiss_disabled={busy} onDismiss={onCancel}>
+    <Dialog title="Travel day" dismiss_disabled={busy} onDismiss={onCancel} onBack={backToCities}>
       <EditorForm onSave={submit}>
         {(save) => (
           <>
@@ -108,15 +112,7 @@ export function AddTripCity({
               </p>
             )}
             <footer className="dialog-footer">
-              <button
-                type="button"
-                className="secondary"
-                disabled={busy}
-                onClick={() => {
-                  setError('');
-                  setSelected(null);
-                }}
-              >
+              <button type="button" className="secondary" disabled={busy} onClick={backToCities}>
                 Back
               </button>
               <button type="button" className="primary" disabled={busy} onClick={save}>

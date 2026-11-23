@@ -5,19 +5,25 @@
 }
 
 .library-heading,
-.day-controls,
 .trip-back,
 .trip-journal-heading .button-row {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-.library-heading,
-.day-controls {
+.library-heading {
   justify-content: space-between;
 }
 .library-heading {
   margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+.trip-library > .filter-search {
+  margin-bottom: 14px;
+}
+.library-no-results {
+  padding: 16px 0;
+  color: var(--apell-muted);
 }
 .trip-journal-heading h2 {
   margin: 0;
@@ -85,9 +91,6 @@ button.new-trip-row {
 }
 .trip-cover .trip-cities {
   color: var(--apell-text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .trip-cover > svg {
   position: absolute;
@@ -108,6 +111,9 @@ button.new-trip-row {
   align-self: start;
 }
 .trip-back {
+  min-width: 44px;
+  gap: 1px;
+  justify-content: center;
   font-size: 0.83rem;
   font-weight: 600;
 }
@@ -128,14 +134,42 @@ button.new-trip-row {
   background: var(--apell-primary-soft);
 }
 .trip-back + .view-title {
-  border-inline-start: 1px solid var(--apell-line);
-  padding-inline-start: 12px;
+  position: relative;
+  min-height: 44px;
+}
+.trip-title-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.trip-title-line > svg {
+  flex: none;
+  color: var(--apell-primary);
+}
+.trip-title-edit {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+}
+.trip-navigation {
+  container: trip-navigation / inline-size;
+  background: var(--apell-surface);
+}
+.add-city-short {
+  display: none;
+}
+.trip-navigation .trip-header-copy {
+  max-width: 100%;
 }
 .trip-back + .view-title h1 {
   font-size: 1.05rem;
   letter-spacing: -0.02em;
 }
 .daily-workspace {
+  container: daily-workspace / inline-size;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -156,82 +190,128 @@ button.new-trip-row {
   color: var(--apell-muted);
 }
 .trip-days {
-  padding: 5px clamp(10px, 3vw, 24px) 9px;
+  display: flex;
+  align-items: stretch;
+  padding: 4px clamp(4px, 1.5vw, 12px);
   background: var(--apell-surface);
   border-bottom: 1px solid var(--apell-line);
   flex: none;
 }
-.day-controls {
-  min-height: 34px;
-  color: var(--apell-muted);
-  font-size: 0.76rem;
-}
-.open-trip-overview {
-  display: inline-flex;
+.open-trip-overview,
+.trip-days .date-jump {
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  gap: 3px;
+  min-width: 44px;
+  min-height: 44px;
+  margin: 0;
+  padding: 3px 4px;
   border: 0;
   background: transparent;
-  padding-inline: 6px;
   color: var(--apell-primary);
-  font-weight: 600;
+  font-size: 0.75rem;
+  line-height: 1.2;
+  font-weight: 550;
 }
-.trip-dates-caption {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-@media (max-width: 480px) {
-  .trip-dates-caption {
-    display: none;
-  }
-}
-.day-controls .date-jump {
+.trip-days .date-jump {
   position: relative;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 5px;
+}
+.date-jump input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 44px;
   margin: 0;
-  flex-shrink: 0;
-  font-size: 0.78rem;
-  color: var(--apell-primary);
+  padding: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.date-jump input::-webkit-calendar-picker-indicator {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  cursor: pointer;
 }
 .date-jump:focus-within {
   outline: 2px solid var(--apell-focus);
-  outline-offset: 3px;
+  outline-offset: -2px;
+  border-radius: 8px;
+}
+.date-jump input:focus:not([data-pointer]) {
+  inset-inline-start: auto;
+  z-index: 2;
+  width: min(80vw, 11rem);
+  padding-inline: 8px;
+  opacity: 1;
+  color: var(--apell-text);
+  background: var(--apell-surface);
+  font-size: 1rem;
+}
+.date-jump input:focus:not([data-pointer])::-webkit-calendar-picker-indicator {
+  position: static;
+  width: auto;
+  height: auto;
 }
 .day-strip {
   display: flex;
   align-items: stretch;
-  gap: 4px;
-}
-.day-strip button {
+  flex: 1;
   min-width: 0;
+}
+.day-options {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  flex: 1;
+  gap: 2px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+.day-options::-webkit-scrollbar {
+  display: none;
+}
+.day-options button {
+  min-width: max(44px, 3.25rem);
   min-height: 45px;
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
   gap: 2px;
-  flex: 1;
-  padding: 3px 2px;
+  flex: 1 0 auto;
+  padding: 3px 5px;
   border: 1px solid transparent;
   border-radius: 8px;
   color: var(--apell-muted);
   background: transparent;
-  font-size: 0.69rem;
+  font-size: 0.75rem;
+  white-space: nowrap;
 }
-.day-strip button[aria-current] {
+.day-options button[aria-current] {
   color: var(--apell-badge-text);
   background: var(--apell-badge);
   border-color: var(--apell-accent-line);
 }
-.day-strip button strong {
-  font-size: 0.78rem;
+.day-options button strong {
+  font-size: 0.86rem;
 }
-.day-strip button.day-step {
-  flex: 0 0 32px;
+.day-options button:focus-visible {
+  outline-offset: -3px;
+}
+.day-step {
+  display: grid;
+  place-items: center;
+  flex: 0 0 44px;
+  padding: 0;
+  border: 0;
+  color: var(--apell-primary);
+  background: transparent;
 }
 .day-strip button:disabled {
   opacity: 0.4;
@@ -254,14 +334,49 @@ button.new-trip-row {
 .timeline-list .visit-card {
   margin-bottom: 12px;
 }
-.date-jump input {
-  width: auto;
-  max-width: 145px;
-  height: 36px;
-  padding: 3px 6px;
-  color: var(--apell-text);
-  background: transparent;
-  font-size: 0.8rem;
+@media (max-width: 22em) {
+  .trip-navigation .trip-back span {
+    display: none;
+  }
+}
+@container trip-navigation (max-width: 17em) {
+  .trip-back span,
+  .add-city-label {
+    display: none;
+  }
+  .add-city-short {
+    display: inline;
+  }
+  .trip-back + .view-title h1 {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    white-space: normal;
+  }
+}
+@container daily-workspace (max-width: 17em) {
+  .trip-days {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .open-trip-overview,
+  .trip-days .date-jump {
+    flex-direction: row;
+    gap: 6px;
+    padding-inline: 8px;
+    font-size: 0.85rem;
+  }
+  .open-trip-overview {
+    justify-self: start;
+  }
+  .trip-days .date-jump {
+    grid-row: 1;
+    grid-column: 2;
+  }
+  .day-strip {
+    grid-row: 2;
+    grid-column: 1 / -1;
+  }
 }
 .linked-stop-button {
   margin: 0 20px 16px;

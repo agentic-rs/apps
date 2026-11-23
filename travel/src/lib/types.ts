@@ -59,6 +59,9 @@ export interface PlannedStop {
   id: string;
   trip_id: string;
   day: string;
+  /** The city selected in the planner, which can differ from the provider's locality. */
+  city?: string;
+  city_id?: string;
   checkout_date?: string;
   title: string;
   kind: StopKind;
@@ -99,7 +102,7 @@ export interface CheckIn {
   updated_at: string;
 }
 
-export const journal_schema_version = 7;
+export const journal_schema_version = 8;
 
 export interface Journal {
   schema_version: typeof journal_schema_version;
@@ -117,6 +120,7 @@ export interface EventTitleInput {
 
 export interface TravelPlatform {
   native: boolean;
+  onBack?(handle: () => boolean): () => void;
   load(): Promise<Journal>;
   save(journal: Journal): Promise<void>;
   importPhoto(file?: File): Promise<PhotoAsset | null>;

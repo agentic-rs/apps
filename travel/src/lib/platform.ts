@@ -5,7 +5,7 @@ import { createId } from './identity';
 import { assertPhotoPath, createNativeStorage, type NativeFileSystem } from './native-storage';
 import type { PhotoAsset, TravelPlatform, VisitLocation } from './types';
 
-type NativeHost = Pick<typeof import('@apell/sdk'), 'camera' | 'photos' | 'location'> & {
+type NativeHost = Pick<typeof import('@apell/sdk'), 'camera' | 'photos' | 'location' | 'onBack'> & {
   fs: NativeFileSystem;
   llm: TitleModel;
 };
@@ -146,6 +146,7 @@ export function createNativePlatform(host: NativeHost): TravelPlatform {
   }
   return {
     native: true,
+    onBack: host.onBack,
     generateEventTitle: (input, signal) => generateEventTitle(host.llm, input, signal),
     load: storage.load,
     save: storage.save,

@@ -414,11 +414,15 @@ describe('planned stops', () => {
     const stay: PlannedStop = {
       ...stop,
       kind: 'stay',
+      city: 'Nara',
+      city_id: 'geonames:1855612',
       checkout_date: '2026-05-15',
       directory_ref: { provider: 'osm', id: 'N12', subtitle: 'Nara, Japan' },
     };
     const next = upsertStop(populated(), stay);
     expect(parseJournal(JSON.parse(JSON.stringify(next))).stops).toEqual([stay]);
+    expect(() => parseStop({ ...stay, city: undefined })).toThrow('city name');
+    expect(() => parseStop({ ...stay, city_id: 'unknown' })).toThrow('city identifier');
     for (const checkout_date of [stay.day, '2026-05-01', '2026-02-30']) {
       expect(() => parseStop({ ...stay, checkout_date })).toThrow('check-out');
     }

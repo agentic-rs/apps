@@ -145,6 +145,7 @@ describe('native journal storage', () => {
     } | null = null;
     const platform = createNativePlatform({
       fs: files,
+      onBack: () => () => {},
       camera: { capture: async () => null },
       photos: { pick: async () => photo },
       location: { current: async () => location_value },

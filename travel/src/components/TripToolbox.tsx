@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { packingItems } from '../lib/packing';
+import { useBackLayer } from '../lib/back-navigation';
 import type { Trip } from '../lib/types';
 import { Expenses } from './Expenses';
 import { PackingList } from './PackingList';
@@ -16,6 +17,7 @@ export function TripToolbox({
   onChange(update: (current: Trip) => Trip): Promise<void>;
 }) {
   const [tool, setTool] = useState<'packing' | 'expenses' | null>(null);
+  useBackLayer(tool !== null, () => setTool(null));
   const items = packingItems(trip);
   const count = trip.expenses?.length ?? 0;
   return (

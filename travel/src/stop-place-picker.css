@@ -63,6 +63,9 @@
   border-color: var(--apell-primary);
   background: var(--apell-primary-soft);
 }
+.stop-picker-cities svg {
+  flex-shrink: 0;
+}
 .stop-picker-single-city {
   padding-block: 4px;
   color: var(--apell-text);
@@ -73,7 +76,7 @@
 }
 .stop-picker-categories {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 3.35rem), 1fr));
   padding-block: 5px;
 }
 .stop-picker-categories button {
@@ -128,6 +131,7 @@
   margin: 0;
   font-size: 1.13rem;
   letter-spacing: -0.025em;
+  overflow-wrap: anywhere;
 }
 .stop-picker-status,
 .stop-picker-credit,
@@ -140,6 +144,9 @@
 }
 .stop-picker-error {
   margin-block: 8px;
+}
+.stop-picker-other-city {
+  margin: 6px 6px 0 0;
 }
 .stop-picker-error p {
   margin-bottom: 6px;

@@ -114,31 +114,30 @@ export function ItineraryDay({
   return (
     <section className="itinerary-day" aria-label="Day itinerary">
       <header className="itinerary-day-heading">
-        {day_cities ? (
-          <>
-            <time className="day-location-date" dateTime={day}>
-              {day_label}
-            </time>
-            <h2>{day_cities}</h2>
-          </>
-        ) : (
-          <h2>
-            <time dateTime={day}>{day_label}</time>
-          </h2>
-        )}
         <div className="day-plan-tools">
-          <p>
-            {stops.length} {stops.length === 1 ? 'stop' : 'stops'}
-            {' · '}
-            {formatEntryCount(visits.length)}
-          </p>
+          <div className="day-summary">
+            {day_cities && (
+              <time className="day-location-date" dateTime={day}>
+                {day_label}
+              </time>
+            )}
+            <h2>{day_cities || <time dateTime={day}>{day_label}</time>}</h2>
+            {(stops.length > 0 || visits.length > 0) && (
+              <p>
+                {stops.length > 0 && `${stops.length} ${stops.length === 1 ? 'stop' : 'stops'}`}
+                {stops.length > 0 && visits.length > 0 && ' · '}
+                {visits.length > 0 && formatEntryCount(visits.length)}
+              </p>
+            )}
+          </div>
           <button
             type="button"
-            className="icon-button"
+            className="day-map-button"
             onClick={onOpenMap}
             aria-label="Open day map"
           >
             <Icon name="map" size={20} />
+            Map
           </button>
         </div>
         <div className="day-place-actions">
@@ -181,6 +180,7 @@ export function ItineraryDay({
                 <div className="itinerary-stop-body">
                   <div className="itinerary-stop-meta">
                     <span>{stop_kind_labels[stop.kind]}</span>
+                    {stop.city && <span>{stop.city}</span>}
                     {stop.checkout_date && (
                       <span>
                         {nights} {nights === 1 ? 'night' : 'nights'}

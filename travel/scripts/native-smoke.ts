@@ -42,6 +42,7 @@ const server = Bun.serve({
 });
 
 interface BridgeRequest {
+  type: 'request';
   request_id: string;
   method: string;
   params: Record<string, unknown>;
@@ -94,9 +95,11 @@ function placeResponse(url: URL) {
     (city) =>
       Math.abs(city.latitude - latitude) < 0.08 && Math.abs(city.longitude - longitude) < 0.08,
   );
-  const city = cities[city_index];
   const query = params.get(geoapify ? 'name' : 'q') ?? '';
-  place_requests.push({ city: city?.name ?? '', query });
+  place_requests.push({ city: cities[city_index]?.name ?? '', query });
+  // A named 40 km search around Kyoto can include hotels in Nara.
+  const venue_city = query === 'Nara test inn' ? 1 : city_index;
+  const city = cities[venue_city];
   const categories = params.get('categories')?.split(',') ?? [];
   const tags = params.getAll('osm_tag');
   const venues = [
@@ -112,7 +115,7 @@ function placeResponse(url: URL) {
             )
           : tags.length === 0 || tags.includes(`tourism:${venue.kind}`);
         if (!include || !name.toLowerCase().includes(query.toLowerCase())) return [];
-        const id = 100 + city_index * venues.length + index;
+        const id = 100 + venue_city * venues.length + index;
         return [
           {
             type: 'Feature',
@@ -315,7 +318,17 @@ try {
     if (window.parent !== window)
       Object.defineProperty(crypto, 'randomUUID', { configurable: true, value: undefined });
   });
-  await page.exposeFunction('__travel_host_call', hostCall);
+  let pending_write: Promise<void> | undefined;
+  let pending_place: Promise<void> | undefined;
+  await page.exposeFunction('__travel_host_call', async (request: BridgeRequest) => {
+    if (request.method === 'fs.write' && pending_write) await pending_write;
+    const result = hostCall(request);
+    if (request.method === 'http.request' && pending_place) {
+      const params = new URL(String(request.params.url)).searchParams;
+      if ((params.get('q') ?? params.get('name')) === 'Late inn') await pending_place;
+    }
+    return result;
+  });
   await page.route('**/*', async (route) => {
     const url = new URL(route.request().url());
     if (url.hostname === '127.0.0.1') return route.continue();
@@ -339,12 +352,17 @@ try {
   await page.evaluate((base) => {
     const host = window as unknown as {
       __travel_host_call(request: BridgeRequest): Promise<unknown>;
+      applet_port: MessagePort;
     };
     window.addEventListener('message', (event: MessageEvent) => {
       const frame = document.querySelector<HTMLIFrameElement>('#applet')!;
       if (event.source !== frame.contentWindow || event.data?.type !== 'apell:ready') return;
       const channel = new MessageChannel();
-      channel.port1.onmessage = async (message: MessageEvent<BridgeRequest>) => {
+      host.applet_port = channel.port1;
+      channel.port1.onmessage = async (
+        message: MessageEvent<BridgeRequest | { type: 'navigation_back_result' }>,
+      ) => {
+        if (message.data.type === 'navigation_back_result') return;
         try {
           const result = await host.__travel_host_call(message.data);
           channel.port1.postMessage({
@@ -367,7 +385,35 @@ try {
   }, `http://127.0.0.1:${server.port}`);
 
   const frame = page.frameLocator('#applet');
+  const shellBack = () =>
+    frame
+      .owner()
+      .page()
+      .evaluate(
+        () =>
+          new Promise<boolean>((resolve, reject) => {
+            const port = (window as unknown as { applet_port: MessagePort }).applet_port;
+            const request_id = crypto.randomUUID();
+            const timeout = setTimeout(() => {
+              port.removeEventListener('message', reply);
+              reject(new Error('The applet did not acknowledge native Back.'));
+            }, 5_000);
+            function reply(event: MessageEvent) {
+              if (
+                event.data?.type !== 'navigation_back_result' ||
+                event.data.request_id !== request_id
+              )
+                return;
+              clearTimeout(timeout);
+              port.removeEventListener('message', reply);
+              resolve(event.data.handled);
+            }
+            port.addEventListener('message', reply);
+            port.postMessage({ type: 'navigation_back', request_id });
+          }),
+      );
   await frame.getByRole('heading', { name: 'Your trips', exact: true }).waitFor();
+  assert.equal(await shellBack(), false, 'Back from the library returns to the shell.');
   const native_frame = page.frames().find((candidate) => candidate.url().endsWith('/index.html'))!;
   assert.equal(
     await native_frame.evaluate(() => self.origin),
@@ -383,6 +429,13 @@ try {
   await frame.getByRole('button', { name: 'New trip', exact: true }).click();
   const first_city = frame.getByRole('dialog', { name: 'Choose a city', exact: true });
   await first_city.waitFor();
+  assert.equal(
+    await shellBack(),
+    true,
+    'Back must dismiss the city picker before leaving the applet.',
+  );
+  await first_city.waitFor({ state: 'hidden' });
+  await frame.getByRole('button', { name: 'New trip', exact: true }).click();
   assert.equal(await frame.getByLabel('Trip name').count(), 0);
   await first_city.getByRole('searchbox', { name: 'Search cities' }).fill('東京');
   await first_city.getByRole('button', { name: 'Tokyo, Japan', exact: true }).evaluate((option) => {
@@ -398,9 +451,25 @@ try {
   const trip_id = journal().trips[0].id;
   await frame.getByRole('button', { name: 'Edit trip', exact: true }).click();
   await frame.getByLabel('Trip name').fill('Native bridge journey');
+  assert.equal(await shellBack(), true);
+  await frame.getByRole('button', { name: 'Keep editing', exact: true }).waitFor();
+  assert.equal(await shellBack(), true, 'Back from a discard confirmation keeps the draft.');
+  await frame
+    .getByRole('button', { name: 'Keep editing', exact: true })
+    .waitFor({ state: 'hidden' });
+  assert.equal(await frame.getByLabel('Trip name').inputValue(), 'Native bridge journey');
   await frame.getByLabel('Start date').fill('2026-05-12');
   await frame.getByLabel('End date').fill('2026-05-13');
+  let finish_write!: () => void;
+  pending_write = new Promise<void>((resolve) => {
+    finish_write = resolve;
+  });
   await frame.getByRole('button', { name: 'Save trip', exact: true }).click();
+  await frame.getByRole('button', { name: 'Saving…', exact: true }).waitFor();
+  assert.equal(await shellBack(), true, 'Back during a save stays in the applet.');
+  assert(await frame.getByRole('button', { name: 'Saving…', exact: true }).isVisible());
+  finish_write();
+  pending_write = undefined;
   await frame.getByRole('dialog').waitFor({ state: 'hidden' });
   assert.equal(
     calls.filter((method) => method === 'fs.write').length,
@@ -422,7 +491,7 @@ try {
   const confirm_city = travel_day.getByRole('button', { name: 'Add city', exact: true });
   await travel_day.getByRole('button', { name: 'Choose date later', exact: true }).click();
   assert.equal(await travel_day.getByLabel('Travel date').inputValue(), '');
-  await travel_day.getByRole('button', { name: 'Back', exact: true }).click();
+  assert.equal(await shellBack(), true, 'Back from a travel date returns to city selection.');
   await add_city.getByRole('button', { name: 'Kyoto, Japan', exact: true }).click();
   assert.deepEqual(journal(), single_city_journal);
   await travel_day.getByLabel('Travel date').fill('2026-05-13');
@@ -470,7 +539,7 @@ try {
     await dialog.locator('summary').click();
     await dialog.getByLabel('Stop latitude', { exact: true }).fill(latitude);
     await dialog.getByLabel('Stop longitude', { exact: true }).fill(longitude);
-    await dialog.getByRole('button', { name: 'Save stop', exact: true }).click();
+    await dialog.getByRole('button', { name: 'Add to Day 1', exact: true }).click();
     await dialog.waitFor({ state: 'hidden' });
   }
   assert.deepEqual(
@@ -609,7 +678,7 @@ try {
     .getByRole('status')
     .filter({ hasText: /^1 of \d+ packed$/ })
     .waitFor();
-  await backToTools.click();
+  assert.equal(await shellBack(), true, 'Back from the packing list returns to the toolbox.');
   await openExpenses.click();
   await frame.getByRole('button', { name: 'Add expense', exact: true }).click();
   await dialog.getByLabel('Expense name').fill('Harbour ferry');
@@ -768,7 +837,8 @@ try {
   await dialog.getByRole('heading', { name: 'Lakeside park', exact: true }).waitFor();
   assert((await dialog.innerText()).includes('Location not recorded'));
   await dialog.getByRole('button', { name: 'Close dialog' }).click();
-  await frame.getByRole('button', { name: 'Close map selection' }).click();
+  assert.equal(await shellBack(), true, 'Back closes the map selection before leaving the tab.');
+  await frame.getByRole('button', { name: 'Close map selection' }).waitFor({ state: 'hidden' });
   await frame.getByRole('button', { name: 'Named places', exact: true }).click();
   await frame.locator('.journal-map-pin[data-visit-count="2"]').waitFor();
   assert.equal(await frame.locator('.journal-map-pin').getAttribute('data-latitude'), '12');
@@ -981,7 +1051,7 @@ try {
   const add_hotel = frame.getByRole('button', { name: 'Add hotel', exact: true });
   const place_search = dialog.getByRole('searchbox', { name: 'Search places' });
   const search = dialog.getByRole('button', { name: 'Search', exact: true });
-  const save_stop = dialog.getByRole('button', { name: 'Save stop', exact: true });
+  const save_stop = dialog.getByRole('button', { name: /^(Add to Day 2|Save changes)$/ });
   const sights = dialog.getByRole('button', { name: 'Sights', exact: true });
   const hotels = dialog.getByRole('button', { name: 'Hotels', exact: true });
   const kyoto = dialog.getByRole('button', { name: 'Search in Kyoto', exact: true });
@@ -1006,6 +1076,9 @@ try {
   assert.equal(await nara.getAttribute('aria-pressed'), 'true');
   await nara_museum.click();
   assert.equal(await dialog.getByLabel('Category').inputValue(), 'sight');
+  await dialog.getByText('Day 2 · Nara', { exact: true }).waitFor();
+  assert.equal(await shellBack(), true);
+  await nara_museum.click();
   await save_stop.click();
   await dialog.waitFor({ state: 'hidden' });
 
@@ -1016,6 +1089,31 @@ try {
   await kyoto.click();
   await dialog.getByRole('button', { name: /^Kyoto test inn/ }).waitFor();
   assert.equal(await nara_inn.count(), 0);
+  const search_in_nara = dialog.getByRole('button', {
+    name: 'Search for “Nara test inn” in Nara',
+    exact: true,
+  });
+  const before_transfer_search = place_requests.length;
+  await place_search.fill('Nara test inn');
+  assert.equal(await search_in_nara.count(), 0);
+  await search.click();
+  await search_in_nara.waitFor();
+  assert.equal(await nara_inn.count(), 0);
+  assert.deepEqual(place_requests.slice(before_transfer_search), [
+    { city: 'Kyoto', query: 'Nara test inn' },
+  ]);
+  await search_in_nara.click();
+  await nara_inn.waitFor();
+  assert.equal(await hotels.getAttribute('aria-pressed'), 'true');
+  assert.equal(await nara.getAttribute('aria-pressed'), 'true');
+  assert.equal(await place_search.inputValue(), 'Nara test inn');
+  assert.deepEqual(place_requests.at(-1), { city: 'Nara', query: 'Nara test inn' });
+  await nara_inn.click();
+  await dialog.getByText('Day 2 · Nara', { exact: true }).waitFor();
+  assert.equal(await shellBack(), true);
+  await kyoto.click();
+  await search_in_nara.waitFor();
+  assert.equal(await place_search.inputValue(), 'Nara test inn');
   await nara.click();
   await nara_inn.waitFor();
   await place_search.fill('Unavailable inn');
@@ -1029,11 +1127,59 @@ try {
   await add_hotel.click();
   await nara_inn.waitFor();
   const before_named = place_requests.length;
+  await place_search.fill('est in');
+  await nara_inn.waitFor();
+  assert.equal(
+    place_requests.length,
+    before_named,
+    'Partial names match already loaded nearby rows.',
+  );
+  await place_search.fill('no such inn');
+  await dialog.getByText('No nearby matches.', { exact: false }).waitFor();
+  assert.equal(await nara_inn.count(), 0);
+  await dialog.getByRole('button', { name: 'Clear search' }).click();
+  assert(await place_search.evaluate((input) => input === document.activeElement));
+  await nara_inn.waitFor();
   await place_search.fill('test inn');
   assert.equal(place_requests.length, before_named, 'Typing a name waits for submit.');
   await search.click();
   await nara_inn.waitFor();
   assert.deepEqual(place_requests.at(-1), { city: 'Nara', query: 'test inn' });
+  const after_named = place_requests.length;
+  await kyoto.click();
+  await dialog.getByRole('heading', { name: 'Hotels near Kyoto' }).waitFor();
+  await dialog.getByRole('button', { name: /^Kyoto test inn/ }).waitFor();
+  assert.equal(await place_search.inputValue(), '');
+  await nara.click();
+  await nara_inn.waitFor();
+  assert.equal(await place_search.inputValue(), 'test inn');
+  await sights.click();
+  await nara_museum.waitFor();
+  assert.equal(await place_search.inputValue(), '');
+  await hotels.click();
+  await nara_inn.waitFor();
+  assert.equal(await place_search.inputValue(), 'test inn');
+  assert.equal(
+    place_requests.length,
+    after_named,
+    'Revisiting cities and categories uses their fresh results.',
+  );
+
+  let release_place!: () => void;
+  pending_place = new Promise<void>((resolve) => {
+    release_place = resolve;
+  });
+  await kyoto.click();
+  await place_search.fill('Late inn');
+  await search.click();
+  await dialog.getByText('Searching…', { exact: true }).waitFor();
+  await nara.click();
+  await nara_inn.waitFor();
+  assert.deepEqual(place_requests.at(-1), { city: 'Kyoto', query: 'Late inn' });
+  release_place();
+  pending_place = undefined;
+  await dialog.getByRole('heading', { name: 'Hotels near Nara' }).waitFor();
+  assert.equal(await place_search.inputValue(), 'test inn');
   await nara_inn.click();
   assert.equal(await dialog.getByLabel('Category').inputValue(), 'stay');
   assert.equal(await check_in.inputValue(), day_two);
@@ -1073,12 +1219,15 @@ try {
   const airport = persisted.stops.find((stop) => stop.title === 'Kansai International Airport');
   assert(museum?.directory_ref && museum.kind === 'sight');
   assert.equal(museum.day, day_two);
+  assert.equal(museum.city, 'Nara');
   assert(
     inn && (inn.directory_ref?.provider === 'osm' || inn.directory_ref?.provider === 'geoapify'),
   );
   assert(airport?.directory_ref?.provider === 'ourairports');
   assert.deepEqual(inn.position, { latitude: 34.682, longitude: 135.828 });
   assert.equal(inn.day, day_two);
+  assert.equal(inn.city, 'Nara');
+  assert.equal(airport.city, undefined);
   assert.equal(inn.checkout_date, '2030-05-23');
   assert.equal(inn.directory_ref.subtitle, 'Nara');
   assert.equal(airport.day, inn.day);
@@ -1087,9 +1236,40 @@ try {
   await frame.getByRole('button', { name: 'Open trip Kansai by rail' }).click();
   await frame.getByRole('button', { name: 'Day 2, 21 May' }).click();
   await frame.getByRole('button', { name: 'Edit Nara test museum' }).waitFor();
+  const requests_before_edit = place_requests.length;
   await frame.getByRole('button', { name: 'Edit Nara test inn' }).click();
   assert.equal(await check_in.inputValue(), day_two);
   assert.equal(await check_out.inputValue(), '2030-05-23');
+  assert.equal(place_requests.length, requests_before_edit, 'Opening a saved stop stays local.');
+  await page.locator('#applet').evaluate((element) => {
+    element.style.width = '320px';
+  });
+  for (const field of [
+    check_in,
+    check_out,
+    dialog.getByLabel('Time', { exact: true }),
+    dialog.getByLabel('Category'),
+  ]) {
+    assert(
+      await field.evaluate((input) => {
+        const box = input.getBoundingClientRect();
+        return box.width >= 44 && box.height >= 44 && box.right <= innerWidth;
+      }),
+      'Each compact schedule control must fit the viewport and have a full touch target.',
+    );
+  }
+  assert(
+    await save_stop.evaluate((button) => {
+      const rect = button.getBoundingClientRect();
+      return button.contains(
+        document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2),
+      );
+    }),
+    'Save stays within reach while reviewing a hotel.',
+  );
+  await page.locator('#applet').evaluate((element) => {
+    element.style.width = '390px';
+  });
   await dialog.getByRole('button', { name: 'Close dialog' }).click();
   await frame.getByRole('button', { name: 'Edit Kansai International Airport' }).click();
   assert.equal(
@@ -1121,6 +1301,29 @@ try {
   await frame.getByRole('button', { name: 'Next day', exact: true }).click();
   await frame.getByRole('button', { name: 'Check out of Nara test inn' }).waitFor();
   assert.deepEqual(journal(), persisted);
+  await frame.getByRole('button', { name: 'Check out of Nara test inn' }).click();
+  await dialog.getByLabel('Notes').fill('Arrive after dinner.');
+  await dialog.getByRole('button', { name: 'Change place' }).click();
+  await kyoto.click();
+  await dialog.getByRole('button', { name: /^Kyoto test inn/ }).click();
+  await save_stop.click();
+  await dialog.waitFor({ state: 'hidden' });
+  const updated_hotel = journal().stops.find((stop) => stop.id === inn.id);
+  assert.equal(updated_hotel?.title, 'Kyoto test inn');
+  assert.equal(updated_hotel.city, 'Kyoto');
+  assert.equal(updated_hotel.day, inn.day);
+  assert.equal(updated_hotel.checkout_date, inn.checkout_date);
+  assert.equal(updated_hotel.notes, 'Arrive after dinner.');
+  assert.equal(journal().stops.length, persisted.stops.length);
+  await frame.getByRole('button', { name: 'Check out of Kyoto test inn' }).waitFor();
+  await frame.getByRole('button', { name: 'Check out of Kyoto test inn' }).click();
+  await dialog.getByRole('button', { name: 'Change place' }).click();
+  assert.equal(await kyoto.getAttribute('aria-pressed'), 'true');
+  assert.equal(await shellBack(), true);
+  await dialog.getByRole('button', { name: 'Close dialog' }).click();
+  assert.equal(await shellBack(), true, 'Back from the trip itinerary returns to the library.');
+  await frame.getByRole('heading', { name: 'Your trips', exact: true }).waitFor();
+  assert.equal(await shellBack(), false);
   assert.deepEqual(errors, [], 'The native applet should not produce uncaught browser errors.');
   for (const method of [
     'photos.pick',
@@ -1144,6 +1347,7 @@ try {
         photos: saved.check_ins.reduce((count, entry) => count + entry.photos.length, 0),
         verified: [
           'production CSP and SDK handshake',
+          'native Back through modal and nested views, dirty drafts, pending saves and applet root',
           'opaque-origin UUID fallback',
           'one-tap single-city creation, double-tap protection, adding a city and reopening the same trip',
           'native image import and camera',

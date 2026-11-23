@@ -69,8 +69,10 @@ const categories: Record<PlaceCategory, string> = {
   food: 'catering,commercial.food_and_drink.bakery',
 };
 
+export const named_search_radius_km = 40;
+
 export function placeSearchRadiusKm(query: string): number {
-  return query ? 40 : 10;
+  return query ? named_search_radius_km : 10;
 }
 
 function asObject(value: unknown): Record<string, unknown> {
@@ -202,15 +204,15 @@ export function readPlaceResults(
       ? geoapifyKind(props.categories)
       : osmKind(string(props.osm_key), string(props.osm_value));
     if (category !== 'all' && category !== kind) continue;
-    const locality = [
-      string(props.street),
-      string(props.city) || string(props.town),
-      string(props.country),
-    ].filter(Boolean);
+    const locality = string(props.city) || string(props.town) || string(props.village);
+    const country_code = string(geoapify ? props.country_code : props.countrycode).toUpperCase();
+    const address = [string(props.street), locality, string(props.country)].filter(Boolean);
     results.set(id, {
       id,
       title,
-      subtitle: [...new Set(locality)].join(', '),
+      subtitle: [...new Set(address)].join(', '),
+      ...(locality && { locality }),
+      ...(/^[A-Z]{2}$/.test(country_code) && { country_code }),
       source: geoapify ? 'geoapify' : 'osm',
       kind,
       position: { latitude, longitude },
