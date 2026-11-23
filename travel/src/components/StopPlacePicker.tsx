@@ -33,6 +33,7 @@ import { PlaceResultsSheet } from './PlaceResultsSheet';
 import { PlaceSortButton, type PlaceSortOrder } from './PlaceSortButton';
 import { PlaceTypeFilterButton } from './PlaceTypeFilterButton';
 import { SearchAreaButton } from './SearchAreaButton';
+import { StopAdditionNotice, type StopAddition } from './StopAdditionNotice';
 import '../stop-place-picker.css';
 
 const categories = [
@@ -84,8 +85,9 @@ export function StopPlacePicker({
   initial_city_id,
   route,
   stays,
-  saved_message = '',
-  saved_stop_id,
+  addition,
+  busy,
+  onUndoAdd,
   onCategoryChange,
   onEditPlanned,
   onQuickAdd,
@@ -103,8 +105,9 @@ export function StopPlacePicker({
   initial_city_id?: string;
   route: PlannedStop[];
   stays: ContinuingStay[];
-  saved_message?: string;
-  saved_stop_id?: string;
+  addition?: StopAddition;
+  busy: boolean;
+  onUndoAdd(stop: PlannedStop): Promise<void>;
   onCategoryChange?(category: StopSearchRequest['category']): void;
   onEditPlanned?(stop: PlannedStop): void;
   onQuickAdd?(place: StopSearchResult, city?: string, city_id?: string): Promise<void>;
@@ -162,6 +165,7 @@ export function StopPlacePicker({
   const heading_id = useId();
   const return_to_map_button = useRef(false);
   const [adding_id, setAddingId] = useState<string | null>(null);
+  const saving_place = busy || adding_id !== null;
   const [save_error, setSaveError] = useState<{ id: string; message: string }>();
   const saving = useRef(false);
   const return_focus = useRef<HTMLElement | null>(null);
@@ -418,7 +422,7 @@ export function StopPlacePicker({
     <PlaceTypeFilterButton
       category={category}
       value={type_filter}
-      disabled={adding_id !== null}
+      disabled={saving_place}
       onSelect={(value) => {
         setExpanded(null);
         setSaveError(undefined);
@@ -436,7 +440,7 @@ export function StopPlacePicker({
         <PlaceSortButton
           value={sort}
           specific_area={Boolean(area)}
-          disabled={adding_id !== null}
+          disabled={saving_place}
           onSelect={(value) => {
             if (map_open && current_place) rememberSelection(current_place.place.id);
             setSearches((previous) => ({
@@ -454,7 +458,7 @@ export function StopPlacePicker({
     <SearchAreaButton
       options={areas}
       selected_id={area?.id}
-      disabled={adding_id !== null}
+      disabled={saving_place}
       onSelect={(id) => {
         setExpanded(null);
         setSaveError(undefined);
@@ -494,8 +498,17 @@ export function StopPlacePicker({
     </div>
   );
 
+  const confirmation = addition && (
+    <StopAdditionNotice
+      key={addition.stop.id}
+      addition={addition}
+      onUndo={onUndoAdd}
+      disabled={saving_place}
+    />
+  );
+
   return (
-    <fieldset className="stop-picker" aria-label="Place picker" disabled={adding_id !== null}>
+    <fieldset className="stop-picker" aria-label="Place picker" disabled={saving_place}>
       <div className="stop-picker-scroll">
         <div className="stop-picker-controls">
           {isCalendarDate(day) && (
@@ -752,14 +765,7 @@ export function StopPlacePicker({
         </section>
       </div>
       <footer className="stop-picker-footer">
-        <p role="status" aria-atomic="true" className="stop-picker-confirmation">
-          {saved_message && (
-            <>
-              <Icon name="check" size={15} />
-              <span>{saved_message}</span>
-            </>
-          )}
-        </p>
+        {!map_open && confirmation}
         <button
           type="button"
           className="secondary"
@@ -800,9 +806,8 @@ export function StopPlacePicker({
           search_status={loading ? 'Finding places…' : emptyResultsMessage()}
           search_error={error ?? ''}
           onRetry={tryAgain}
-          saving={adding_id !== null}
-          saved_message={saved_message}
-          saved_stop_id={saved_stop_id}
+          saving={saving_place}
+          confirmation={confirmation}
           save_error={save_error}
           onPick={chooseResult}
           onQuickAdd={quick_sights ? addSight : undefined}

@@ -28,8 +28,7 @@ interface PlaceResultsSheetProps {
   search_status: string;
   search_error: string;
   onRetry(): void;
-  saved_message: string;
-  saved_stop_id?: string;
+  confirmation: ReactNode;
   saving: boolean;
   save_error?: { id: string; message: string };
   onPick(place: StopSearchResult, origin: HTMLElement): void;
@@ -56,8 +55,7 @@ export function PlaceResultsSheet({
   search_status,
   search_error,
   onRetry,
-  saved_message,
-  saved_stop_id,
+  confirmation,
   saving,
   save_error,
   onPick,
@@ -223,16 +221,6 @@ export function PlaceResultsSheet({
                   )}
                 </div>
               )}
-              <span
-                className={
-                  planned.some((stop) => stop.id === saved_stop_id)
-                    ? 'result-map-confirmation'
-                    : 'sr-only'
-                }
-                role="status"
-              >
-                {saved_message}
-              </span>
             </fieldset>
           </>
         ) : (
@@ -250,6 +238,7 @@ export function PlaceResultsSheet({
           </div>
         )}
       </div>
+      {confirmation && <footer className="result-map-feedback">{confirmation}</footer>}
     </Dialog>
   );
 }

@@ -32,6 +32,7 @@ import { StopPlacePicker, type PickerCity } from './StopPlacePicker';
 import { checkoutAfter, continuingStays } from '../lib/hotel-stays';
 import { StayDates } from './StayDates';
 import { PlaceDetailsSheet } from './PlaceDetailsSheet';
+import type { StopAddition } from './StopAdditionNotice';
 
 const PlaceMapPreview = lazy(() => import('./PlaceMapPreview'));
 
@@ -44,6 +45,8 @@ interface StopFormProps {
   stop?: PlannedStop;
   native: boolean;
   lookup: StopLookup;
+  addition?: StopAddition;
+  onUndoAdd(stop: PlannedStop): Promise<void>;
   onSave(stop: PlannedStop, before_stop_id?: string | null): Promise<void>;
   onCancel(): void;
   onDelete?(stop: PlannedStop): void;
@@ -192,6 +195,8 @@ function StopEditor({
   stop,
   initial_category,
   lookup,
+  addition,
+  onUndoAdd,
   onSave,
   onCancel,
   onFinish,
@@ -225,9 +230,10 @@ function StopEditor({
   function updateDraft(fields: Partial<typeof draft>) {
     setDraft((previous) => ({ ...previous, ...fields }));
   }
-  const [confirmation, setConfirmation] = useState<{ id: string; message: string }>();
   const [picking, setPicking] = useState<'initial' | 'change' | null>(stop ? null : 'initial');
   const [picker_day, setPickerDay] = useState<string | null>(stop ? null : day);
+  const confirmation =
+    picking === 'initial' && addition?.stop.day === picker_day ? addition : undefined;
   const [picker_category, setPickerCategory] = useState<StopSearchCategory>(
     initial_category ??
       (stop?.directory_ref?.provider === 'ourairports'
@@ -454,7 +460,6 @@ function StopEditor({
         directory_ref?.provider === 'ourairports' ? 'airport' : search_categories[kind],
       );
       setPickerDay(search_day);
-      setConfirmation(undefined);
     }
     // Inspecting a result leaves the picker ready for a quick add. Keep edited drafts for review.
     if (mode === 'initial') {
@@ -555,21 +560,20 @@ function StopEditor({
     }
   }
 
-  function resumePicking(saved: PlannedStop, before?: string | null) {
-    const label = trip.start_date ? itineraryDayLabel(saved.day, day, trip) : '';
-    const destination = label.startsWith('Day ')
-      ? label
-      : date_format.format(new Date(saved.day + 'T00:00:00Z'));
-    const next = trip_stops.find((item) => item.id === before);
-    const placement = next ? ` before ${next.title}` : '';
-    setConfirmation({
-      id: saved.id,
-      message: `${saved.title} added to ${destination}${placement}.`,
-    });
+  function resumePicking(saved: PlannedStop) {
     resetDraft(saved.day);
     setReviewPages(['editor']);
     setPickerDay(saved.day);
     setPicking('initial');
+  }
+
+  async function undoPickedStop(added: PlannedStop) {
+    setBusy(true);
+    try {
+      await onUndoAdd(added);
+    } finally {
+      setBusy(false);
+    }
   }
 
   function pickedStop(
@@ -608,7 +612,7 @@ function StopEditor({
       const cities = day_cities.loading ? await day_cities.resolve() : day_cities.cities;
       const before = suggestRouteAnchor(cities, picker_stops, value, value.day);
       await onSave(value, before);
-      resumePicking(value, before);
+      resumePicking(value);
     } finally {
       setBusy(false);
     }
@@ -684,7 +688,7 @@ function StopEditor({
             : before_stop_id;
       await onSave(value, before);
       if (another) {
-        resumePicking(value, before);
+        resumePicking(value);
       } else {
         onFinish();
       }
@@ -768,8 +772,9 @@ function StopEditor({
               lookup={lookup}
               onPick={choosePlace}
               onManual={enterManually}
-              saved_message={confirmation?.message}
-              saved_stop_id={confirmation?.id}
+              addition={confirmation}
+              busy={busy}
+              onUndoAdd={undoPickedStop}
               onQuickAdd={picking === 'initial' && !dirty && !source_changed ? quickAdd : undefined}
               onScheduleStay={
                 !stop && picking === 'initial' && !dirty && !source_changed

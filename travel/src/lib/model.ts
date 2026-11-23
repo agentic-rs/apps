@@ -470,6 +470,19 @@ export function removeStop(journal: Journal, stop_id: string): Journal {
   });
 }
 
+export function undoStopAddition(journal: Journal, added: PlannedStop): Journal {
+  const saved = journal.stops.find((stop) => stop.id === added.id);
+  if (!saved) return journal;
+  // parseStop gives both the picker draft and persisted record a canonical field order and values.
+  if (JSON.stringify(parseStop(saved)) !== JSON.stringify(parseStop(added)))
+    throw new Error(
+      'This stop has been edited since you added it. Open it in the itinerary to make changes.',
+    );
+  if (journal.check_ins.some((visit) => visit.stop_id === saved.id))
+    throw new Error('This stop now has a check-in. Open it in the itinerary to make changes.');
+  return removeStop(journal, saved.id);
+}
+
 export function moveStop(journal: Journal, stop_id: string, direction: -1 | 1): Journal {
   if (direction !== -1 && direction !== 1) throw new Error('Move the stop one position at a time.');
   const stops = [...journal.stops];

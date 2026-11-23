@@ -1,7 +1,13 @@
-import { lazy, Suspense, useLayoutEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { dismissBackLayer } from './lib/back-navigation';
 import { useJournal } from './lib/useJournal';
-import { currentOffsetMinutes, offsetDay, toVisitInput } from './lib/dates';
+import {
+  currentOffsetMinutes,
+  formatVisitDate,
+  itineraryDayLabel,
+  offsetDay,
+  toVisitInput,
+} from './lib/dates';
 import {
   addPhotoEvents,
   moveStop,
@@ -9,6 +15,7 @@ import {
   removeStop,
   removeTrip,
   saveCheckIn,
+  undoStopAddition,
   upsertStop,
   upsertTrip,
   visitTitle,
@@ -21,9 +28,12 @@ import { NewTrip } from './components/NewTrip';
 import { AddTripCity } from './components/AddTripCity';
 import { sameTripCity, tripCitySummary } from './lib/cities';
 import { createStopLookup, type StopSearchCategory } from './lib/stop-lookup';
-import { citiesOnDay } from './lib/city-days';
+import { citiesOnDay, cityIndicesOnDay } from './lib/city-days';
+import { plannedStopCityIndex, searchCityLabel } from './lib/planned-stop-search';
+import { searchCities } from './lib/use-search-cities';
 import { continuingStays, isContinuingStay } from './lib/hotel-stays';
 import { StopForm } from './components/StopForm';
+import { StopAdditionNotice, type StopAddition } from './components/StopAdditionNotice';
 import { CheckInForm } from './components/CheckInForm';
 import { Photo } from './components/Photo';
 import { PhotoEventsForm } from './components/PhotoEventsForm';
@@ -63,6 +73,23 @@ function localToday() {
   return toVisitInput(now.toISOString(), currentOffsetMinutes(now)).slice(0, 10);
 }
 
+function describeAddition(trip: Trip, stop: PlannedStop, before_title?: string): StopAddition {
+  const label = trip.start_date && itineraryDayLabel(stop.day, trip.start_date, trip);
+  const cities = searchCities(trip, cityIndicesOnDay(trip, stop.day));
+  const index = stop.city_id ? plannedStopCityIndex(stop, cities, stop.day) : undefined;
+  return {
+    stop,
+    destination: label?.startsWith('Day ') ? label : formatVisitDate(stop.day + 'T00:00:00Z', 0),
+    city_label:
+      (trip.cities?.length ?? 0) > 1
+        ? index === undefined
+          ? stop.city
+          : searchCityLabel(cities, index)
+        : undefined,
+    before_title,
+  };
+}
+
 export function App() {
   const { platform, journal, load_error, retry, notice, setNotice, cleanPhotos, persist } =
     useJournal();
@@ -73,6 +100,8 @@ export function App() {
   const [trip_search, setTripSearch] = useState('');
   const [editor, setEditor] = useState<Editor | null>(null);
   const [saved_stop_id, setSavedStopId] = useState('');
+  const [addition, setAddition] = useState<StopAddition>();
+  const itinerary_tab = useRef<HTMLButtonElement>(null);
   const [detail_id, setDetailId] = useState('');
   const [open_photo, setOpenPhoto] = useState<{ asset: PhotoAsset; caption: string } | null>(null);
   const [removal, setRemoval] = useState<Removal | null>(null);
@@ -131,6 +160,7 @@ export function App() {
 
   function openTrip(id: string) {
     setTripId(id);
+    setAddition(undefined);
     setSavedStopId('');
     setChosenDay('');
     setView('Itinerary');
@@ -159,8 +189,17 @@ export function App() {
     });
   }
 
-  function reorderStop(stop: PlannedStop, direction: -1 | 1) {
-    return persist((snapshot) => moveStop(snapshot, stop.id, direction));
+  async function reorderStop(stop: PlannedStop, direction: -1 | 1) {
+    await persist((snapshot) => moveStop(snapshot, stop.id, direction));
+    setAddition(undefined);
+  }
+
+  async function undoAdd(stop: PlannedStop) {
+    await persist((snapshot) => undoStopAddition(snapshot, stop));
+    setAddition((current) =>
+      current?.stop.id === stop.id ? { ...current, undone: true } : current,
+    );
+    setSavedStopId((id) => (id === stop.id ? '' : id));
   }
 
   function openStopOrder() {
@@ -175,11 +214,17 @@ export function App() {
     await persist((snapshot) =>
       applyDayRoute(snapshot, trip_id, day, original_ids, ordered_ids, mode),
     );
+    setAddition(undefined);
     setNotice('Day route updated.');
   }
 
-  function openItineraryDay(date: string) {
+  function selectDay(date: string) {
+    if (date !== day) setAddition(undefined);
     setChosenDay(date);
+  }
+
+  function openItineraryDay(date: string) {
+    selectDay(date);
     setView('Itinerary');
     setEditor(null);
   }
@@ -206,7 +251,10 @@ export function App() {
         return removeCheckIn(snapshot, removal.visit.id);
       });
       if (removal.kind === 'trip') openTrip('');
-      if (removal.kind === 'stop' && removal.stop.id === saved_stop_id) setSavedStopId('');
+      if (removal.kind === 'stop') {
+        if (removal.stop.id === saved_stop_id) setSavedStopId('');
+        if (removal.stop.id === addition?.stop.id) setAddition(undefined);
+      }
       setRemoval(null);
       setEditor(null);
       setDetailId('');
@@ -340,7 +388,7 @@ export function App() {
               first={first}
               last={last}
               day={day}
-              onSelect={setChosenDay}
+              onSelect={selectDay}
               onOverview={() => setEditor({ kind: 'overview' })}
             />
             {view === 'Itinerary' ? (
@@ -357,7 +405,10 @@ export function App() {
                   trip_visits={visits}
                   places={journal.places}
                   platform={platform}
-                  onAddStop={(initial_category) => setEditor({ kind: 'stop', initial_category })}
+                  onAddStop={(initial_category) => {
+                    setAddition(undefined);
+                    setEditor({ kind: 'stop', initial_category });
+                  }}
                   onOpenMap={() => setView('Map')}
                   onReorderStops={openStopOrder}
                   onEditStop={(stop) => setEditor({ kind: 'stop', stop })}
@@ -399,12 +450,33 @@ export function App() {
           </div>
         )}
       </main>
+      {addition &&
+        trip?.id === addition.stop.trip_id &&
+        addition.stop.day === day &&
+        view === 'Itinerary' &&
+        !editor &&
+        !detail &&
+        !open_photo &&
+        !removal && (
+          <div className="itinerary-addition">
+            <StopAdditionNotice
+              key={addition.stop.id}
+              addition={addition}
+              onUndo={undoAdd}
+              onDismiss={() => {
+                itinerary_tab.current?.focus({ preventScroll: true });
+                setAddition(undefined);
+              }}
+            />
+          </div>
+        )}
       {trip && (
         <footer className="bottom-bar">
           <nav aria-label="Main views">
             {(Object.keys(views) as View[]).map((tab) => (
               <button
                 key={tab}
+                ref={tab === 'Itinerary' ? itinerary_tab : undefined}
                 aria-current={view === tab ? 'page' : undefined}
                 onClick={() => setView(tab)}
               >
@@ -564,9 +636,23 @@ export function App() {
           initial_category={editor.initial_category}
           onCancel={() => setEditor(null)}
           onDelete={(stop) => confirmRemoval({ kind: 'stop', stop })}
+          onUndoAdd={undoAdd}
+          addition={addition}
           onSave={async (stop, before_stop_id) => {
-            const original = stops.find((item) => item.id === stop.id);
-            await persist((snapshot) => upsertStop(snapshot, stop, before_stop_id));
+            let original: PlannedStop | undefined;
+            let created: StopAddition | undefined;
+            await persist((snapshot) => {
+              original = snapshot.stops.find((item) => item.id === stop.id);
+              const next = upsertStop(snapshot, stop, before_stop_id);
+              if (!original)
+                created = describeAddition(
+                  trip,
+                  stop,
+                  snapshot.stops.find((item) => item.id === before_stop_id)?.title,
+                );
+              return next;
+            });
+            setAddition(created);
             if (view === 'Itinerary') setSavedStopId(stop.id);
             if (!original || original.day === day || !isContinuingStay(stop, day))
               setChosenDay(stop.day);
@@ -588,6 +674,7 @@ export function App() {
           }}
           onSave={async (visit, place, unused) => {
             await persist((snapshot) => saveCheckIn(snapshot, visit, place));
+            if (visit.stop_id && visit.stop_id === addition?.stop.id) setAddition(undefined);
             setChosenDay(recordedDay(visit));
             setEditor(null);
             await cleanPhotos(unused);

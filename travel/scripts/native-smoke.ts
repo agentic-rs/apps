@@ -3549,21 +3549,45 @@ try {
     .getByRole('button', { name: 'Add ' + main_gallery + ' to day', exact: true })
     .click();
   await gallery_row.getByText('On this day', { exact: true }).waitFor();
+  const retained_gallery = journal();
+  const undoAdd = (surface: Locator) => surface.getByRole('button', { name: /^Undo\b/ });
+  const add_annex = results.getByRole('button', {
+    name: 'Add ' + gallery_annex + ' to day',
+    exact: true,
+  });
+  await add_annex.click();
+  const sight_receipt = dialog
+    .getByRole('status')
+    .filter({ hasText: gallery_annex + ' added to Day 2' });
+  await sight_receipt.getByText('Nara', { exact: true }).waitFor();
+  await undoAdd(dialog).click();
+  await dialog.getByText(gallery_annex + ' removed from Day 2.', { exact: true }).waitFor();
+  await add_annex.waitFor();
+  await gallery_row.getByText('On this day', { exact: true }).waitFor();
+  assert.equal(await undoAdd(dialog).count(), 0);
+  assert.equal(await place_search.inputValue(), 'gallery');
+  assert.equal(await nara.getAttribute('aria-pressed'), 'true');
+  await areaAction(dialog).getByText(park_origin.title, { exact: true }).waitFor();
+  assert.deepEqual(journal(), retained_gallery, 'Undo removes only the latest addition.');
   await hotels.click();
   await nara_inn.waitFor();
   await kyoto.click();
   await chooseArea(dialog, default_area, checkout_origin.title, station_origin.title);
   const riverside_lodge = 'Kyoto Riverside lodge';
-  await schedule(dialog, riverside_lodge).click();
+  await open_results_map.click();
+  const lodging_map = frame.getByRole('dialog', { name: 'Hotels near Kyoto', exact: true });
+  const lodge_schedule = schedule(lodging_map, riverside_lodge);
+  await lodge_schedule.click();
   await stay_dates.getByRole('heading', { name: riverside_lodge, exact: true }).waitFor();
   await confirm_stay.click();
   await stay_dates.waitFor({ state: 'hidden' });
-  await areaAction(dialog).getByText(checkout_origin.title, { exact: true }).waitFor();
-  await results
-    .getByRole('button', { name: /^Kyoto Riverside lodge/ })
-    .getByText('On this day', { exact: true })
-    .waitFor();
-  assert.equal(journal_writes, writes_before_area + 2);
+  const lodge_card = lodging_map.getByRole('group', { name: 'Selected place', exact: true });
+  await lodge_card.getByText('On this day', { exact: true }).waitFor();
+  const hotel_receipt = lodging_map
+    .getByRole('status')
+    .filter({ hasText: riverside_lodge + ' added to Day 2.' });
+  await hotel_receipt.getByText(/^Kyoto · 21\s*[–-]\s*22 May 2030$/).waitFor();
+  assert.equal(journal_writes, writes_before_area + 4);
   const area_added = journal().stops.filter(
     (stop) => !area_fixture.stops.some((old) => old.id === stop.id),
   );
@@ -3573,6 +3597,73 @@ try {
       [main_gallery, city_locations[1].id, day_two, geoapify ? 'fixture-1000' : 'N1000'],
       [riverside_lodge, city_locations[0].id, day_two, geoapify ? 'fixture-1023' : 'N1023'],
     ].sort(),
+  );
+  const with_lodge = journal();
+  fail_next_write = true;
+  await undoAdd(lodging_map).click();
+  await lodging_map.getByRole('alert').filter({ hasText: 'Simulated storage failure' }).waitFor();
+  await undoAdd(lodging_map).and(lodging_map.locator(':focus')).waitFor();
+  assert.deepEqual(journal(), with_lodge);
+  await undoAdd(lodging_map).evaluate((button) => {
+    const undo = button as HTMLButtonElement;
+    undo.click();
+    undo.click();
+  });
+  await lodging_map.getByText(riverside_lodge + ' removed from Day 2.', { exact: true }).waitFor();
+  await lodge_schedule.waitFor();
+  await lodge_card.getByRole('heading', { name: riverside_lodge, exact: true }).waitFor();
+  await areaAction(lodging_map).getByText(checkout_origin.title, { exact: true }).waitFor();
+  assert.equal(await undoAdd(lodging_map).count(), 0);
+  assert.deepEqual(journal(), retained_gallery);
+  assert.equal(journal_writes, writes_before_area + 5, 'Retry and double tap undo the stay once.');
+  await lodging_map.getByRole('button', { name: 'Back to place list', exact: true }).click();
+  await schedule(dialog, riverside_lodge).waitFor();
+  assert.equal(await undoAdd(dialog).count(), 0);
+  await results.getByRole('button', { name: /^Kyoto Riverside lodge/ }).click();
+  await inspect_stay_dates.click();
+  await confirm_stay.click();
+  await stay_dates.waitFor({ state: 'hidden' });
+  await planned_list
+    .getByRole('button', { name: 'Edit ' + riverside_lodge, exact: true })
+    .waitFor();
+  const timeline_undo = frame.getByRole('button', {
+    name: 'Undo adding ' + riverside_lodge,
+    exact: true,
+  });
+  await timeline_undo.click();
+  await frame
+    .getByRole('status')
+    .filter({ hasText: riverside_lodge + ' removed from Day 2.' })
+    .and(frame.locator(':focus'))
+    .waitFor();
+  assert.deepEqual(
+    journal(),
+    retained_gallery,
+    'Undo from the itinerary reverses a reviewed stay.',
+  );
+  await frame.getByRole('button', { name: 'Dismiss stop confirmation', exact: true }).click();
+  assert.equal(
+    await frame.getByText(riverside_lodge + ' removed from Day 2.', { exact: true }).count(),
+    0,
+  );
+  await native_frame.goto(native_frame.url());
+  await frame.getByRole('button', { name: 'Open trip Kansai by rail', exact: true }).click();
+  await frame.getByRole('button', { name: 'Day 2, 21 May', exact: true }).click();
+  await planned_list.getByRole('button', { name: 'Edit ' + main_gallery, exact: true }).waitFor();
+  for (const title of [gallery_annex, riverside_lodge])
+    assert.equal(
+      await planned_list.getByRole('button', { name: 'Edit ' + title, exact: true }).count(),
+      0,
+    );
+  assert.deepEqual(journal(), retained_gallery);
+  await planned_list.getByRole('button', { name: 'Edit ' + main_gallery, exact: true }).click();
+  await dialog.getByLabel('Notes').fill('Meet at the east entrance.');
+  await dialog.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await dialog.waitFor({ state: 'hidden' });
+  assert.equal(await frame.getByRole('button', { name: /^Undo adding / }).count(), 0);
+  assert.equal(
+    journal().stops.find((stop) => stop.title === main_gallery)?.notes,
+    'Meet at the east entrance.',
   );
   assert.deepEqual(errors, [], 'The native applet should not produce uncaught browser errors.');
   for (const method of [
@@ -3623,6 +3714,7 @@ try {
           'city-scoped sight and hotel result maps, coincident venues, pin selection and return to reviewed drafts',
           'transfer-day distance sorting across city, category, list and map with preserved selection',
           'three-kilometre stop and checkout-hotel search areas, scoped search and map selection, and adding a sight or hotel for the chosen city',
+          'undoing the latest sight in the filtered list and a hotel on the map, retrying a failed undo, and preserving the earlier sight after reopening',
           'venue neighborhood and full-day camera framing from visitor details and itinerary editing',
           'rescheduling a new hotel, then continuing at the arrival city on the new day',
           'returning to the last saved stop, continuing stay or checkout in the day timeline',

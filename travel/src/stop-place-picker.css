@@ -438,25 +438,7 @@
   border-top: 1px solid var(--apell-line);
   background: var(--apell-surface);
 }
-.stop-picker-confirmation {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  max-height: 22dvh;
-  margin: 0;
-  overflow-y: auto;
-  color: var(--apell-success);
-  overflow-wrap: anywhere;
-  font-size: 0.85rem;
-}
-.stop-picker-confirmation:not(:empty) {
-  margin-bottom: 6px;
-}
-.stop-picker-confirmation svg {
-  flex: none;
-  align-self: baseline;
-}
-.stop-picker-footer button {
+.stop-picker-footer > button {
   flex: 1;
   justify-content: center;
 }

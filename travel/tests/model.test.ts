@@ -16,6 +16,7 @@ import {
   removeStop,
   removeTrip,
   saveCheckIn,
+  undoStopAddition,
   upsertStop,
   upsertTrip,
   visitTitle,
@@ -591,6 +592,43 @@ describe('planned stops', () => {
     expect(deleted.stops).toEqual([other_stop]);
     expect(deleted.check_ins).toEqual([]);
     expect(deleted.places).toEqual([place]);
+  });
+
+  test('undo removes only the last addition even when another visit has the same place and dates', () => {
+    const hotel: PlannedStop = {
+      ...stop,
+      id: 'first-stay',
+      kind: 'stay',
+      title: 'Nara Hotel',
+      city: 'Nara',
+      checkout_date: '2026-05-14',
+      position: { latitude: 34.68, longitude: 135.83 },
+      directory_ref: { provider: 'osm', id: 'W123' },
+    };
+    const new_stay = { ...hotel, id: 'new-stay', title: ' Nara Hotel ' };
+    const journal = upsertStop(populated(), hotel);
+    const with_addition = upsertStop(journal, new_stay, hotel.id);
+    const current = saveCheckIn(with_addition, { ...check_in, stop_id: hotel.id }, place);
+    const undone = undoStopAddition(current, new_stay);
+    expect(undone).toEqual({ ...current, stops: [hotel] });
+    expect(current.stops.map((item) => item.id)).toEqual([new_stay.id, hotel.id]);
+    expect(undoStopAddition(undone, new_stay)).toBe(undone);
+  });
+
+  test('undo preserves later edits and linked check-ins on the added stop', () => {
+    const journal = upsertStop(populated(), stop);
+    for (const updated of [
+      { ...stop, notes: 'Meet at the station.' },
+      { ...stop, day: '2026-05-13' },
+      { ...stop, kind: 'stay' as const, checkout_date: '2026-05-14' },
+    ]) {
+      const current = upsertStop(journal, updated);
+      expect(() => undoStopAddition(current, stop)).toThrow('edited');
+      expect(current.stops).toEqual([updated]);
+    }
+    const linked = saveCheckIn(journal, { ...check_in, stop_id: stop.id }, place);
+    expect(() => undoStopAddition(linked, stop)).toThrow('check-in');
+    expect(linked.check_ins[0]).toEqual({ ...check_in, stop_id: stop.id });
   });
 });
 

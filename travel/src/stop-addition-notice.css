@@ -1,0 +1,89 @@
+.stop-addition-notice {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0 4px;
+  max-width: 100%;
+  max-height: max(44px, 25dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-inline: 10px 4px;
+  border-radius: 10px;
+  background: var(--apell-subtle);
+  color: var(--apell-text);
+  font-size: 0.875rem;
+  line-height: 1.35;
+}
+.stop-addition-status {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-content: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 44px;
+  margin: 0;
+  padding-block: 8px;
+  line-height: inherit;
+  overflow-wrap: anywhere;
+}
+.stop-addition-status svg {
+  align-self: start;
+  margin-top: 0.1em;
+  color: var(--apell-success);
+}
+.stop-addition-status small {
+  display: block;
+  margin-top: 2px;
+  color: var(--apell-muted);
+  font-size: 0.8rem;
+}
+.stop-addition-status:focus-visible {
+  outline: 2px solid var(--apell-focus);
+  outline-offset: -2px;
+}
+.stop-addition-actions {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-self: start;
+  align-items: center;
+  background: var(--apell-subtle);
+}
+.stop-addition-undo {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--apell-primary);
+  font-size: inherit;
+  font-weight: 600;
+}
+.stop-addition-undo:active {
+  background: var(--apell-primary-soft);
+}
+.stop-addition-error {
+  min-width: 0;
+  margin: 0;
+  padding-block: 8px;
+  color: var(--apell-danger);
+  line-height: inherit;
+  overflow-wrap: anywhere;
+}
+.stop-picker-footer > .stop-addition-notice {
+  margin-bottom: 6px;
+}
+.result-map-feedback,
+.itinerary-addition {
+  flex: none;
+  padding: 6px clamp(12px, 4vw, 18px);
+  border-top: 1px solid var(--apell-line);
+  background: var(--apell-surface);
+}
+.result-map-feedback {
+  padding-bottom: calc(6px + var(--safe-area-bottom));
+}
+.result-map-sheet:has(+ .result-map-feedback) .result-map-card {
+  padding-bottom: 8px;
+}

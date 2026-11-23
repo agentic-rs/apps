@@ -15,6 +15,8 @@ Tap **＋** beside a sight to add it directly to the selected day, including aft
 
 The calendar beside a hotel result opens its dates directly. The selected hotel on the results map has the same **Choose dates** action. Tap **Add stay** to save and continue browsing. Tap the hotel name to see its visitor details and proposed stay before choosing dates. [行程助手’s hotel review and date sequence](https://www.downxia.com/downinfo/67867.html)
 
+Tap **Undo** beside the confirmation to remove the most recent addition. It works in the list, on the results map, and on the itinerary after finishing. Undoing a hotel removes the stay from check-in through checkout. The picker keeps your city, search area and results open so you can choose again.
+
 Tap a new directory sight or hotel in the results to see its available opening hours, admission, wheelchair access, address and website. Its location shows the straight-line distance to the nearest mapped stop or hotel on that day. Tap it to see the place in your proposed route. You can add a sight to the day or choose a hotel’s stay dates here. **Edit itinerary details** lets you change its name, time, notes and route position. **Back** returns to the venue with your edits, then to the selected result. Existing stops open for editing and offer **Visitor details** for another look. [行程助手’s museum details, steps 13–15](https://www.sohu.com/a/331566931_503432)
 
 Open **Overview** to see the cities and planned stops for each day. Tap a day to open it. **Add day** extends the itinerary by one calendar day and opens that day.
