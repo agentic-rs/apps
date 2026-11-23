@@ -1,18 +1,15 @@
 import { PlaceOptionsButton } from './PlaceOptionsButton';
 
-const options = [
-  { id: 'directory', label: 'Directory order' },
-  { id: 'route', label: 'Nearest to day plan' },
-] as const;
-
-export type PlaceSortOrder = (typeof options)[number]['id'];
+export type PlaceSortOrder = 'directory' | 'route';
 
 export function PlaceSortButton({
   value,
+  specific_area = false,
   onSelect,
   disabled,
 }: {
   value: PlaceSortOrder;
+  specific_area?: boolean;
   onSelect(value: PlaceSortOrder): void;
   disabled?: boolean;
 }) {
@@ -20,7 +17,10 @@ export function PlaceSortButton({
     <PlaceOptionsButton
       title="Sort places"
       icon="sort"
-      options={options}
+      options={[
+        { id: 'directory', label: 'Directory order' },
+        { id: 'route', label: specific_area ? 'Nearest to selected place' : 'Nearest to day plan' },
+      ]}
       value={value}
       onSelect={onSelect}
       disabled={disabled}

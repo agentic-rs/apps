@@ -3,6 +3,7 @@ import type { Map as LeafletMap } from 'leaflet';
 import { MapMarker } from './MapMarker';
 import { visiblePosition, type dayMapPlaces } from '../lib/map';
 import type { Coordinates } from '../lib/types';
+import type { DaySearchArea } from '../lib/place-comparison';
 import { Icon } from './Icon';
 
 /** Leaflet positions the marker. A native button handles touch and keyboard activation. */
@@ -82,25 +83,35 @@ export function DayPlacePins({
   map,
   groups,
   shared_locations,
+  search_area,
 }: {
   map: LeafletMap;
   groups: ReturnType<typeof dayMapPlaces>['groups'];
   shared_locations: ReadonlySet<string>;
+  search_area?: DaySearchArea;
 }) {
   return groups.map((group) => {
     const { labels, numbers } = group;
+    const is_origin = search_area && group.points.some((point) => point.id === search_area.id);
+    const origin_label = is_origin ? `Search near ${search_area.title}` : undefined;
     return (
       <PlaceMapButton
         key={group.key}
         map={map}
         position={group.position}
         label={labels.join(' · ')}
+        description={origin_label}
         kind="route"
         numbers={numbers}
         shared={shared_locations.has(group.key)}
-        onClick={() => openPlacePopup(map, group.position, labels)}
+        onClick={() =>
+          openPlacePopup(map, group.position, origin_label ? [origin_label, ...labels] : labels)
+        }
       >
-        <span className={numbers.length ? 'place-stop-badge' : 'place-stop-badge stay'}>
+        <span
+          className={numbers.length ? 'place-stop-badge' : 'place-stop-badge stay'}
+          data-search-origin={is_origin ? '' : undefined}
+        >
           {numbers[0] ?? <Icon name="bed" size={18} />}
           {group.points.length > 1 && (
             <small>

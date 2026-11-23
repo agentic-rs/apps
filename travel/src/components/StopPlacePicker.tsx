@@ -2,7 +2,13 @@ import { Fragment, useId, useLayoutEffect, useMemo, useRef, useState } from 'rea
 import { confirmsInput } from '../lib/keyboard';
 import { cityIndicesOnDay } from '../lib/city-days';
 import type { ContinuingStay } from '../lib/hotel-stays';
-import { dayPlaceResult, nearestFirst } from '../lib/place-comparison';
+import {
+  dayPlaceResult,
+  daySearchAreas,
+  nearestFirst,
+  type DaySearchArea,
+} from '../lib/place-comparison';
+import { planned_place_radius_km } from '../lib/place-providers';
 import { placeTypeFilters, type PlaceTypeFilter } from '../lib/place-types';
 import { isCalendarDate, itineraryDayLabel } from '../lib/dates';
 import { text_limits } from '../lib/model';
@@ -26,6 +32,7 @@ import { PlannedSearchResult, StopPlaceResult } from './StopPlaceResult';
 import { PlaceResultsSheet } from './PlaceResultsSheet';
 import { PlaceSortButton, type PlaceSortOrder } from './PlaceSortButton';
 import { PlaceTypeFilterButton } from './PlaceTypeFilterButton';
+import { SearchAreaButton } from './SearchAreaButton';
 import '../stop-place-picker.css';
 
 const categories = [
@@ -48,6 +55,7 @@ type SearchInput = {
   submitted: string | null;
   type_filter?: PlaceTypeFilter;
   sort?: PlaceSortOrder;
+  area_id?: string;
 };
 const empty_search: SearchInput = { text: '', submitted: '' };
 
@@ -101,7 +109,13 @@ export function StopPlacePicker({
   onEditPlanned?(stop: PlannedStop): void;
   onQuickAdd?(place: StopSearchResult, city?: string, city_id?: string): Promise<void>;
   onScheduleStay?(place: StopSearchResult, origin: HTMLElement, scope: PickerCity): void;
-  onPick(place: StopSearchResult, origin: HTMLElement, city?: string, city_id?: string): void;
+  onPick(
+    place: StopSearchResult,
+    origin: HTMLElement,
+    city?: string,
+    city_id?: string,
+    area?: DaySearchArea,
+  ): void;
   onManual(
     name: string,
     kind: StopKind,
@@ -168,19 +182,29 @@ export function StopPlacePicker({
     submitted: submitted_query,
     type_filter,
     sort = 'directory',
+    area_id,
   } = searches[scope_key] ?? empty_search;
   const needs_centers = Boolean(
-    onEditPlanned &&
-      !airports &&
-      (query.trim() || type_filter) &&
+    !airports &&
+      (is_browsable || (onEditPlanned && (query.trim() || type_filter))) &&
       route_cities.some((item) => !item.location) &&
-      day_stops.some(
-        (stop) => stop.city_id || (stop.position && (route_cities.length > 1 || stop.day !== day)),
-      ),
+      (stays.length ||
+        day_stops.some(
+          (stop) =>
+            stop.city_id || (stop.position && (route_cities.length > 1 || stop.day !== day)),
+        )),
   );
   const resolved = useSearchCityLocations(route_cities, needs_centers);
+  const areas = useMemo(
+    () =>
+      is_browsable && city
+        ? daySearchAreas(route, stays, resolved.cities, city_index, city, day)
+        : [],
+    [is_browsable, route, stays, resolved.cities, city_index, city, day],
+  );
+  const area = areas.find((option) => option.id === area_id);
   const can_search = Boolean(query.trim() && (airports || city));
-  const can_browse = is_browsable && city_index !== undefined;
+  const can_browse = is_browsable && (city_index !== undefined || Boolean(area));
   // Saving reparses city objects. Preserve the lookup when its search area hasn't changed.
   const scope = useMemo(
     () => ({
@@ -188,6 +212,7 @@ export function StopPlacePicker({
       city: airports ? '' : city,
       location: airports ? null : location,
       type_filter,
+      origin: area?.position,
     }),
     [
       category,
@@ -199,6 +224,8 @@ export function StopPlacePicker({
       location?.latitude,
       location?.longitude,
       type_filter,
+      area?.position.latitude,
+      area?.position.longitude,
     ],
   );
   const suggestions = usePlaceSuggestions(
@@ -219,10 +246,10 @@ export function StopPlacePicker({
   } = suggestions;
   const scoped = useMemo(
     () =>
-      response_places && !airports && city_index !== undefined
+      response_places && !airports && !area && city_index !== undefined
         ? groupPlacesForCity(response_places, trip, options, city_index)
         : undefined,
-    [response_places, airports, city_index, trip, options],
+    [response_places, airports, area, city_index, trip, options],
   );
   const places = scoped?.places ?? response_places;
   const can_compare =
@@ -230,11 +257,11 @@ export function StopPlacePicker({
     (route.some((stop) => stop.position) || stays.some(({ stop }) => stop.position));
   const results = useMemo(() => {
     const rows = places?.map((place) =>
-      dayPlaceResult(place, day_stops, route, stays, can_compare),
+      dayPlaceResult(place, day_stops, route, stays, can_compare, area),
     );
     return can_compare && sort === 'route' ? rows?.sort(nearestFirst) : rows;
-  }, [places, day_stops, route, stays, can_compare, sort]);
-  const selection_key = JSON.stringify([scope_key, type_filter, query.trim()]);
+  }, [places, day_stops, route, stays, can_compare, sort, area]);
+  const selection_key = JSON.stringify([scope_key, area?.id, type_filter, query.trim()]);
   const selected_id = map_selections[selection_key];
   const current_place = results?.find(({ place }) => place.id === selected_id) ?? results?.[0];
   const other_cities = named_term ? (scoped?.other_cities ?? []) : [];
@@ -249,6 +276,7 @@ export function StopPlacePicker({
           day,
           custom_city,
           type_filter,
+          area?.position,
         ).filter((stop) => !places?.some((place) => matchesPlannedPlace(stop, place)))
       : [];
   const category_label = categories.find(([key]) => key === category)![1];
@@ -321,7 +349,14 @@ export function StopPlacePicker({
     setExpanded(null);
     setSearches((previous) => ({
       ...previous,
-      [key]: { ...previous[key], text, submitted, type_filter },
+      // A "Search in [city]" shortcut starts a citywide search at the destination.
+      [key]: {
+        ...previous[key],
+        text,
+        submitted,
+        type_filter,
+        area_id: key === scope_key ? previous[key]?.area_id : undefined,
+      },
     }));
   }
 
@@ -337,6 +372,10 @@ export function StopPlacePicker({
   }
 
   function emptyResultsMessage() {
+    if (area) {
+      if (planned.length) return 'No additional matches in this search area.';
+      return `No matches within ${planned_place_radius_km} km of ${area.title}. Try another name or search area.`;
+    }
     if (filtering)
       return planned.length
         ? 'No other nearby matches. Tap Search to look farther afield.'
@@ -372,7 +411,7 @@ export function StopPlacePicker({
     if (map_open) rememberSelection(place.id);
     setSaveError(undefined);
     setExpanded(null);
-    onPick(place, origin, scoped_city, scoped_id);
+    onPick(place, origin, scoped_city, scoped_id, area);
   }
 
   const type_control = is_browsable && scoped_city && (
@@ -396,6 +435,7 @@ export function StopPlacePicker({
       {can_compare && scoped_city && (
         <PlaceSortButton
           value={sort}
+          specific_area={Boolean(area)}
           disabled={adding_id !== null}
           onSelect={(value) => {
             if (map_open && current_place) rememberSelection(current_place.place.id);
@@ -408,6 +448,22 @@ export function StopPlacePicker({
       )}
       {type_control}
     </>
+  );
+
+  const area_control = areas.length > 0 && (
+    <SearchAreaButton
+      options={areas}
+      selected_id={area?.id}
+      disabled={adding_id !== null}
+      onSelect={(id) => {
+        setExpanded(null);
+        setSaveError(undefined);
+        setSearches((previous) => ({
+          ...previous,
+          [scope_key]: { ...(previous[scope_key] ?? empty_search), area_id: id },
+        }));
+      }}
+    />
   );
 
   const city_choices = (
@@ -573,6 +629,7 @@ export function StopPlacePicker({
               )}
             </div>
           </div>
+          {area_control}
           {onEditPlanned && planned.length > 0 && (
             <>
               <h4 className="stop-picker-section-title">On this day</h4>
@@ -734,6 +791,8 @@ export function StopPlacePicker({
           route={route}
           stays={stays}
           cities={city_choices}
+          area_control={area_control}
+          area={area}
           result_controls={result_controls}
           results={results ?? []}
           selected_id={current_place?.place.id}

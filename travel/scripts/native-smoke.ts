@@ -55,6 +55,12 @@ const directories = new Set<string>();
 const calls: string[] = [];
 const http_urls: string[] = [];
 const place_requests: { city: string; query: string }[] = [];
+const area_origins = [
+  { title: 'Nara Park', prefix: 'Parkside', latitude: 34.685453, longitude: 135.843411 },
+  { title: 'JR Nara Station', prefix: 'Station', latitude: 34.680661, longitude: 135.819022 },
+  { title: 'Kyoto Riverside Inn', prefix: 'Riverside', latitude: 35.008, longitude: 135.766 },
+];
+const area_requests: { title: string; query: string }[] = [];
 const visitor_requests: string[] = [];
 const event_images: number[][] = [];
 const title_requests: LlmRequest[] = [];
@@ -111,7 +117,7 @@ function placeResponse(url: URL) {
   const city = cities[venue_city];
   const categories = params.get('categories')?.split(',') ?? [];
   const tags = params.getAll('osm_tag');
-  const venues = [
+  const city_venues = [
     { name: 'test museum', kind: 'museum', category: 'entertainment.museum' },
     { name: 'test inn', kind: 'hotel', category: 'accommodation.hotel' },
     {
@@ -127,6 +133,62 @@ function placeResponse(url: URL) {
     { name: 'East Annex', kind: 'guest_house', category: 'accommodation.guest_house' },
     { name: 'West Annex', kind: 'hostel', category: 'accommodation.hostel' },
   ];
+  const area_index = area_origins.findIndex(
+    (origin) =>
+      Math.abs(origin.longitude - longitude) < 1e-6 && Math.abs(origin.latitude - latitude) < 1e-6,
+  );
+  const origin = area_origins[area_index];
+  if (origin) {
+    area_requests.push({ title: origin.title, query });
+    if (geoapify) {
+      assert.equal(params.get('filter'), `circle:${origin.longitude},${origin.latitude},3000`);
+      assert.equal(params.get('bias'), `proximity:${origin.longitude},${origin.latitude}`);
+    } else if (query) {
+      const bbox = params.get('bbox')?.split(',').map(Number);
+      assert(bbox && Math.abs(bbox[3] - (latitude + 3 / 111)) < 0.001);
+    } else assert.equal(params.get('radius'), '3');
+  }
+  const area_gallery = {
+    kind: 'gallery',
+    category: 'entertainment.culture.gallery',
+  };
+  const venues: {
+    name: string;
+    category: string;
+    kind: string;
+    city?: string;
+    key?: string;
+    coordinates?: number[];
+  }[] = origin
+    ? [
+        // Nara Park's first gallery sits at the station, near a different route stop.
+        {
+          ...area_gallery,
+          name: origin.prefix + ' gallery',
+          coordinates:
+            area_index === 0
+              ? [area_origins[1].longitude, area_origins[1].latitude]
+              : [longitude + 0.003, latitude],
+        },
+        {
+          ...area_gallery,
+          name: origin.prefix + ' gallery annex',
+          coordinates: [longitude, latitude],
+        },
+        // The server deliberately includes a gallery beyond the three-kilometre radius.
+        {
+          ...area_gallery,
+          name: origin.prefix + ' gallery ridge',
+          coordinates: [longitude, latitude + 0.035],
+        },
+        {
+          kind: 'hotel',
+          category: 'accommodation.hotel',
+          name: origin.prefix + ' lodge',
+          coordinates: [longitude, latitude],
+        },
+      ]
+    : city_venues;
   const features = city
     ? venues.flatMap((venue, index) => {
         if (venue.city && venue.city !== city.name) return [];
@@ -138,14 +200,18 @@ function placeResponse(url: URL) {
             )
           : tags.length === 0 || tags.includes(`${venue.key ?? 'tourism'}:${venue.kind}`);
         if (!include || !name.toLowerCase().includes(query.toLowerCase())) return [];
-        const id = 100 + venue_city * venues.length + index;
+        const id = origin
+          ? 1000 + area_index * 10 + index
+          : 100 + venue_city * city_venues.length + index;
+        // A bounded search uses the coordinates even if the provider labels it with another route city.
+        const locality = area_index === 0 && index === 0 ? 'Kyoto' : city.name;
         return [
           {
             type: 'Feature',
             properties: geoapify
               ? {
                   name,
-                  city: city.name,
+                  city: locality,
                   country_code: 'jp',
                   place_id: (autocomplete ? 'suggestion-' : 'fixture-') + id,
                   datasource: { sourcename: 'openstreetmap', raw: { osm_type: 'n', osm_id: id } },
@@ -155,7 +221,7 @@ function placeResponse(url: URL) {
                 }
               : {
                   name,
-                  city: city.name,
+                  city: locality,
                   countrycode: 'jp',
                   osm_id: id,
                   osm_type: 'N',
@@ -178,7 +244,7 @@ function placeResponse(url: URL) {
       new TextEncoder().encode(
         JSON.stringify({
           type: 'FeatureCollection',
-          features: query ? features : features.slice(0, city?.name === 'Nara' ? 3 : 2),
+          features: query || origin ? features : features.slice(0, city?.name === 'Nara' ? 3 : 2),
         }),
       ),
     ),
@@ -1516,7 +1582,10 @@ try {
     title: string,
     expected_description: RegExp,
     back: 'button' | 'native',
-    distant_pin?: Locator,
+    {
+      distant_pin,
+      search_origin,
+    }: { distant_pin?: Locator; search_origin?: { title: string; distance: string } } = {},
   ) {
     const description = await visitor_map_action.evaluate((button) =>
       (button.getAttribute('aria-describedby') ?? '')
@@ -1535,6 +1604,14 @@ try {
       .getByRole('button', { name: /^Stop \d+, / })
       .first()
       .waitFor();
+    if (search_origin) {
+      const detail = map_preview.locator('header').filter({ hasText: search_origin.title });
+      await detail.getByText(/Search near/).waitFor();
+      await detail.getByText(search_origin.title, { exact: true }).waitFor();
+      await detail
+        .getByText(search_origin.distance + ' straight-line distance', { exact: true })
+        .waitFor();
+    }
     if (distant_pin) {
       assert(await pinWithinMap(candidate_pin));
       assert.equal(await pinWithinMap(distant_pin), false, 'The address opens its neighborhood.');
@@ -1679,6 +1756,7 @@ try {
   const http_before_airport = calls.filter((method) => method === 'http.request').length;
   await add_stop.click();
   await dialog.getByRole('button', { name: 'Airports', exact: true }).click();
+  assert.equal(await dialog.getByRole('button', { name: 'Search area', exact: true }).count(), 0);
   await dialog.getByRole('searchbox', { name: 'Search airports' }).fill('KIX');
   await dialog.getByRole('button', { name: /Kansai International Airport.*KIX/ }).click();
   assert.equal(await dialog.getByLabel('Category').inputValue(), 'transport');
@@ -2554,7 +2632,7 @@ try {
   await frame.getByRole('button', { name: 'Day 2, 21 May', exact: true }).click();
   await add_stop.click();
   const sort_sheet = frame.getByRole('dialog', { name: 'Sort places', exact: true });
-  type SortChoice = 'Directory order' | 'Nearest to day plan';
+  type SortChoice = 'Directory order' | 'Nearest to day plan' | 'Nearest to selected place';
   async function chooseSort(surface: Locator, current: SortChoice, choice: SortChoice) {
     const trigger = surface.getByRole('button', { name: 'Sort places', exact: true });
     await trigger.click();
@@ -2635,7 +2713,9 @@ try {
     .getByText('No visitor information is listed for this place.', { exact: true })
     .waitFor();
   const distant_park = preview_map.getByRole('button', { name: 'Stop 3, Nara Park', exact: true });
-  await checkVisitorMap(reviewed_sight, /straight line to /, 'button', distant_park);
+  await checkVisitorMap(reviewed_sight, /straight line to /, 'button', {
+    distant_pin: distant_park,
+  });
   await edit_itinerary.click();
   await route_position.click();
   assert.equal(
@@ -3351,6 +3431,149 @@ try {
     [[city_locations[1].id, day_two, day_three]],
   );
   assert.equal(journal_writes, writes_before_booking + 6);
+
+  // A Kyoto checkout and Nara's three route stops are separate search origins on the transfer.
+  const [park_origin, station_origin, checkout_origin] = area_origins;
+  const area_fixture = {
+    ...booking_fixture,
+    stops: [
+      ...booking_fixture.stops,
+      {
+        id: 'area-checkout',
+        trip_id: 'example-kansai',
+        day: '2030-05-20',
+        title: checkout_origin.title,
+        city: 'Kyoto',
+        city_id: city_locations[0].id,
+        kind: 'stay',
+        position: { latitude: checkout_origin.latitude, longitude: checkout_origin.longitude },
+        checkout_date: day_two,
+        time: '',
+        notes: '',
+      },
+    ],
+  };
+  files.set('journal/journal.json', [...new TextEncoder().encode(JSON.stringify(area_fixture))]);
+  await native_frame.goto(native_frame.url());
+  await frame.getByRole('button', { name: 'Open trip Kansai by rail', exact: true }).click();
+  await frame.getByRole('button', { name: 'Day 2, 21 May', exact: true }).click();
+  await add_stop.click();
+  const area_sheet = frame.getByRole('dialog', { name: 'Search area', exact: true });
+  const areaAction = (surface: Locator) =>
+    surface.getByRole('button', { name: 'Search area', exact: true });
+  const areaOption = (title: string) =>
+    area_sheet.getByRole('button', { name: title, exact: true });
+  async function chooseArea(surface: Locator, current: string, title: string, excluded?: string) {
+    const trigger = areaAction(surface);
+    await trigger.click();
+    assert.equal(await areaOption(current).getAttribute('aria-pressed'), 'true');
+    if (excluded) assert.equal(await areaOption(excluded).count(), 0);
+    if (title === checkout_origin.title)
+      await areaOption(title).getByText('Checking out today', { exact: true }).waitFor();
+    await areaOption(title).click();
+    await trigger.and(surface.locator(':focus')).waitFor();
+  }
+  const writes_before_area = journal_writes;
+  const default_area = 'City center';
+  await kyoto_museum.waitFor();
+  await nara.click();
+  await nara_museum.waitFor();
+  const main_gallery = 'Nara Parkside gallery';
+  const gallery_annex = main_gallery + ' annex';
+  assert.equal(await results.getByText(main_gallery, { exact: true }).count(), 0);
+  await chooseArea(dialog, default_area, park_origin.title, checkout_origin.title);
+  await results.getByText(main_gallery, { exact: true }).waitFor();
+  assert.deepEqual(await listedNames(), [main_gallery, gallery_annex]);
+  const park_distance = /2\.3 km straight line to Nara Park/;
+  const gallery_row = results.getByRole('button', {
+    name: /^Nara Parkside gallery\b(?! annex| ridge)/,
+  });
+  await gallery_row.getByText(park_distance).waitFor();
+  await chooseSort(dialog, 'Directory order', 'Nearest to selected place');
+  assert.deepEqual(await listedNames(), [gallery_annex, main_gallery]);
+  await chooseType(dialog, 'Sight', 'Museums & galleries');
+  await place_search.fill('gallery');
+  await search.click();
+  await results.getByText(main_gallery, { exact: true }).waitFor();
+  await open_results_map.click();
+  const area_map = frame.getByRole('dialog', {
+    name: 'Museums & galleries near Nara',
+    exact: true,
+  });
+  const area_card = area_map.getByRole('group', { name: 'Selected place', exact: true });
+  await area_card.getByRole('heading', { name: gallery_annex, exact: true }).waitFor();
+  const park_pin = area_map.getByRole('button', { name: 'Stop 2, Nara Park', exact: true });
+  const station_pin = area_map.getByRole('button', {
+    name: 'Stop 1, JR Nara Station',
+    exact: true,
+  });
+  assert.equal(await park_pin.getAttribute('aria-description'), 'Search near Nara Park');
+  await area_card.getByRole('button', { name: 'Next place', exact: true }).click();
+  await area_card.getByRole('heading', { name: main_gallery, exact: true }).waitFor();
+  await area_card.getByText(park_distance).waitFor();
+  const review_gallery = area_card.getByRole('button', { name: 'Review place', exact: true });
+  await review_gallery.click();
+  await visitor_sheet
+    .getByText('No visitor information is listed for this place.', { exact: true })
+    .waitFor();
+  await checkVisitorMap(main_gallery, /^Kyoto 2\.3 km straight line to Nara Park$/, 'native', {
+    search_origin: { title: park_origin.title, distance: '2.3 km' },
+  });
+  await back_to_results.click();
+  await review_gallery.and(area_map.locator(':focus')).waitFor();
+  await chooseArea(area_map, park_origin.title, station_origin.title, checkout_origin.title);
+  await area_card
+    .getByRole('heading', { name: 'Nara Station gallery annex', exact: true })
+    .waitFor();
+  assert.equal(await station_pin.getAttribute('aria-description'), 'Search near JR Nara Station');
+  assert.equal(await park_pin.getAttribute('aria-description'), null);
+  await chooseArea(area_map, station_origin.title, park_origin.title);
+  await area_card.getByRole('heading', { name: main_gallery, exact: true }).waitFor();
+  await area_card.getByText('2 of 2', { exact: true }).waitFor();
+  await area_map.getByRole('button', { name: 'Search in Kyoto', exact: true }).click();
+  await sight_map.getByRole('heading', { name: 'Kyoto test museum', exact: true }).waitFor();
+  await chooseArea(sight_map, default_area, checkout_origin.title, park_origin.title);
+  await sight_map.getByRole('heading', { name: 'Kyoto Riverside gallery', exact: true }).waitFor();
+  await sight_map.getByRole('button', { name: 'Search in Nara', exact: true }).click();
+  await area_card.getByRole('heading', { name: main_gallery, exact: true }).waitFor();
+  await area_map.getByRole('button', { name: 'Back to place list', exact: true }).click();
+  assert.equal(await place_search.inputValue(), 'gallery');
+  assert.deepEqual(await listedNames(), [gallery_annex, main_gallery]);
+  assert(
+    area_requests.some(
+      (request) => request.title === station_origin.title && request.query === 'gallery',
+    ),
+  );
+  assert.equal(journal_writes, writes_before_area);
+  await results
+    .getByRole('button', { name: 'Add ' + main_gallery + ' to day', exact: true })
+    .click();
+  await gallery_row.getByText('On this day', { exact: true }).waitFor();
+  await hotels.click();
+  await nara_inn.waitFor();
+  await kyoto.click();
+  await chooseArea(dialog, default_area, checkout_origin.title, station_origin.title);
+  const riverside_lodge = 'Kyoto Riverside lodge';
+  await schedule(dialog, riverside_lodge).click();
+  await stay_dates.getByRole('heading', { name: riverside_lodge, exact: true }).waitFor();
+  await confirm_stay.click();
+  await stay_dates.waitFor({ state: 'hidden' });
+  await areaAction(dialog).getByText(checkout_origin.title, { exact: true }).waitFor();
+  await results
+    .getByRole('button', { name: /^Kyoto Riverside lodge/ })
+    .getByText('On this day', { exact: true })
+    .waitFor();
+  assert.equal(journal_writes, writes_before_area + 2);
+  const area_added = journal().stops.filter(
+    (stop) => !area_fixture.stops.some((old) => old.id === stop.id),
+  );
+  assert.deepEqual(
+    area_added.map((stop) => [stop.title, stop.city_id, stop.day, stop.directory_ref?.id]).sort(),
+    [
+      [main_gallery, city_locations[1].id, day_two, geoapify ? 'fixture-1000' : 'N1000'],
+      [riverside_lodge, city_locations[0].id, day_two, geoapify ? 'fixture-1023' : 'N1023'],
+    ].sort(),
+  );
   assert.deepEqual(errors, [], 'The native applet should not produce uncaught browser errors.');
   for (const method of [
     'photos.pick',
@@ -3399,6 +3622,7 @@ try {
           'directly adding two nearby sights, duplicate-tap protection, failed write and retry from the result',
           'city-scoped sight and hotel result maps, coincident venues, pin selection and return to reviewed drafts',
           'transfer-day distance sorting across city, category, list and map with preserved selection',
+          'three-kilometre stop and checkout-hotel search areas, scoped search and map selection, and adding a sight or hotel for the chosen city',
           'venue neighborhood and full-day camera framing from visitor details and itinerary editing',
           'rescheduling a new hotel, then continuing at the arrival city on the new day',
           'returning to the last saved stop, continuing stay or checkout in the day timeline',

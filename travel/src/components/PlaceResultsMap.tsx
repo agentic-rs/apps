@@ -8,6 +8,7 @@ import {
   type MapPadding,
 } from '../lib/leaflet-map';
 import { dayMapPlaces, normalizeLongitude, visiblePosition } from '../lib/map';
+import type { DaySearchArea } from '../lib/place-comparison';
 import type { StopSearchResult } from '../lib/stop-lookup';
 import type { PlannedStop } from '../lib/types';
 import { Icon } from './Icon';
@@ -31,6 +32,7 @@ const kind_icons = {
 
 export default function PlaceResultsMap({
   places,
+  area,
   stops,
   stays,
   selected_id,
@@ -39,6 +41,7 @@ export default function PlaceResultsMap({
   active,
 }: {
   places: StopSearchResult[];
+  area?: DaySearchArea;
   stops: PlannedStop[];
   stays: ContinuingStay[];
   selected_id: string;
@@ -51,11 +54,17 @@ export default function PlaceResultsMap({
   const result_locations = new Set(
     places.map(({ position }) => `${position.latitude}/${normalizeLongitude(position.longitude)}`),
   );
+  const fit_points = useMemo(() => (area ? [...places, area] : places), [places, area]);
   const fitResults = useMapFit(
     map,
     active,
-    [...result_locations].sort().join(';'),
-    places,
+    [
+      area?.id,
+      area?.position.latitude,
+      area?.position.longitude,
+      ...[...result_locations].sort(),
+    ].join(';'),
+    fit_points,
     resultsPadding,
   );
   const { tile_failures, retryTiles } = useMapTiles(map, native, active);
@@ -80,7 +89,14 @@ export default function PlaceResultsMap({
         role="region"
         aria-label="Map of place results"
       />
-      {map && <DayPlacePins map={map} groups={groups} shared_locations={result_locations} />}
+      {map && (
+        <DayPlacePins
+          map={map}
+          groups={groups}
+          shared_locations={result_locations}
+          search_area={area}
+        />
+      )}
       {map &&
         places.map((place) => (
           <PlaceMapButton

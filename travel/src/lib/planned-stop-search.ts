@@ -1,10 +1,10 @@
 import { sameTripCity } from './cities';
 import { directoryKey } from './directory-format';
 import { distanceKm } from './distance';
-import { placeSearchRadiusKm } from './place-providers';
+import { placeSearchRadiusKm, planned_place_radius_km } from './place-providers';
 import { matchesPlaceType, type PlaceTypeFilter } from './place-types';
 import { placeNameMatcher, type StopSearchCategory, type StopSearchResult } from './stop-lookup';
-import type { DirectoryRef, PlannedStop, TripCityLocation } from './types';
+import type { Coordinates, DirectoryRef, PlannedStop, TripCityLocation } from './types';
 
 export interface SearchCity {
   index: number;
@@ -129,6 +129,7 @@ export function searchPlannedStops(
   day: string,
   custom_city = '',
   type_filter?: PlaceTypeFilter,
+  origin?: Coordinates,
 ) {
   const browse_type = Boolean(type_filter) && !query.trim();
   const matches = placeNameMatcher(query);
@@ -138,8 +139,10 @@ export function searchPlannedStops(
       (category === 'all' || stop.kind === category) &&
       (!type_filter || matchesPlaceType(stop.directory_ref?.place_type, type_filter)) &&
       (browse_type || matches(stop.title)) &&
-      (selected !== undefined
-        ? matchingStopCities(stop, cities, day).some((city) => city.index === selected)
-        : Boolean(custom_key && stop.city && directoryKey(stop.city) === custom_key)),
+      (origin
+        ? stop.position && distanceKm(origin, stop.position) <= planned_place_radius_km
+        : selected !== undefined
+          ? matchingStopCities(stop, cities, day).some((city) => city.index === selected)
+          : Boolean(custom_key && stop.city && directoryKey(stop.city) === custom_key)),
   );
 }

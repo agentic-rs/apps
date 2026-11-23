@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test';
 import kansai from '../fixtures/kansai.json';
+import { daySearchAreas } from '../src/lib/place-comparison';
 import { parseJournal } from '../src/lib/model';
 import {
   matchesPlannedPlace,
@@ -29,6 +30,46 @@ const cities = [
   { index: 0, name: 'Kyoto', location: kyoto },
   { index: 1, name: 'Nara', location: nara },
 ];
+
+test('search areas keep route numbers and expose checkout hotels only in their planned city', () => {
+  const unlocated = { ...park, id: 'unmapped', position: null };
+  const hotel = {
+    ...park,
+    id: 'kyoto-stay',
+    kind: 'stay' as const,
+    title: 'Kyoto inn',
+    city: 'Kyoto',
+    day: '2030-05-20',
+    checkout_date: park.day,
+  };
+  const route = [unlocated, park];
+  const stays = [{ stop: hotel, label: 'Check out of Kyoto inn' }];
+  const nara_areas = daySearchAreas(route, stays, cities, 1, 'Nara', park.day);
+  expect(nara_areas.map(({ id, detail }) => [id, detail])).toEqual([[park.id, 'Stop 2']]);
+  const kyoto_areas = daySearchAreas(route, stays, cities, 0, 'Kyoto', park.day);
+  expect(kyoto_areas.map(({ id, detail }) => [id, detail])).toEqual([
+    ['kyoto-stay', 'Checking out today'],
+  ]);
+});
+
+test('an explicit search radius includes saved matches across city boundaries', () => {
+  const across_border = { ...park, city: 'Other city', city_id: 'other-city' };
+  const outside = { ...park, position: kyoto };
+  const unlocated = { ...park, position: null };
+  expect(
+    searchPlannedStops(
+      [across_border, outside, unlocated],
+      'Park',
+      'sight',
+      cities,
+      1,
+      park.day,
+      '',
+      undefined,
+      park.position!,
+    ),
+  ).toEqual([across_border]);
+});
 
 test('the name-only Kansai fixture yields its saved Day 2 Nara Park only in Nara', () => {
   const day = stops.filter((stop) => stop.day === park.day);

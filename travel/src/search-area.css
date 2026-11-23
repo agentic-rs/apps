@@ -1,0 +1,84 @@
+.search-area-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 44px;
+  padding: 3px 4px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--apell-primary);
+  font-size: 0.875rem;
+  text-align: start;
+}
+.search-area-name {
+  display: -webkit-box;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.search-area-name span {
+  color: var(--apell-muted);
+  white-space: nowrap;
+}
+.search-area-name strong {
+  font-weight: 600;
+}
+.dialog[open]:has(> .search-area-options) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.dialog:has(> .search-area-options) .dialog-header {
+  flex: none;
+}
+.search-area-options {
+  min-height: 0;
+  padding: 0 18px calc(12px + var(--safe-area-bottom));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.search-area-options button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 52px;
+  padding: 10px 4px;
+  border: 0;
+  background: transparent;
+  color: var(--apell-text);
+  text-align: start;
+}
+.search-area-options button + button {
+  border-top: 1px solid var(--apell-line);
+}
+.search-area-options h3 {
+  margin: 0;
+  padding: 14px 4px 4px;
+  border-top: 1px solid var(--apell-line);
+  color: var(--apell-muted);
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+.search-area-options button[aria-pressed='true'] {
+  color: var(--apell-primary);
+}
+.search-area-options button > span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.search-area-options strong {
+  font-weight: 550;
+}
+.search-area-options small {
+  color: var(--apell-muted);
+  font-size: 0.82rem;
+}

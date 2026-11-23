@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { Map as LeafletMap } from 'leaflet';
 import type { ContinuingStay } from '../lib/hotel-stays';
-import { formatDistance } from '../lib/distance';
+import { distanceKm, formatDistance } from '../lib/distance';
+import type { DaySearchArea } from '../lib/place-comparison';
 import {
   useDayRouteLine,
   useLeafletMap,
@@ -32,6 +33,7 @@ export default function PlaceMapPreview({
   context,
   editing_id,
   initial_view = 'day',
+  search_area,
 }: {
   title: string;
   position: Coordinates;
@@ -42,6 +44,7 @@ export default function PlaceMapPreview({
   context?: string;
   editing_id?: string;
   initial_view?: PreviewView;
+  search_area?: DaySearchArea;
 }) {
   const { container, map, zoom } = useLeafletMap(0);
   const [view, setView] = useState(initial_view);
@@ -79,6 +82,18 @@ export default function PlaceMapPreview({
   useDayRouteLine(map, route, true);
   const name = title.trim() || 'Selected place';
   const order = `Stop ${candidate_number} of ${route.length}`;
+  const reference = search_area
+    ? {
+        label: 'Search near',
+        title: search_area.title,
+        km: distanceKm(position, search_area.position),
+      }
+    : closest && {
+        label: closest.number === undefined ? 'Closest hotel' : 'Closest stop',
+        title:
+          closest.number === undefined ? closest.title : `${closest.number} · ${closest.title}`,
+        km: closest.km,
+      };
 
   function showView(next: PreviewView) {
     map?.closePopup();
@@ -94,14 +109,10 @@ export default function PlaceMapPreview({
           <Icon name="pin" size={22} />
           <h3>{name}</h3>
         </div>
-        {closest ? (
+        {reference ? (
           <p>
-            {closest.number === undefined ? 'Closest hotel' : 'Closest stop'}{' '}
-            <strong>
-              {closest.number !== undefined && `${closest.number} · `}
-              {closest.title}
-            </strong>
-            <span>{formatDistance(closest.km)} straight-line distance</span>
+            {reference.label} <strong>{reference.title}</strong>
+            <span>{formatDistance(reference.km)} straight-line distance</span>
           </p>
         ) : (
           <p>
@@ -119,7 +130,12 @@ export default function PlaceMapPreview({
       />
       {map && (
         <>
-          <DayPlacePins map={map} groups={groups} shared_locations={new Set([candidate_key])} />
+          <DayPlacePins
+            map={map}
+            groups={groups}
+            shared_locations={new Set([candidate_key])}
+            search_area={search_area}
+          />
           <PlaceMapButton
             map={map}
             position={position}

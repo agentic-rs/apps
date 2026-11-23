@@ -2,10 +2,12 @@ import { searchDirectoryAirports, searchDirectoryCities } from './offline-direct
 import { distanceKm } from './distance';
 import { createPlaceDetailsLookup, type PlaceVisitorDetails } from './place-details';
 import { requestPlaceJson } from './place-http';
+import { parseCoordinates } from './model';
 import { directoryKey } from './directory-format';
 import { placeTypeLabel, type PlaceType, type PlaceTypeFilter } from './place-types';
 import {
   named_search_radius_km,
+  planned_place_radius_km,
   placeSearchRadiusKm,
   placeSearchUrl,
   readPlaceResults,
@@ -17,6 +19,8 @@ export interface StopSearchRequest {
   query: string;
   city: string;
   location?: TripCityLocation | null;
+  /** Center a sight or hotel search on this planned place. */
+  origin?: Coordinates;
   category: StopSearchCategory;
   type_filter?: PlaceTypeFilter;
   suggest?: boolean;
@@ -111,10 +115,11 @@ export function createStopLookup(
   return {
     attribution: public_key ? 'Geoapify' : 'Photon',
     details: createPlaceDetailsLookup(native, public_key),
-    async search({ query, category, type_filter, city, location, suggest }, signal) {
+    async search({ query, category, type_filter, city, location, origin, suggest }, signal) {
       query = query.trim();
       signal.throwIfAborted();
-      if (!query && category !== 'sight' && category !== 'stay') return [];
+      const browsable = category === 'sight' || category === 'stay';
+      if (!query && !browsable) return [];
       if (category === 'airport') {
         const airports = await searchDirectoryAirports(query);
         signal.throwIfAborted();
@@ -135,9 +140,8 @@ export function createStopLookup(
         }));
       }
       // Photon uses the same scoped name search for a prefix and an explicit submit.
-      const autocomplete = Boolean(
-        public_key && suggest && query && (category === 'sight' || category === 'stay'),
-      );
+      const autocomplete = Boolean(public_key && suggest && query && browsable);
+      const anchor = origin && browsable ? parseCoordinates(origin) : undefined;
       const key = JSON.stringify([
         category,
         type_filter,
@@ -147,6 +151,8 @@ export function createStopLookup(
         location?.longitude,
         query,
         autocomplete,
+        anchor?.latitude,
+        anchor?.longitude,
       ]);
       const cached = cache.get(key);
       if (cached && cached.expires_at > Date.now()) return cached.places;
@@ -154,21 +160,16 @@ export function createStopLookup(
         throw new Error('You’re offline. Search airports or enter a stop manually.');
       // Older trips store names only. Prefer an exact directory match and
       // retain the city text in the remote query if it is a custom location.
-      const center = location ?? (await resolveSearchCity(city));
+      const center = anchor ?? location ?? (await resolveSearchCity(city));
       signal.throwIfAborted();
       if (autocomplete && !center) return [];
-      const url = placeSearchUrl(
-        query,
-        category,
-        city,
-        center,
-        public_key,
-        type_filter,
+      const radius_km = anchor ? planned_place_radius_km : placeSearchRadiusKm(query);
+      const url = placeSearchUrl(query, category, city, center, public_key, type_filter, {
         autocomplete,
-      );
+        radius_km,
+      });
       const payload = await requestPlaceJson(url, signal, native);
       signal.throwIfAborted();
-      const radius_km = placeSearchRadiusKm(query);
       const places = readPlaceResults(
         payload,
         Boolean(public_key),

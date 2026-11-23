@@ -240,6 +240,141 @@ test('keeps nearby browsing inside ten kilometers while named searches can reach
   }
 });
 
+test.each(['Photon', 'Geoapify'])(
+  '%s searches within three kilometers of a planned place for nearby and named results',
+  async (provider) => {
+    const geoapify = provider === 'Geoapify';
+    const lookup = createStopLookup(false, geoapify ? 'test' : '');
+    const origin = { latitude: 35, longitude: 135.7, id: 'private-stop', title: 'Private notes' };
+    // Simulate a rectangular or imperfect provider filter on either side of the circle.
+    const features = [2.999, 3.001].map((km, i) => ({
+      geometry: {
+        type: 'Point',
+        coordinates: [origin.longitude, origin.latitude + (km / 6371) * (180 / Math.PI)],
+      },
+      properties: geoapify
+        ? {
+            name: 'Inn',
+            place_id: 'fixture-' + i,
+            categories: ['accommodation.hotel'],
+            category: 'accommodation.hotel',
+            result_type: 'amenity',
+          }
+        : { ...hotel, osm_id: 20 + i },
+    }));
+    const fetch_spy = spyOn(globalThis, 'fetch');
+    try {
+      for (const { query, suggest } of [
+        { query: '' },
+        { query: 'Inn' },
+        { query: 'In', suggest: true },
+      ]) {
+        fetch_spy.mockResolvedValueOnce(Response.json({ features }));
+        const places = await lookup.search(
+          {
+            category: 'stay',
+            type_filter: 'hotels',
+            city: 'My custom city',
+            origin,
+            query,
+            suggest,
+          },
+          new AbortController().signal,
+        );
+        expect(places).toHaveLength(1);
+        expect(places[0].distance_km).toBeCloseTo(2.999, 6);
+        const url = new URL(String(fetch_spy.mock.calls.at(-1)![0]));
+        const sent = [...url.searchParams.values()].join(' ');
+        for (const private_value of ['My custom city', origin.id, origin.title]) {
+          expect(sent).not.toContain(private_value);
+        }
+        if (geoapify) {
+          expect(url.searchParams.get('filter')).toBe('circle:135.7,35,3000');
+          expect(url.searchParams.get('bias')).toBe('proximity:135.7,35');
+          expect(url.pathname).toBe(suggest ? '/v1/geocode/autocomplete' : '/v2/places');
+          if (query) expect(url.searchParams.get(suggest ? 'text' : 'name')).toBe(query);
+          else expect(url.searchParams.get('conditions')).toBe('named');
+        } else {
+          expect(url.searchParams.get('lat')).toBe('35');
+          expect(url.searchParams.get('lon')).toBe('135.7');
+          expect(url.searchParams.getAll('osm_tag')).toEqual(['tourism:hotel']);
+          if (query) {
+            expect(url.searchParams.get('q')).toBe(query);
+            const [west, south, east, north] = url.searchParams.get('bbox')!.split(',').map(Number);
+            expect(south).toBeCloseTo(34.973, 3);
+            expect(north).toBeCloseTo(35.027, 3);
+            expect(west).toBeCloseTo(135.667, 3);
+            expect(east).toBeCloseTo(135.733, 3);
+          } else expect(url.searchParams.get('radius')).toBe('3');
+        }
+      }
+    } finally {
+      fetch_spy.mockRestore();
+    }
+  },
+);
+
+test('isolates a planned-place radius from another origin and from city-wide results at the same point', async () => {
+  const lookup = createStopLookup(false, '');
+  const signal = new AbortController().signal;
+  const request = { category: 'sight' as const, city: 'Nara', location: nara, query: '' };
+  const payload = {
+    features: [{ properties: { ...hotel, osm_value: 'museum' }, geometry: point }],
+  };
+  const fetch_spy = spyOn(globalThis, 'fetch')
+    .mockResolvedValueOnce(Response.json(payload))
+    .mockResolvedValueOnce(Response.json(payload))
+    .mockResolvedValueOnce(Response.json(payload));
+  try {
+    const with_origin = {
+      ...request,
+      origin: { latitude: nara.latitude, longitude: nara.longitude },
+    };
+    const city = await lookup.search(request, signal);
+    const anchored = await lookup.search(with_origin, signal);
+    expect(anchored).toHaveLength(1);
+    expect(anchored).not.toBe(city);
+    expect(
+      await lookup.search({ ...request, origin: { latitude: 35, longitude: 135.7 } }, signal),
+    ).toBeEmpty();
+    expect(await lookup.search(with_origin, signal)).toBe(anchored);
+    expect(await lookup.search(request, signal)).toBe(city);
+    expect(fetch_spy).toHaveBeenCalledTimes(3);
+  } finally {
+    fetch_spy.mockRestore();
+  }
+});
+
+test('only sight and hotel lookups send a valid explicitly requested origin', async () => {
+  const lookup = createStopLookup(false, '');
+  const origin = { latitude: 35, longitude: 135.7 };
+  const signal = new AbortController().signal;
+  const request = { query: 'Test', city: 'Nara', location: nara, origin };
+  const fetch_spy = spyOn(globalThis, 'fetch')
+    .mockResolvedValueOnce(Response.json({ features: [] }))
+    .mockResolvedValueOnce(Response.json({ features: [] }));
+  try {
+    for (const category of ['food', 'all'] as const) {
+      await lookup.search({ ...request, category }, signal);
+      const url = new URL(String(fetch_spy.mock.calls.at(-1)![0]));
+      expect(url.searchParams.get('lat')).toBe(String(nara.latitude));
+      expect(url.searchParams.get('lon')).toBe(String(nara.longitude));
+    }
+    await expect(
+      lookup.search(
+        { ...request, category: 'stay', origin: { latitude: NaN, longitude: 0 } },
+        signal,
+      ),
+    ).rejects.toThrow('Latitude');
+    await expect(
+      lookup.search({ ...request, category: 'sight' }, AbortSignal.abort()),
+    ).rejects.toThrow();
+    expect(fetch_spy).toHaveBeenCalledTimes(2);
+  } finally {
+    fetch_spy.mockRestore();
+  }
+});
+
 test('requires a resolved city center to browse and skips blank searches in other categories', async () => {
   const lookup = createStopLookup(false, '');
   const signal = new AbortController().signal;

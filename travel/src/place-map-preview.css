@@ -116,6 +116,10 @@
     700 14px/1 system-ui,
     sans-serif;
 }
+.place-stop-badge[data-search-origin] {
+  outline: 3px solid var(--apell-accent-line);
+  outline-offset: 2px;
+}
 .place-stop-badge small {
   display: flex;
   align-items: center;

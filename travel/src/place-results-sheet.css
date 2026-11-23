@@ -55,6 +55,10 @@
   font-weight: 550;
   font-size: 0.85rem;
 }
+.result-map-area {
+  width: 100%;
+  min-width: 0;
+}
 .result-map-card {
   width: min(100%, 640px);
   align-self: center;

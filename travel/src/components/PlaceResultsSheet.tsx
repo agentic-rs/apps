@@ -1,6 +1,6 @@
 import { lazy, Suspense, useMemo, useRef, type ReactNode } from 'react';
 import type { ContinuingStay } from '../lib/hotel-stays';
-import type { DayPlaceResult } from '../lib/place-comparison';
+import type { DayPlaceResult, DaySearchArea } from '../lib/place-comparison';
 import { placeTypeLabel } from '../lib/place-types';
 import type { StopSearchResult } from '../lib/stop-lookup';
 import type { PlannedStop } from '../lib/types';
@@ -19,6 +19,8 @@ interface PlaceResultsSheetProps {
   route: PlannedStop[];
   stays: ContinuingStay[];
   cities: ReactNode;
+  area?: DaySearchArea;
+  area_control: ReactNode;
   result_controls: ReactNode;
   results: readonly DayPlaceResult[];
   selected_id?: string;
@@ -45,6 +47,8 @@ export function PlaceResultsSheet({
   stays,
   day_label,
   cities,
+  area,
+  area_control,
   result_controls,
   results,
   selected_id,
@@ -85,6 +89,7 @@ export function PlaceResultsSheet({
         <fieldset disabled={saving} className="result-map-city-bar">
           {cities}
           {day_label && <span className="result-map-day">{day_label}</span>}
+          {area_control && <div className="result-map-area">{area_control}</div>}
         </fieldset>
         {place ? (
           <>
@@ -97,6 +102,7 @@ export function PlaceResultsSheet({
             >
               <PlaceResultsMap
                 places={places}
+                area={area}
                 stops={route}
                 stays={stays}
                 selected_id={place.id}

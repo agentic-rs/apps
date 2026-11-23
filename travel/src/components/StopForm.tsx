@@ -1,9 +1,10 @@
 import { lazy, Suspense, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { citiesOnDay, cityIndicesOnDay } from '../lib/city-days';
 import { daysBetween, isCalendarDate, itineraryDayLabel } from '../lib/dates';
-import { formatDistance } from '../lib/distance';
+import { distanceKm, formatDistance } from '../lib/distance';
 import { createId } from '../lib/identity';
 import { nearestDayPlace } from '../lib/map';
+import type { DaySearchArea } from '../lib/place-comparison';
 import { canShowPlaceDetails } from '../lib/place-details';
 import { placeTypeLabel } from '../lib/place-types';
 import {
@@ -205,7 +206,7 @@ function StopEditor({
 }) {
   const [draft, setDraft] = useState(() => stopDraft(day, stop));
   const blank_day = useRef(day);
-  const inspected = useRef<typeof draft | null>(null);
+  const inspected = useRef<{ draft: typeof draft; area?: DaySearchArea } | null>(null);
   const {
     id: draft_id,
     directory_ref,
@@ -267,13 +268,31 @@ function StopEditor({
     () => continuingStays(trip_stops, stop_day),
     [trip_stops, stop_day],
   );
-  const closest = useMemo(
-    () =>
-      inspecting_result && position
-        ? nearestDayPlace(position, preview_stops, preview_stays)
-        : undefined,
-    [inspecting_result, position, preview_stops, preview_stays],
-  );
+  const choice = inspected.current;
+  const result_area =
+    inspecting_result &&
+    choice?.draft.day === stop_day &&
+    choice.draft.directory_ref === directory_ref
+      ? choice.area
+      : undefined;
+  const search_area = useMemo(() => {
+    if (!result_area) return;
+    const stop =
+      preview_stops.find((item) => item.id === result_area.id) ??
+      preview_stays.find(({ stop }) => stop.id === result_area.id)?.stop;
+    // A reference which moved or left this day's itinerary no longer describes the search.
+    if (
+      stop?.position?.latitude === result_area.position.latitude &&
+      stop.position.longitude === result_area.position.longitude
+    )
+      return { ...result_area, title: stop.title };
+  }, [result_area, preview_stops, preview_stays]);
+  const comparison = useMemo(() => {
+    if (!inspecting_result || !position) return;
+    return search_area
+      ? { title: search_area.title, km: distanceKm(position, search_area.position) }
+      : nearestDayPlace(position, preview_stops, preview_stays);
+  }, [inspecting_result, position, search_area, preview_stops, preview_stays]);
   const picker_stops = useMemo(
     () => trip_stops.filter((item) => item.day === picker_day),
     [trip_stops, picker_day],
@@ -416,7 +435,7 @@ function StopEditor({
   }
 
   function onlyInspectedPlace() {
-    const choice = inspected.current;
+    const choice = inspected.current?.draft;
     if (!choice) return false;
     const fields = Object.keys(draft) as (keyof typeof draft)[];
     return fields.every((field) => draft[field] === choice[field]);
@@ -463,6 +482,7 @@ function StopEditor({
     origin: HTMLElement,
     city?: string,
     city_id?: string,
+    area?: DaySearchArea,
   ) {
     last_pick.current = origin;
     if (
@@ -487,7 +507,7 @@ function StopEditor({
       directory_ref: directoryReference(place),
     };
     const clean_choice = !stop && ((!dirty && !source_changed) || onlyInspectedPlace());
-    inspected.current = clean_choice ? choice : null;
+    inspected.current = clean_choice ? { draft: choice, area } : null;
     const inspect =
       picking === 'initial' &&
       clean_choice &&
@@ -1001,7 +1021,7 @@ function StopEditor({
           onEditItinerary={inspecting_result ? () => enterEditorFromDetails('edit') : undefined}
           onViewMap={inspecting_result && position && !placement_pending ? openMap : undefined}
           route_distance={
-            closest && `${formatDistance(closest.km)} straight line to ${closest.title}`
+            comparison && `${formatDistance(comparison.km)} straight line to ${comparison.title}`
           }
           route_summary={
             !inspecting_result
@@ -1060,6 +1080,7 @@ function StopEditor({
           >
             <PlaceMapPreview
               initial_view={show_details ? 'place' : 'day'}
+              search_area={search_area}
               title={title.trim() || 'Selected place'}
               position={position}
               context={place_context}

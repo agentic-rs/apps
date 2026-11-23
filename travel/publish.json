@@ -1,5 +1,5 @@
 {
   "project_url": "https://github.com/agentic-rs/apps/tree/main/travel",
   "description": "Choose a city and plan daily routes. Add another city when your trip takes you farther. Keep track of packing, expenses, check-ins and photos. Photos stay on your device. Optional AI title suggestions use event times and coordinates.",
-  "release_notes": "Compare sights and hotels by their distance to the day’s planned stops. Use Sort places to bring the closest new places to the top. The results map remembers the place you were comparing in each city. Tap a venue’s address to see its neighborhood, or Fit all to see the whole day."
+  "release_notes": "Use Search near to find sights and hotels within 3 km of a planned stop or hotel. Switch between the city center and stops on the day’s route from the list or map. Check-in and checkout hotels can both be search locations."
 }

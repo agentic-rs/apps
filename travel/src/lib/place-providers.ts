@@ -77,6 +77,7 @@ const categories: Record<PlaceCategory, string> = {
 };
 
 export const named_search_radius_km = 40;
+export const planned_place_radius_km = 3;
 
 export function placeSearchRadiusKm(query: string): number {
   return query ? named_search_radius_km : 10;
@@ -99,9 +100,11 @@ export function placeSearchUrl(
   center: Coordinates | undefined,
   public_key: string,
   type_filter?: PlaceTypeFilter,
-  autocomplete = false,
+  {
+    autocomplete = false,
+    radius_km = placeSearchRadiusKm(query),
+  }: { autocomplete?: boolean; radius_km?: number } = {},
 ): URL {
-  const radius_km = placeSearchRadiusKm(query);
   const types = type_filter && providerTypeFilter(type_filter, category);
   if (!query && !center)
     throw new Error(
