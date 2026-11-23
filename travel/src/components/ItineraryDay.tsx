@@ -233,6 +233,24 @@ export function ItineraryDay({
       ) : (
         <p className="itinerary-empty">No stops planned for this day.</p>
       )}
+      {stops.some(
+        (stop) => stop.directory_ref && stop.directory_ref.provider !== 'ourairports',
+      ) && (
+        <small className="itinerary-place-credit">
+          {stops.some((stop) => stop.directory_ref?.provider === 'geoapify') && (
+            <>
+              <a href="https://www.geoapify.com/" target="_blank" rel="noreferrer">
+                Geoapify
+              </a>{' '}
+              ·{' '}
+            </>
+          )}
+          ©{' '}
+          <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">
+            OpenStreetMap contributors
+          </a>
+        </small>
+      )}
       <section className="itinerary-journal" aria-label="Day journal">
         <h3>Day journal</h3>
         <div className="itinerary-journal-actions">

@@ -20,6 +20,7 @@ import {
   upsertTrip,
   visitTitle,
 } from '../src/lib/model';
+import { journal_schema_version } from '../src/lib/types';
 import type { CheckIn, Journal, PhotoAsset, Place, PlannedStop, Trip } from '../src/lib/types';
 
 const now = '2026-05-12T14:20:00.000Z';
@@ -208,13 +209,39 @@ describe('journal data integrity', () => {
 
   test('validates schema and missing fields before reading or saving', () => {
     expect(() => parseJournal(null)).toThrow();
-    for (const schema_version of [0, 1.5, 6, '5'])
+    for (const schema_version of [0, 1.5, journal_schema_version + 1, '5'])
       expect(() => parseJournal({ ...emptyJournal(), schema_version })).toThrow('version');
     expect(() => parseJournal({ ...emptyJournal(), trips: {} })).toThrow('list');
     expect(() => parseJournal({ schema_version: 1 })).toThrow();
     expect(() => parseCheckIn({ ...check_in, actual_location: undefined })).toThrow();
     expect(() => parseTrip({ ...trip, title: '   ' })).toThrow();
     expect(() => parsePlace({ ...place, name: '' })).toThrow();
+  });
+
+  test('preserves directory identities and independent trip snapshots across reloads', () => {
+    const city = { id: 'geonames:1857910', latitude: 35.02, longitude: 135.75, country_code: 'JP' };
+    const route = { ...trip, cities: ['Kyoto', 'Custom city'], city_locations: [city, null] };
+    expect(parseTrip(route)).toEqual(route);
+    expect(() => parseTrip({ ...route, city_locations: [city] })).toThrow('match');
+    expect(() =>
+      parseTrip({ ...route, city_locations: [{ ...city, longitude: 190 }, null] }),
+    ).toThrow();
+    const stop: PlannedStop = {
+      id: 'mapped',
+      trip_id: trip.id,
+      day: '2030-05-20',
+      title: 'My airport stop',
+      kind: 'transport',
+      time: '',
+      notes: 'Meet at arrivals',
+      position: { latitude: 34.43, longitude: 135.23 },
+      directory_ref: { provider: 'ourairports', id: 'ourairports:21' },
+    };
+    const saved = parseJournal({ ...emptyJournal(), trips: [route], stops: [stop] });
+    expect(saved.stops[0]).toEqual(stop);
+    expect(() => parseStop({ ...stop, directory_ref: { provider: 'unknown', id: '1' } })).toThrow(
+      'source',
+    );
   });
 
   test('accepts geographic boundaries and rejects nonfinite or out-of-range coordinates', () => {
@@ -311,7 +338,7 @@ describe('trip cities', () => {
     const original = { ...upsertStop(populated(), stop), trips: [legacy_trip] };
     const saved = parseJournal({ ...original, schema_version: 3 });
     expect(saved.trips[0].cities).toBeUndefined();
-    expect(saved).toEqual({ ...original, schema_version: 5 });
+    expect(saved).toEqual({ ...original, schema_version: journal_schema_version });
     expect(
       upsertTrip(saved, { ...legacy_trip, title: 'Next year' }).trips[0].cities,
     ).toBeUndefined();
@@ -399,7 +426,7 @@ describe('planned stops', () => {
       check_ins: [check_in, old_event],
     };
     const migrated = parseJournal(old);
-    expect(migrated).toEqual({ ...old, schema_version: 5, stops: [] });
+    expect(migrated).toEqual({ ...old, schema_version: journal_schema_version, stops: [] });
     expect(parseJournal(JSON.parse(JSON.stringify(migrated)))).toEqual(migrated);
     expect(() => parseJournal({ ...old, places: [] })).toThrow('missing place');
     expect(() => parseJournal({ ...migrated, stops: undefined })).toThrow('list');
@@ -524,7 +551,7 @@ describe('trip packing lists', () => {
     expect(packingItems(saved.trips[1])).toEqual(items);
     expect(saved.check_ins).toEqual(original.check_ins);
     expect(saved.stops).toEqual(original.stops);
-    expect(saved.schema_version).toBe(5);
+    expect(saved.schema_version).toBe(journal_schema_version);
     expect(parseJournal(JSON.parse(JSON.stringify(saved)))).toEqual(saved);
   });
 

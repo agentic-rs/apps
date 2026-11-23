@@ -1,8 +1,10 @@
 import { Icon } from './Icon';
 import { arrivalDateBounds } from '../lib/city-days';
+import type { TripCityLocation } from '../lib/types';
 
 export interface CityLegDraft {
   city: string;
+  location?: TripCityLocation | null;
   arrival_date: string;
 }
 
@@ -26,8 +28,8 @@ export function TripCities({
   };
   function moveEarlier(index: number) {
     const next = [...legs];
-    next[index - 1] = { ...legs[index - 1], city: legs[index].city };
-    next[index] = { ...legs[index], city: legs[index - 1].city };
+    next[index - 1] = { ...legs[index], arrival_date: legs[index - 1].arrival_date };
+    next[index] = { ...legs[index - 1], arrival_date: legs[index].arrival_date };
     onChange(next);
   }
   function remove(index: number) {

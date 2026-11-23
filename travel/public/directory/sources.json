@@ -1,0 +1,37 @@
+{
+  "format_version": 1,
+  "source_city_count": 34248,
+  "city_count": 34247,
+  "airport_count": 9053,
+  "adaptation": "Selected public place fields, normalized names and built offline search indexes.",
+  "sources": [
+    {
+      "name": "cities15000.zip",
+      "url": "https://download.geonames.org/export/dump/cities15000.zip",
+      "sha256": "acdd89371e0ae9c4b38e120c7d3cfe7cd40bf0613bb6c5910cb1dd416c2065d6"
+    },
+    {
+      "name": "admin1CodesASCII.txt",
+      "url": "https://download.geonames.org/export/dump/admin1CodesASCII.txt",
+      "sha256": "2e4867f5397acb056ea26377601b57af37cb4c81399770225018e9e439e91ad3"
+    },
+    {
+      "name": "airports.csv",
+      "url": "https://raw.githubusercontent.com/davidmegginson/ourairports-data/main/airports.csv",
+      "sha256": "200f6b42633c9c37e18049d5e7de5a9e347698661c68a52ee7359a0e5d128ee3"
+    }
+  ],
+  "attribution": [
+    {
+      "name": "GeoNames",
+      "url": "https://www.geonames.org/",
+      "license": "CC BY 4.0",
+      "license_url": "https://creativecommons.org/licenses/by/4.0/"
+    },
+    {
+      "name": "OurAirports",
+      "url": "https://ourairports.com/data/",
+      "license": "Public domain"
+    }
+  ]
+}

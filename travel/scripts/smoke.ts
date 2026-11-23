@@ -171,6 +171,7 @@ try {
   const addStop = async (name: string, latitude: string, longitude: string) => {
     await button('Add stop').click();
     const editor = page.getByRole('dialog', { name: 'Add stop', exact: true });
+    await editor.getByRole('button', { name: 'Enter manually' }).click();
     await editor.getByLabel('Stop name').fill(name);
     await editor.getByText('Map coordinates', { exact: false }).click();
     await editor.getByLabel('Stop latitude').fill(latitude);
@@ -265,6 +266,7 @@ try {
   const initial_trips = (await readJournal()).trips;
   assert.equal(initial_trips.length, 1);
   assert.deepEqual(initial_trips[0].cities, ['Tokyo']);
+  assert.equal(initial_trips[0].city_locations?.[0]?.id, 'geonames:1850147');
   await page.screenshot({ path: resolve(output, 'mobile-single-city.png') });
   await button('Edit trip').click();
   assert.equal(await page.getByLabel('Trip name').inputValue(), 'Tokyo trip');
@@ -280,6 +282,7 @@ try {
   await second_tab.goto(page.url());
   await second_tab.getByRole('button', { name: 'Open trip Coastal days' }).click();
   await second_tab.getByRole('button', { name: 'Add stop', exact: true }).click();
+  await second_tab.getByRole('button', { name: 'Enter manually' }).click();
   await second_tab.getByLabel('Stop name').fill('Draft in another tab');
   await addStop('Lookout', '10.14', '20.56');
   await second_tab.getByRole('button', { name: 'Save stop' }).click();
@@ -302,6 +305,10 @@ try {
     id: initial_trips[0].id,
     cities: ['Tokyo', 'Kyoto'],
     city_arrival_dates: ['', '2026-05-02'],
+    city_locations: [
+      single_city_journal.trips[0].city_locations![0],
+      { id: 'geonames:1857910', country_code: 'JP', latitude: 35.02107, longitude: 135.75385 },
+    ],
     updated_at: expanded_journal.trips[0].updated_at,
   });
   assert.deepEqual(expanded_journal.stops, single_city_journal.stops);
@@ -474,6 +481,10 @@ try {
   await chooseCity(first_city, 'Saltwind Bay', 'Use Saltwind Bay');
   await waitClosed();
   await page.getByRole('heading', { name: 'Saltwind Bay trip', exact: true }).waitFor();
+  assert.equal(
+    (await readJournal()).trips.find((trip) => trip.title === 'Saltwind Bay trip')?.city_locations,
+    undefined,
+  );
   await button('Edit trip').click();
   await page.getByLabel('Trip name').fill('City wander');
   await button('Save trip').click();
@@ -502,6 +513,12 @@ try {
   assert.deepEqual(
     (await readJournal()).trips.find((trip) => trip.title === 'Coastal days')?.cities,
     ['Tokyo', 'Kyoto', 'Tokyo'],
+  );
+  assert.deepEqual(
+    (await readJournal()).trips
+      .find((trip) => trip.title === 'Coastal days')
+      ?.city_locations?.map((location) => location?.id),
+    ['geonames:1850147', 'geonames:1857910', 'geonames:1850147'],
   );
   assert.deepEqual(
     (await readJournal()).trips.find((trip) => trip.title === 'Coastal days')?.city_arrival_dates,
@@ -1036,6 +1053,31 @@ try {
   assert.deepEqual(extended_trip.city_arrival_dates, ['', '2031-03-12', '2031-03-16']);
   await chooseDay('2031-03-16');
   assert.equal(await day_title.innerText(), 'London → Rome');
+  await button('Trips').click();
+  await button('New trip').click();
+  await chooseCity(first_city, 'Springfield', 'Springfield, Illinois, United States');
+  await waitClosed();
+  await button('Add a city').click();
+  await add_city.getByRole('searchbox', { name: 'Search cities' }).fill('Springfield');
+  assert.equal(
+    await add_city
+      .getByRole('button', { name: 'Springfield, Illinois, United States, already selected' })
+      .isDisabled(),
+    true,
+  );
+  await add_city
+    .getByRole('button', { name: 'Springfield, Missouri, United States', exact: true })
+    .click();
+  await travel_day.getByRole('button', { name: 'Add city', exact: true }).click();
+  await waitClosed();
+  const springfields = (await readJournal()).trips.find(
+    (trip) => trip.title === 'Springfield trip',
+  );
+  assert.deepEqual(
+    springfields?.city_locations?.map((city) => city?.id),
+    ['geonames:4250542', 'geonames:4409896'],
+  );
+  assert.deepEqual(springfields?.cities, ['Springfield', 'Springfield, Missouri, United States']);
   assert.deepEqual(errors, []);
   assert.deepEqual(
     unexpected_requests,

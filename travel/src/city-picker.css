@@ -46,6 +46,15 @@
   font-weight: 650;
   letter-spacing: -0.02em;
 }
+.city-directory-credit,
+.city-directory-status {
+  margin: 12px 0;
+  font-size: 0.8rem;
+  color: var(--apell-muted);
+}
+.city-directory-credit a {
+  color: inherit;
+}
 .city-list,
 .city-suggestions {
   margin: 0;

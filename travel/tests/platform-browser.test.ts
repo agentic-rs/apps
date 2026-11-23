@@ -3,6 +3,7 @@ import { IDBFactory, IDBObjectStore } from 'fake-indexeddb';
 import { createBrowserStorage } from '../src/lib/browser-storage';
 import { emptyJournal } from '../src/lib/model';
 import { createBrowserPlatform } from '../src/lib/platform';
+import { journal_schema_version } from '../src/lib/types';
 import type { CheckIn, Journal, PhotoAsset } from '../src/lib/types';
 
 const photo: PhotoAsset = {
@@ -108,7 +109,7 @@ describe('browser journal storage', () => {
     const original = { schema_version: 1, trips, places: [place], check_ins: [visit] };
     await writeRawJournal(factory, name, original);
     const first_read = await storage.load();
-    expect(first_read).toEqual({ ...original, schema_version: 5, stops: [] });
+    expect(first_read).toEqual({ ...original, schema_version: journal_schema_version, stops: [] });
 
     // Another schema-1 client adds a photo-derived event before this client saves.
     const event: CheckIn = {
@@ -129,7 +130,7 @@ describe('browser journal storage', () => {
     await writeRawJournal(factory, name, edited);
     await expect(storage.save(first_read)).rejects.toThrow('another window');
     const latest = await storage.load();
-    expect(latest).toEqual({ ...edited, schema_version: 5, stops: [] });
+    expect(latest).toEqual({ ...edited, schema_version: journal_schema_version, stops: [] });
     await storage.save(latest);
     const reopened = createBrowserStorage(factory, name);
     expect(await reopened.load()).toEqual(latest);

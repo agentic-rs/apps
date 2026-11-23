@@ -1,44 +1,98 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   cityKey,
+  directoryCityOptions,
   more_cities,
-  searchCities,
+  sameTripCity,
+  searchFeaturedCities,
   suggested_cities,
-  type CatalogCity,
+  tripCityLocation,
+  type CityOption,
 } from '../lib/cities';
 import { text_limits } from '../lib/model';
+import { getDirectoryCitiesById, searchDirectoryCities } from '../lib/offline-directory';
+import type { TripCityLocation } from '../lib/types';
 import { Dialog } from './Dialog';
 import { Icon } from './Icon';
 import '../city-picker.css';
 
 interface CityPickerProps {
   title: string;
-  excluded_cities?: string[];
-  onSelect(city: string): void | Promise<void>;
+  excluded_cities?: { name: string; location?: TripCityLocation | null }[];
+  onSelect(city: string, location?: TripCityLocation): void | Promise<void>;
   onDismiss(): void;
 }
 
 export function CityPicker({ title, excluded_cities = [], onSelect, onDismiss }: CityPickerProps) {
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
-  const [failure, setFailure] = useState<{ city: string; message: string } | null>(null);
+  const [failure, setFailure] = useState<{ city: CityOption; message: string } | null>(null);
+  const [search, setSearch] = useState<{
+    query: string;
+    matches: CityOption[];
+    custom_name: string;
+    failed: boolean;
+  } | null>(null);
   const selecting = useRef(false);
   const list = useRef<HTMLDivElement>(null);
-  const { matches, custom_name } = searchCities(query);
   const searching = Boolean(cityKey(query));
-  const excluded = new Set(excluded_cities.map(cityKey));
+  const result = searching && search?.query === query ? search : null;
+
+  useEffect(() => {
+    if (!searching) return;
+    let active = true;
+    const fallback = searchFeaturedCities(query);
+    void searchDirectoryCities(query).then(
+      (records) => {
+        if (!active) return;
+        const matches = directoryCityOptions(records);
+        const ids = new Set(matches.map((place) => place.id));
+        const missing = fallback.matches.filter((place) => !ids.has(place.id));
+        setSearch({
+          query,
+          matches: [...matches, ...missing],
+          custom_name: records.some((city) => city.exact_match) ? '' : fallback.custom_name,
+          failed: false,
+        });
+      },
+      () => {
+        if (active) setSearch({ query, ...fallback, failed: true });
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [query, searching]);
 
   useLayoutEffect(() => {
     list.current?.scrollTo(0, 0);
   }, [query]);
 
-  async function selectCity(city: string) {
+  async function selectCity(city: CityOption) {
     if (selecting.current) return;
     selecting.current = true;
     setBusy(true);
     setFailure(null);
     try {
-      await onSelect(city);
+      let location = city.location;
+      if (city.id && !location) {
+        // Featured rows are available even if the bundled worldwide directory cannot be opened.
+        const [record] = await getDirectoryCitiesById([city.id]).catch(() => []);
+        if (record) location = tripCityLocation(record);
+      }
+      const namesake =
+        location &&
+        excluded_cities.some(
+          (excluded) =>
+            excluded.location &&
+            excluded.location.id !== city.id &&
+            cityKey(excluded.name) === cityKey(city.name),
+        );
+      const qualified = `${city.name}, ${city.region}`;
+      await onSelect(
+        namesake && qualified.length <= text_limits.city_name ? qualified : city.name,
+        location,
+      );
     } catch (reason) {
       setFailure({
         city,
@@ -50,16 +104,20 @@ export function CityPicker({ title, excluded_cities = [], onSelect, onDismiss }:
     }
   }
 
-  function option(name: string, region: string, accessible_name: string, custom = false) {
-    const unavailable = excluded.has(cityKey(name));
+  function option(city: CityOption, custom = false) {
+    const { id, name, region } = city;
+    const accessible_name = custom ? `Use ${name}` : `${name}, ${region}`;
+    const unavailable = excluded_cities.some((excluded) =>
+      sameTripCity(excluded.name, excluded.location, name, id ? { id } : undefined),
+    );
     return (
-      <li key={name}>
+      <li key={id ?? `custom-${name}`}>
         <button
           type="button"
           className="city-option"
           aria-label={unavailable ? `${accessible_name}, already selected` : accessible_name}
           disabled={unavailable || busy}
-          onClick={() => void selectCity(name)}
+          onClick={() => void selectCity(city)}
         >
           {custom && <Icon name="plus" size={19} />}
           <span className="city-option-label">
@@ -70,10 +128,6 @@ export function CityPicker({ title, excluded_cities = [], onSelect, onDismiss }:
         </button>
       </li>
     );
-  }
-
-  function cityOption({ name, region }: CatalogCity) {
-    return option(name, region, `${name}, ${region}`);
   }
 
   return (
@@ -120,25 +174,43 @@ export function CityPicker({ title, excluded_cities = [], onSelect, onDismiss }:
         <div className="city-directory" ref={list}>
           {searching ? (
             <section>
-              <h3 aria-live="polite">{matches.length ? 'Search results' : 'No matching cities'}</h3>
+              <h3 aria-live="polite">
+                {!result
+                  ? 'Searching…'
+                  : result.matches.length
+                    ? 'Search results'
+                    : 'No matching cities'}
+              </h3>
+              {result?.failed && (
+                <p className="city-directory-status" role="status">
+                  The full city directory couldn’t be opened. Choose a featured city or use the name
+                  you entered.
+                </p>
+              )}
               <ul className="city-list">
-                {matches.map(cityOption)}
-                {custom_name &&
-                  option(custom_name, 'Use this city name', `Use ${custom_name}`, true)}
+                {result?.matches.map((city) => option(city))}
+                {result?.custom_name &&
+                  option({ name: result.custom_name, region: 'Use this city name' }, true)}
               </ul>
             </section>
           ) : (
             <>
               <section>
                 <h3>Suggested cities</h3>
-                <ul className="city-suggestions">{suggested_cities.map(cityOption)}</ul>
+                <ul className="city-suggestions">{suggested_cities.map((city) => option(city))}</ul>
               </section>
               <section>
                 <h3>More cities</h3>
-                <ul className="city-list">{more_cities.map(cityOption)}</ul>
+                <ul className="city-list">{more_cities.map((city) => option(city))}</ul>
               </section>
             </>
           )}
+          <p className="city-directory-credit">
+            City data from{' '}
+            <a href="https://www.geonames.org/" target="_blank" rel="noreferrer">
+              GeoNames
+            </a>
+          </p>
         </div>
       </div>
     </Dialog>

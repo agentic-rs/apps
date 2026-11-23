@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { createId } from '../lib/identity';
 import { readCoordinates, text_limits } from '../lib/model';
+import type { StopLookup, StopSearchResult } from '../lib/stop-lookup';
 import {
   stop_kind_labels,
   stop_kinds,
@@ -12,17 +13,21 @@ import { CoordinateInputs } from './VisitFields';
 import { Dialog, DiscardPrompt } from './Dialog';
 import { EditorForm } from './EditorForm';
 import { Icon } from './Icon';
+import { StopPlacePicker } from './StopPlacePicker';
 
 interface StopFormProps {
   trip: Trip;
   day: string;
   stop?: PlannedStop;
+  lookup: StopLookup;
   onSave(stop: PlannedStop): Promise<void>;
   onCancel(): void;
   onDelete?(stop: PlannedStop): void;
 }
 
-export function StopForm({ trip, day, stop, onSave, onCancel, onDelete }: StopFormProps) {
+export function StopForm({ trip, day, stop, lookup, onSave, onCancel, onDelete }: StopFormProps) {
+  const [picking, setPicking] = useState<'initial' | 'change' | null>(stop ? null : 'initial');
+  const [directory_ref, setDirectoryRef] = useState(stop?.directory_ref);
   const [title, setTitle] = useState(stop?.title ?? '');
   const [stop_day, setDay] = useState(stop?.day ?? day);
   const [kind, setKind] = useState<StopKind>(stop?.kind ?? 'sight');
@@ -41,6 +46,26 @@ export function StopForm({ trip, day, stop, onSave, onCancel, onDelete }: StopFo
     notes !== (stop?.notes ?? '') ||
     latitude !== (stop?.position?.latitude.toString() ?? '') ||
     longitude !== (stop?.position?.longitude.toString() ?? '');
+
+  function choosePlace(place: StopSearchResult) {
+    setTitle(place.title);
+    setKind(place.kind);
+    setLatitude(String(place.position.latitude));
+    setLongitude(String(place.position.longitude));
+    setDirectoryRef({ provider: place.source, id: place.id });
+    setPicking(null);
+    setError('');
+  }
+
+  function enterManually(name: string, suggested_kind: StopKind) {
+    setTitle(name);
+    setKind(suggested_kind);
+    setLatitude('');
+    setLongitude('');
+    setDirectoryRef(undefined);
+    setPicking(null);
+    setError('');
+  }
 
   function dismiss() {
     if (busy) return;
@@ -63,6 +88,7 @@ export function StopForm({ trip, day, stop, onSave, onCancel, onDelete }: StopFo
         time,
         notes: notes.trim(),
         position: readCoordinates(latitude, longitude),
+        ...(directory_ref && { directory_ref }),
       });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not save this stop.');
@@ -71,21 +97,56 @@ export function StopForm({ trip, day, stop, onSave, onCancel, onDelete }: StopFo
     }
   }
 
+  if (picking) {
+    return (
+      <Dialog
+        title="Add stop"
+        full_screen
+        onDismiss={() => (picking === 'change' ? setPicking(null) : onCancel())}
+      >
+        <StopPlacePicker
+          trip={trip}
+          day={stop_day}
+          lookup={lookup}
+          onPick={choosePlace}
+          onManual={enterManually}
+        />
+      </Dialog>
+    );
+  }
+
   return (
-    <Dialog title={stop ? 'Edit stop' : 'Add stop'} full_screen onDismiss={dismiss}>
+    <Dialog
+      title={stop ? 'Edit stop' : 'Add stop'}
+      full_screen
+      dismiss_disabled={busy}
+      onDismiss={dismiss}
+    >
       <EditorForm onSave={submit}>
         {(save) => (
           <>
             <fieldset className="form-body stop-form" disabled={busy}>
-              <p className="stop-form-trip">
-                <Icon name="book" size={17} />
-                {trip.title}
-              </p>
+              <div className="stop-form-heading">
+                <p className="stop-form-trip">
+                  <Icon name="book" size={17} />
+                  {trip.title}
+                </p>
+                {!stop && (
+                  <button
+                    className="stop-form-lookup"
+                    type="button"
+                    onClick={() => setPicking('change')}
+                  >
+                    <Icon name="search" size={16} />{' '}
+                    {directory_ref ? 'Change place' : 'Find a place'}
+                  </button>
+                )}
+              </div>
               <label>
                 Stop name
                 <input
                   required
-                  autoFocus
+                  autoFocus={!directory_ref}
                   maxLength={text_limits.stop_title}
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}

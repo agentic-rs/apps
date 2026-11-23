@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { arrivalDateBounds } from '../lib/city-days';
 import { formatTripDates, isCalendarDate } from '../lib/dates';
-import type { Trip } from '../lib/types';
+import type { Trip, TripCityLocation } from '../lib/types';
 import { CityPicker } from './CityPicker';
 import { Dialog } from './Dialog';
 import { EditorForm } from './EditorForm';
@@ -18,38 +18,43 @@ export function AddTripCity({
   trip: Trip;
   day: string;
   first_open_day?: string;
-  onSave(city: string, arrival_date: string): Promise<void>;
+  onSave(city: string, arrival_date: string, location?: TripCityLocation): Promise<void>;
   onCancel(): void;
 }) {
   const previous_city = trip.cities?.at(-1);
   const { min } = arrivalDateBounds(trip, trip.cities?.length ?? 0);
-  const [city, setCity] = useState('');
+  const [selected, setSelected] = useState<{ name: string; location?: TripCityLocation } | null>(
+    null,
+  );
   const [arrival_date, setArrivalDate] = useState(day < min ? min : day);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const saving = useRef(false);
 
-  if (!city) {
+  if (!selected) {
     return (
       <CityPicker
         title={previous_city ? 'Add a city' : 'Choose a city'}
-        excluded_cities={trip.cities?.slice(-1)}
+        excluded_cities={
+          previous_city ? [{ name: previous_city, location: trip.city_locations?.at(-1) }] : []
+        }
         onDismiss={onCancel}
-        onSelect={(value) => {
-          if (!previous_city) return onSave(value, '');
-          setCity(value);
+        onSelect={(name, location) => {
+          if (!previous_city) return onSave(name, '', location);
+          setSelected({ name, location });
         }}
       />
     );
   }
 
+  const { name, location } = selected;
   async function submit() {
     if (saving.current) return;
     saving.current = true;
     setBusy(true);
     setError('');
     try {
-      await onSave(city, arrival_date);
+      await onSave(name, arrival_date, location);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not add this city.');
     } finally {
@@ -64,10 +69,10 @@ export function AddTripCity({
         {(save) => (
           <>
             <fieldset disabled={busy} className="form-body travel-day-body">
-              <p className="travel-city-pair" aria-label={`${previous_city} to ${city}`}>
+              <p className="travel-city-pair" aria-label={`${previous_city} to ${name}`}>
                 <span>{previous_city}</span>
                 <Icon name="arrow" size={18} />
-                <strong>{city}</strong>
+                <strong>{name}</strong>
               </p>
               <label>
                 Travel date
@@ -109,7 +114,7 @@ export function AddTripCity({
                 disabled={busy}
                 onClick={() => {
                   setError('');
-                  setCity('');
+                  setSelected(null);
                 }}
               >
                 Back

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { titleForCity } from '../lib/cities';
 import { createId } from '../lib/identity';
-import type { Trip } from '../lib/types';
+import type { Trip, TripCityLocation } from '../lib/types';
 import { CityPicker } from './CityPicker';
 
 export function NewTrip({
@@ -12,12 +12,13 @@ export function NewTrip({
   onCancel(): void;
 }) {
   const [id] = useState(() => createId());
-  async function create(city: string) {
+  async function create(city: string, location?: TripCityLocation) {
     const now = new Date().toISOString();
     await onSave({
       id,
       title: titleForCity(city),
       cities: [city],
+      ...(location && { city_locations: [location] }),
       description: '',
       start_date: '',
       end_date: '',

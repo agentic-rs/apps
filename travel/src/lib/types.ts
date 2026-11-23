@@ -5,6 +5,16 @@ export interface Coordinates {
   longitude: number;
 }
 
+export interface TripCityLocation extends Coordinates {
+  id: string;
+  country_code: string;
+}
+
+export interface DirectoryRef {
+  provider: 'ourairports' | 'osm' | 'geoapify';
+  id: string;
+}
+
 export interface VisitLocation extends Coordinates {
   accuracy_m: number | null;
   source: 'device' | 'manual' | 'photo';
@@ -16,6 +26,8 @@ export interface Trip {
   title: string;
   description: string;
   cities?: string[];
+  /** Aligned to route cities; manual and older entries have no directory location. */
+  city_locations?: (TripCityLocation | null)[];
   /** Calendar date of transfer into each route city. The starting city and open dates use ''. */
   city_arrival_dates?: string[];
   start_date: string;
@@ -51,6 +63,7 @@ export interface PlannedStop {
   time: string;
   notes: string;
   position: Coordinates | null;
+  directory_ref?: DirectoryRef;
 }
 
 export interface Place {
@@ -84,7 +97,7 @@ export interface CheckIn {
   updated_at: string;
 }
 
-export const journal_schema_version = 5;
+export const journal_schema_version = 6;
 
 export interface Journal {
   schema_version: typeof journal_schema_version;

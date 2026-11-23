@@ -4,12 +4,14 @@ import { journal_schema_version, stop_kinds } from './types';
 import type {
   CheckIn,
   Coordinates,
+  DirectoryRef,
   Journal,
   PackingItem,
   PhotoAsset,
   Place,
   PlannedStop,
   Trip,
+  TripCityLocation,
   VisitLocation,
 } from './types';
 
@@ -119,6 +121,16 @@ export function parseVisitLocation(value: unknown): VisitLocation {
   };
 }
 
+function parseTripCityLocation(value: unknown): TripCityLocation | null {
+  if (value === null) return null;
+  const row = record(value, 'City location');
+  if (typeof row.id !== 'string' || !/^geonames:\d+$/.test(row.id))
+    throw new Error('Invalid GeoNames city identifier.');
+  if (typeof row.country_code !== 'string' || !/^[A-Z]{2}$/.test(row.country_code))
+    throw new Error('Invalid city country code.');
+  return { id: row.id, country_code: row.country_code, ...parseCoordinates(row) };
+}
+
 export function parseTrip(value: unknown): Trip {
   const row = record(value, 'Trip');
   const start_date = date(row.start_date, 'Trip start');
@@ -138,6 +150,12 @@ export function parseTrip(value: unknown): Trip {
           text(city, 'City name', text_limits.city_name, true).trim(),
         );
   if (cities?.length === 0) throw new Error('Choose a starting city.');
+  const city_locations =
+    row.city_locations === undefined
+      ? undefined
+      : rows(row.city_locations, 'City locations', parseTripCityLocation);
+  if (city_locations && city_locations.length !== cities?.length)
+    throw new Error('City locations must match the trip’s cities.');
   const city_arrival_dates =
     row.city_arrival_dates === undefined
       ? undefined
@@ -161,6 +179,7 @@ export function parseTrip(value: unknown): Trip {
     title: text(row.title, 'Trip title', text_limits.trip_title, true).trim(),
     description: text(row.description, 'Trip description', text_limits.trip_description),
     ...(cities !== undefined && { cities }),
+    ...(city_locations?.some(Boolean) && { city_locations }),
     ...(city_arrival_dates?.some(Boolean) && { city_arrival_dates }),
     start_date,
     end_date,
@@ -193,6 +212,13 @@ export function parsePlace(value: unknown): Place {
   };
 }
 
+function parseDirectoryRef(value: unknown): DirectoryRef {
+  const row = record(value, 'Place source');
+  if (row.provider !== 'ourairports' && row.provider !== 'osm' && row.provider !== 'geoapify')
+    throw new Error('Unrecognized place source.');
+  return { provider: row.provider, id: text(row.id, 'Place source ID', 512, true) };
+}
+
 export function parseStop(value: unknown): PlannedStop {
   const row = record(value, 'Planned stop');
   if (typeof row.day !== 'string' || !isCalendarDate(row.day))
@@ -210,6 +236,7 @@ export function parseStop(value: unknown): PlannedStop {
     day: row.day,
     title: text(row.title, 'Stop title', text_limits.stop_title, true).trim(),
     kind,
+    ...(row.directory_ref !== undefined && { directory_ref: parseDirectoryRef(row.directory_ref) }),
     time: row.time,
     notes: text(row.notes, 'Stop notes', text_limits.stop_notes),
     position: row.position === null ? null : parseCoordinates(row.position),

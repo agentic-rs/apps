@@ -305,3 +305,11 @@
   margin-block: -6px 0;
   padding-inline-start: 5px;
 }
+.itinerary-place-credit {
+  display: block;
+  margin: 8px 0;
+  color: var(--apell-muted);
+}
+.itinerary-place-credit a {
+  color: inherit;
+}

@@ -18,7 +18,8 @@ import { Dialog } from './components/Dialog';
 import { TripForm } from './components/TripForm';
 import { NewTrip } from './components/NewTrip';
 import { AddTripCity } from './components/AddTripCity';
-import { cityKey, tripCitySummary } from './lib/cities';
+import { sameTripCity, tripCitySummary } from './lib/cities';
+import { createStopLookup } from './lib/stop-lookup';
 import { citiesOnDay } from './lib/city-days';
 import { StopForm } from './components/StopForm';
 import { CheckInForm } from './components/CheckInForm';
@@ -74,6 +75,7 @@ export function App() {
   const [delete_error, setDeleteError] = useState('');
 
   const trip = journal.trips.find((item) => item.id === trip_id);
+  const lookup = useMemo(() => createStopLookup(Boolean(platform?.native)), [platform?.native]);
   const route_summary = trip && tripCitySummary(trip);
   const stops = useMemo(
     () => journal.stops.filter((stop) => stop.trip_id === trip_id),
@@ -426,16 +428,24 @@ export function App() {
           day={day}
           first_open_day={!bounds.length ? day : undefined}
           onCancel={() => setEditor(null)}
-          onSave={async (city, arrival_date) => {
+          onSave={async (city, arrival_date, location) => {
             await updateTrip(trip.id, (current) => {
               const cities = current.cities ?? [];
-              if (cityKey(cities.at(-1) ?? '') === cityKey(city)) {
+              if (
+                sameTripCity(cities.at(-1) ?? '', current.city_locations?.at(-1), city, location)
+              ) {
                 throw new Error('This city is already last on your route.');
               }
               const dates = current.city_arrival_dates ?? cities.map(() => '');
               return {
                 ...current,
                 cities: [...cities, city],
+                ...((current.city_locations || location) && {
+                  city_locations: [
+                    ...(current.city_locations ?? cities.map(() => null)),
+                    location ?? null,
+                  ],
+                }),
                 city_arrival_dates: [...dates, arrival_date],
                 start_date:
                   !current.start_date && !bounds.length && arrival_date > day
@@ -486,6 +496,7 @@ export function App() {
       )}
       {editor?.kind === 'stop' && trip && (
         <StopForm
+          lookup={lookup}
           trip={trip}
           day={day}
           stop={editor.stop}

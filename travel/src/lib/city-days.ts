@@ -16,7 +16,7 @@ export function arrivalDateBounds(trip: TripSchedule, city_index: number) {
 }
 
 /** Show only the cities that the traveler’s route and chosen dates establish. */
-export function citiesOnDay(trip: TripSchedule & Pick<Trip, 'cities'>, day: string): string[] {
+export function cityIndicesOnDay(trip: TripSchedule & Pick<Trip, 'cities'>, day: string): number[] {
   const cities = trip.cities ?? [];
   if (
     !isCalendarDate(day) ||
@@ -25,12 +25,13 @@ export function citiesOnDay(trip: TripSchedule & Pick<Trip, 'cities'>, day: stri
   ) {
     return [];
   }
-  if (cities.length <= 1) return [...cities];
+  if (cities.length <= 1) return cities.length ? [0] : [];
   const dates = trip.city_arrival_dates ?? [];
   const arrival = dates.indexOf(day, 1);
   if (arrival !== -1) {
     // Undated visits between two transfers on this day must also fall on it.
-    return cities.slice(arrival - 1, dates.lastIndexOf(day) + 1);
+    const first = arrival - 1;
+    return Array.from({ length: dates.lastIndexOf(day) - first + 1 }, (_, index) => first + index);
   }
 
   let previous = 0;
@@ -43,5 +44,9 @@ export function citiesOnDay(trip: TripSchedule & Pick<Trip, 'cities'>, day: stri
     }
     previous = index;
   }
-  return next === previous + 1 ? [cities[previous]] : [];
+  return next === previous + 1 ? [previous] : [];
+}
+
+export function citiesOnDay(trip: TripSchedule & Pick<Trip, 'cities'>, day: string): string[] {
+  return cityIndicesOnDay(trip, day).map((index) => trip.cities![index]);
 }

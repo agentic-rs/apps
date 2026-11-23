@@ -22,6 +22,7 @@ export function TripForm({
     (trip.cities ?? []).map((city, index) => ({
       city,
       arrival_date: trip.city_arrival_dates?.[index] ?? '',
+      location: trip.city_locations?.[index],
     })),
   );
   const cities = legs.map((leg) => leg.city);
@@ -38,6 +39,7 @@ export function TripForm({
     legs.some(
       (leg, index) =>
         leg.city !== trip.cities?.[index] ||
+        leg.location?.id !== trip.city_locations?.[index]?.id ||
         leg.arrival_date !== (trip.city_arrival_dates?.[index] ?? ''),
     ) ||
     title !== trip.title ||
@@ -56,6 +58,9 @@ export function TripForm({
         ...(cities.length > 0 && {
           cities,
           city_arrival_dates: legs.map((leg) => leg.arrival_date),
+          city_locations: legs.some((leg) => leg.location)
+            ? legs.map((leg) => leg.location ?? null)
+            : undefined,
         }),
         description: description.trim(),
         start_date,
@@ -78,10 +83,12 @@ export function TripForm({
             ? 'Add a city'
             : 'Change city'
       }
-      excluded_cities={cities.filter((_, i) => Math.abs(city_index - i) === 1)}
-      onSelect={(city) => {
+      excluded_cities={legs
+        .filter((_, i) => Math.abs(city_index - i) === 1)
+        .map((leg) => ({ name: leg.city, location: leg.location }))}
+      onSelect={(city, location) => {
         const next = [...legs];
-        next[city_index] = { city, arrival_date: legs[city_index]?.arrival_date ?? '' };
+        next[city_index] = { city, location, arrival_date: legs[city_index]?.arrival_date ?? '' };
         setLegs(next);
         setCityIndex(null);
       }}
