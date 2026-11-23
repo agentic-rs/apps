@@ -1,3 +1,27 @@
+.dialog-back-header:has(+ .result-map-sheet) .dialog-trailing-action {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.dialog.full-screen .dialog-back-header:has(+ .result-map-sheet) {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+.dialog-back-header:has(+ .result-map-sheet) h2 {
+  display: -webkit-box;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+@media (max-width: 360px) {
+  .dialog-back-header:has(+ .result-map-sheet) .dialog-back {
+    min-width: 44px;
+    justify-content: center;
+    gap: 0;
+    padding: 0;
+    font-size: 0;
+  }
+}
 .result-map-sheet {
   --result-canvas-min: 170px;
   display: flex;

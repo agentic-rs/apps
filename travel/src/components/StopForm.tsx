@@ -1059,6 +1059,7 @@ function StopEditor({
             }
           >
             <PlaceMapPreview
+              initial_view={show_details ? 'place' : 'day'}
               title={title.trim() || 'Selected place'}
               position={position}
               context={place_context}

@@ -1,8 +1,6 @@
-import { lazy, Suspense, useRef, useState, type ReactNode } from 'react';
-import { formatDistance } from '../lib/distance';
+import { lazy, Suspense, useMemo, useRef, type ReactNode } from 'react';
 import type { ContinuingStay } from '../lib/hotel-stays';
-import { nearestDayPlace } from '../lib/map';
-import { matchesPlannedPlace } from '../lib/planned-stop-search';
+import type { DayPlaceResult } from '../lib/place-comparison';
 import { placeTypeLabel } from '../lib/place-types';
 import type { StopSearchResult } from '../lib/stop-lookup';
 import type { PlannedStop } from '../lib/types';
@@ -20,10 +18,11 @@ interface PlaceResultsSheetProps {
   day_label: string;
   route: PlannedStop[];
   stays: ContinuingStay[];
-  day_stops: PlannedStop[];
   cities: ReactNode;
-  type_control: ReactNode;
-  places: StopSearchResult[];
+  result_controls: ReactNode;
+  results: readonly DayPlaceResult[];
+  selected_id?: string;
+  onSelect(id: string): void;
   search_status: string;
   search_error: string;
   onRetry(): void;
@@ -45,10 +44,11 @@ export function PlaceResultsSheet({
   route,
   stays,
   day_label,
-  day_stops,
   cities,
-  type_control,
-  places,
+  result_controls,
+  results,
+  selected_id,
+  onSelect,
   search_status,
   search_error,
   onRetry,
@@ -62,15 +62,14 @@ export function PlaceResultsSheet({
   onEditPlanned,
   onClose,
 }: PlaceResultsSheetProps) {
-  const [selection, setSelection] = useState('');
   const index = Math.max(
     0,
-    places.findIndex((place) => place.id === selection),
+    results.findIndex(({ place }) => place.id === selected_id),
   );
-  const place = places[index];
-  const planned = place ? day_stops.filter((stop) => matchesPlannedPlace(stop, place)) : [];
-  const closest =
-    place && !planned.length ? nearestDayPlace(place.position, route, stays) : undefined;
+  const places = useMemo(() => results.map(({ place }) => place), [results]);
+  const result = results[index];
+  const place = result?.place;
+  const planned = result?.planned ?? [];
   const card_title = useRef<HTMLHeadingElement>(null);
   return (
     <Dialog
@@ -78,7 +77,7 @@ export function PlaceResultsSheet({
       active={active}
       full_screen
       back_label="Back to place list"
-      trailing_action={type_control}
+      trailing_action={result_controls}
       onDismiss={onClose}
       dismiss_disabled={saving}
     >
@@ -102,7 +101,7 @@ export function PlaceResultsSheet({
                 stays={stays}
                 selected_id={place.id}
                 onSelect={(id) => {
-                  if (!saving) setSelection(id);
+                  if (!saving) onSelect(id);
                 }}
                 native={native}
                 active={active}
@@ -129,7 +128,7 @@ export function PlaceResultsSheet({
                     className="icon-button"
                     aria-label="Previous place"
                     disabled={index === 0}
-                    onClick={() => setSelection(places[index - 1].id)}
+                    onClick={() => onSelect(places[index - 1].id)}
                   >
                     <Icon name="back" />
                   </button>
@@ -138,25 +137,18 @@ export function PlaceResultsSheet({
                     className="icon-button"
                     aria-label="Next place"
                     disabled={index === places.length - 1}
-                    onClick={() => setSelection(places[index + 1].id)}
+                    onClick={() => onSelect(places[index + 1].id)}
                   >
                     <Icon name="next" />
                   </button>
                 </div>
               </div>
-              {(place.place_type ||
-                place.subtitle ||
-                place.distance_km !== undefined ||
-                closest) && (
+              {(place.place_type || place.subtitle || result.distance_label) && (
                 <p className="result-map-address">
                   {[
                     place.place_type && placeTypeLabel(place.place_type),
                     place.subtitle,
-                    closest
-                      ? `${formatDistance(closest.km)} straight line to ${closest.number === undefined ? 'hotel' : 'stop ' + closest.number} · ${closest.title}`
-                      : place.distance_km === undefined
-                        ? ''
-                        : `${formatDistance(place.distance_km)} from city center`,
+                    result.distance_label,
                   ]
                     .filter(Boolean)
                     .join(' · ')}

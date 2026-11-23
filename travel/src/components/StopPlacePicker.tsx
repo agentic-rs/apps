@@ -2,6 +2,7 @@ import { Fragment, useId, useLayoutEffect, useMemo, useRef, useState } from 'rea
 import { confirmsInput } from '../lib/keyboard';
 import { cityIndicesOnDay } from '../lib/city-days';
 import type { ContinuingStay } from '../lib/hotel-stays';
+import { dayPlaceResult, nearestFirst } from '../lib/place-comparison';
 import { placeTypeFilters, type PlaceTypeFilter } from '../lib/place-types';
 import { isCalendarDate, itineraryDayLabel } from '../lib/dates';
 import { text_limits } from '../lib/model';
@@ -23,6 +24,7 @@ import type { PlannedStop, StopKind, Trip } from '../lib/types';
 import { Icon } from './Icon';
 import { PlannedSearchResult, StopPlaceResult } from './StopPlaceResult';
 import { PlaceResultsSheet } from './PlaceResultsSheet';
+import { PlaceSortButton, type PlaceSortOrder } from './PlaceSortButton';
 import { PlaceTypeFilterButton } from './PlaceTypeFilterButton';
 import '../stop-place-picker.css';
 
@@ -41,7 +43,12 @@ const date_format = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'UTC',
 });
 
-type SearchInput = { text: string; submitted: string | null; type_filter?: PlaceTypeFilter };
+type SearchInput = {
+  text: string;
+  submitted: string | null;
+  type_filter?: PlaceTypeFilter;
+  sort?: PlaceSortOrder;
+};
 const empty_search: SearchInput = { text: '', submitted: '' };
 
 export interface PickerCity {
@@ -135,6 +142,7 @@ export function StopPlacePicker({
   const [composing, setComposing] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [map_open, setMapOpen] = useState(false);
+  const [map_selections, setMapSelections] = useState<Record<string, string>>({});
   const map_button = useRef<HTMLButtonElement>(null);
   const results_heading = useRef<HTMLHeadingElement>(null);
   const heading_id = useId();
@@ -159,6 +167,7 @@ export function StopPlacePicker({
     text: query,
     submitted: submitted_query,
     type_filter,
+    sort = 'directory',
   } = searches[scope_key] ?? empty_search;
   const needs_centers = Boolean(
     onEditPlanned &&
@@ -208,11 +217,26 @@ export function StopPlacePicker({
     filter_nearby: filtering,
     named_term,
   } = suggestions;
-  const scoped =
-    response_places && !airports && city_index !== undefined
-      ? groupPlacesForCity(response_places, trip, options, city_index)
-      : undefined;
+  const scoped = useMemo(
+    () =>
+      response_places && !airports && city_index !== undefined
+        ? groupPlacesForCity(response_places, trip, options, city_index)
+        : undefined,
+    [response_places, airports, city_index, trip, options],
+  );
   const places = scoped?.places ?? response_places;
+  const can_compare =
+    is_browsable &&
+    (route.some((stop) => stop.position) || stays.some(({ stop }) => stop.position));
+  const results = useMemo(() => {
+    const rows = places?.map((place) =>
+      dayPlaceResult(place, day_stops, route, stays, can_compare),
+    );
+    return can_compare && sort === 'route' ? rows?.sort(nearestFirst) : rows;
+  }, [places, day_stops, route, stays, can_compare, sort]);
+  const selection_key = JSON.stringify([scope_key, type_filter, query.trim()]);
+  const selected_id = map_selections[selection_key];
+  const current_place = results?.find(({ place }) => place.id === selected_id) ?? results?.[0];
   const other_cities = named_term ? (scoped?.other_cities ?? []) : [];
   const planned =
     onEditPlanned && city && (query.trim() || type_filter) && !airports
@@ -236,8 +260,10 @@ export function StopPlacePicker({
   const quick_sights = category === 'sight' && Boolean(scoped_city && onQuickAdd);
   const schedule_stay =
     category === 'stay' && scoped_city && onScheduleStay
-      ? (place: StopSearchResult, origin: HTMLElement) =>
-          onScheduleStay(place, origin, { name: scoped_city, id: scoped_id, label: scoped_label })
+      ? (place: StopSearchResult, origin: HTMLElement) => {
+          if (map_open) rememberSelection(place.id);
+          onScheduleStay(place, origin, { name: scoped_city, id: scoped_id, label: scoped_label });
+        }
       : undefined;
 
   useLayoutEffect(() => {
@@ -268,6 +294,7 @@ export function StopPlacePicker({
 
   async function addSight(place: StopSearchResult, row: HTMLElement, button: HTMLElement) {
     if (!onQuickAdd || saving.current) return;
+    if (map_open) rememberSelection(place.id);
     saving.current = true;
     setAddingId(place.id);
     setSaveError(undefined);
@@ -292,7 +319,16 @@ export function StopPlacePicker({
 
   function changeSearch(text: string, submitted: string | null, key = scope_key) {
     setExpanded(null);
-    setSearches((previous) => ({ ...previous, [key]: { text, submitted, type_filter } }));
+    setSearches((previous) => ({
+      ...previous,
+      [key]: { ...previous[key], text, submitted, type_filter },
+    }));
+  }
+
+  function rememberSelection(id: string) {
+    setMapSelections((previous) =>
+      previous[selection_key] === id ? previous : { ...previous, [selection_key]: id },
+    );
   }
 
   function searchOtherCity(index: number, term: string) {
@@ -333,6 +369,7 @@ export function StopPlacePicker({
   }
 
   function chooseResult(place: StopSearchResult, origin: HTMLElement) {
+    if (map_open) rememberSelection(place.id);
     setSaveError(undefined);
     setExpanded(null);
     onPick(place, origin, scoped_city, scoped_id);
@@ -352,6 +389,25 @@ export function StopPlacePicker({
         }));
       }}
     />
+  );
+
+  const result_controls = (
+    <>
+      {can_compare && scoped_city && (
+        <PlaceSortButton
+          value={sort}
+          disabled={adding_id !== null}
+          onSelect={(value) => {
+            if (map_open && current_place) rememberSelection(current_place.place.id);
+            setSearches((previous) => ({
+              ...previous,
+              [scope_key]: { ...(previous[scope_key] ?? empty_search), sort: value },
+            }));
+          }}
+        />
+      )}
+      {type_control}
+    </>
   );
 
   const city_choices = (
@@ -498,7 +554,7 @@ export function StopPlacePicker({
               {heading}
             </h3>
             <div className="stop-results-tools">
-              {type_control}
+              {result_controls}
               {is_browsable && Boolean(places?.length) && (
                 <button
                   ref={map_button}
@@ -508,6 +564,7 @@ export function StopPlacePicker({
                   aria-haspopup="dialog"
                   onClick={() => {
                     setExpanded(null);
+                    if (current_place) rememberSelection(current_place.place.id);
                     setMapOpen(true);
                   }}
                 >
@@ -562,31 +619,33 @@ export function StopPlacePicker({
                   : 'Enter a place name and tap Search.'}
             </p>
           )}
-          {places && places.length > 0 && (
+          {results && results.length > 0 && (
             <ul className="stop-picker-results" aria-label="Place results">
-              {places.map((place) => (
-                <StopPlaceResult
-                  key={place.id}
-                  place={place}
-                  day_stops={day_stops}
-                  expanded={expanded === place.id}
-                  onExpand={(open) => setExpanded(open ? place.id : null)}
-                  onEditPlanned={onEditPlanned}
-                  adding={adding_id === place.id}
-                  error={save_error?.id === place.id ? save_error.message : undefined}
-                  onQuickAdd={
-                    quick_sights && place.kind === 'sight'
-                      ? (row, button) => void addSight(place, row, button)
-                      : undefined
-                  }
-                  onScheduleStay={
-                    schedule_stay && place.kind === 'stay'
-                      ? (origin) => schedule_stay(place, origin)
-                      : undefined
-                  }
-                  onPick={(origin) => chooseResult(place, origin)}
-                />
-              ))}
+              {results.map((result) => {
+                const { place } = result;
+                return (
+                  <StopPlaceResult
+                    key={place.id}
+                    result={result}
+                    expanded={expanded === place.id}
+                    onExpand={(open) => setExpanded(open ? place.id : null)}
+                    onEditPlanned={onEditPlanned}
+                    adding={adding_id === place.id}
+                    error={save_error?.id === place.id ? save_error.message : undefined}
+                    onQuickAdd={
+                      quick_sights && place.kind === 'sight'
+                        ? (row, button) => void addSight(place, row, button)
+                        : undefined
+                    }
+                    onScheduleStay={
+                      schedule_stay && place.kind === 'stay'
+                        ? (origin) => schedule_stay(place, origin)
+                        : undefined
+                    }
+                    onPick={(origin) => chooseResult(place, origin)}
+                  />
+                );
+              })}
             </ul>
           )}
           {named_term &&
@@ -672,12 +731,13 @@ export function StopPlacePicker({
               ? itineraryDayLabel(day, day, trip)
               : date_format.format(new Date(day + 'T00:00:00Z'))
           }
-          day_stops={day_stops}
           route={route}
           stays={stays}
           cities={city_choices}
-          type_control={type_control}
-          places={places ?? []}
+          result_controls={result_controls}
+          results={results ?? []}
+          selected_id={current_place?.place.id}
+          onSelect={rememberSelection}
           search_status={loading ? 'Finding places…' : emptyResultsMessage()}
           search_error={error ?? ''}
           onRetry={tryAgain}

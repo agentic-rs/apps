@@ -1,8 +1,5 @@
-import { useLayoutEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { placeTypeFilters, type PlaceTypeFilter } from '../lib/place-types';
-import { Dialog } from './Dialog';
-import { Icon } from './Icon';
+import { PlaceOptionsButton } from './PlaceOptionsButton';
 
 export function PlaceTypeFilterButton({
   category,
@@ -15,63 +12,20 @@ export function PlaceTypeFilterButton({
   disabled: boolean;
   onSelect(value?: PlaceTypeFilter): void;
 }) {
-  const [open, setOpen] = useState(false);
-  const selected = useRef<HTMLButtonElement>(null);
-  const trigger = useRef<HTMLButtonElement>(null);
-  const restore_focus = useRef(false);
-  const all = category === 'sight' ? 'All sights' : 'All lodging';
-  const options = [{ id: undefined, label: all }, ...placeTypeFilters(category)];
-  const title = category === 'sight' ? 'Sight type' : 'Lodging type';
-  useLayoutEffect(() => {
-    if (open) selected.current?.focus();
-    else if (restore_focus.current) {
-      trigger.current?.focus({ preventScroll: true });
-      restore_focus.current = false;
-    }
-  }, [open]);
+  const sight = category === 'sight';
+  const options = [
+    { id: undefined, label: sight ? 'All sights' : 'All lodging' },
+    ...placeTypeFilters(category),
+  ];
   return (
-    <>
-      <button
-        ref={trigger}
-        type="button"
-        className="place-type-filter"
-        data-filtered={value ? '' : undefined}
-        aria-label={category === 'sight' ? 'Filter sights by type' : 'Filter lodging by type'}
-        aria-description={options.find((option) => option.id === value)?.label}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        title={title}
-        disabled={disabled}
-        onClick={() => {
-          restore_focus.current = true;
-          setOpen(true);
-        }}
-      >
-        <Icon name="filter" size={20} />
-      </button>
-      {open &&
-        createPortal(
-          <Dialog title={title} onDismiss={() => setOpen(false)}>
-            <div className="place-type-options" role="group" aria-label={title}>
-              {options.map((option) => (
-                <button
-                  type="button"
-                  key={option.id ?? 'all'}
-                  aria-pressed={option.id === value}
-                  ref={option.id === value ? selected : undefined}
-                  onClick={() => {
-                    if (option.id !== value) onSelect(option.id);
-                    setOpen(false);
-                  }}
-                >
-                  {option.label}
-                  {option.id === value && <Icon name="check" size={19} />}
-                </button>
-              ))}
-            </div>
-          </Dialog>,
-          document.querySelector('.app-shell') ?? document.body,
-        )}
-    </>
+    <PlaceOptionsButton
+      title={sight ? 'Sight type' : 'Lodging type'}
+      label={sight ? 'Filter sights by type' : 'Filter lodging by type'}
+      icon="filter"
+      options={options}
+      value={value}
+      disabled={disabled}
+      onSelect={onSelect}
+    />
   );
 }

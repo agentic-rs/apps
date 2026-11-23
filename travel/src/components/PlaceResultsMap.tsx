@@ -54,7 +54,7 @@ export default function PlaceResultsMap({
   const fitResults = useMapFit(
     map,
     active,
-    [...result_locations].join(';'),
+    [...result_locations].sort().join(';'),
     places,
     resultsPadding,
   );

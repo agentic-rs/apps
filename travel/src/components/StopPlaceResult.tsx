@@ -1,7 +1,6 @@
 import { useId, useLayoutEffect, useRef, type Ref } from 'react';
 import { useBackLayer } from '../lib/back-navigation';
-import { formatDistance } from '../lib/distance';
-import { matchesPlannedPlace } from '../lib/planned-stop-search';
+import type { DayPlaceResult } from '../lib/place-comparison';
 import { placeTypeLabel } from '../lib/place-types';
 import type { StopSearchResult } from '../lib/stop-lookup';
 import type { PlannedStop } from '../lib/types';
@@ -107,8 +106,7 @@ export function PlannedSearchResult({
 }
 
 export function StopPlaceResult({
-  place,
-  day_stops,
+  result,
   expanded,
   onExpand,
   onEditPlanned,
@@ -118,8 +116,7 @@ export function StopPlaceResult({
   error,
   onPick,
 }: {
-  place: StopSearchResult;
-  day_stops: PlannedStop[];
+  result: DayPlaceResult;
   expanded: boolean;
   onExpand(expanded: boolean): void;
   onEditPlanned?(stop: PlannedStop): void;
@@ -132,7 +129,7 @@ export function StopPlaceResult({
   const id = useId();
   const row = useRef<HTMLButtonElement>(null);
   const edit = useRef<HTMLButtonElement>(null);
-  const planned = day_stops.filter((stop) => matchesPlannedPlace(stop, place));
+  const { place, planned, distance_label } = result;
   const expandable = Boolean(planned.length && onEditPlanned);
   const can_add = !planned.length && Boolean(onQuickAdd);
   const can_schedule = !planned.length && Boolean(onScheduleStay);
@@ -163,18 +160,14 @@ export function StopPlaceResult({
         </span>
         <span className="stop-picker-label">
           <strong>{place.title}</strong>
-          {(place.place_type || place.subtitle || place.distance_km !== undefined) && (
+          {(place.place_type || place.subtitle) && (
             <small>
-              {[
-                place.place_type && placeTypeLabel(place.place_type),
-                place.subtitle,
-                place.distance_km !== undefined &&
-                  `${formatDistance(place.distance_km)} from city center`,
-              ]
+              {[place.place_type && placeTypeLabel(place.place_type), place.subtitle]
                 .filter(Boolean)
                 .join(' · ')}
             </small>
           )}
+          {distance_label && <small>{distance_label}</small>}
           {planned.length > 0 && (
             <span className="stop-picker-planned">
               <Icon name="check" size={12} /> On this day

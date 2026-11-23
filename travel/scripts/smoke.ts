@@ -369,6 +369,12 @@ try {
     .waitFor();
   assert(await place_input.evaluate((input) => document.activeElement === input));
   const lantern = place_picker.getByRole('button', { name: /^Tokyo Lantern Museum/ });
+  await lantern.getByText(/from city center/).waitFor();
+  assert.equal(
+    await place_picker.getByRole('button', { name: 'Sort places', exact: true }).count(),
+    0,
+    'An empty day has no planned places to sort against.',
+  );
   const visitor = page.getByRole('dialog', { name: 'Visitor details', exact: true });
   const edit_itinerary = visitor.getByRole('button', {
     name: 'Edit itinerary details',

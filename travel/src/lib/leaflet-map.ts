@@ -206,16 +206,17 @@ export function useMapFit(
   fit_key: string,
   points: readonly { position: Coordinates }[],
   padding: (size: Point) => MapPadding,
+  fit = fitMapPoints,
 ) {
   const last_fitted = useRef('');
   const following_pins = useRef(true);
   const refit = useCallback(() => {
     if (!map) return;
     map.invalidateSize();
-    fitMapPoints(map, points, padding(map.getSize()));
+    fit(map, points, padding(map.getSize()));
     following_pins.current = true;
     last_fitted.current = fit_key;
-  }, [map, points, padding, fit_key]);
+  }, [map, points, padding, fit_key, fit]);
   useEffect(() => {
     if (!map || !active) return;
     const markMoved = () => {
