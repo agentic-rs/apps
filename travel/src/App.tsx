@@ -359,7 +359,7 @@ export function App() {
                     visits={day_visits}
                     places={journal.places}
                     platform={platform}
-                    active
+                    active={editor?.kind !== 'stop'}
                     onMoveStop={reorderStop}
                     onOptimize={() => setEditor({ kind: 'route' })}
                     onOpenVisit={setDetailId}
@@ -528,6 +528,7 @@ export function App() {
       {editor?.kind === 'stop' && trip && (
         <StopForm
           lookup={lookup}
+          native={platform.native}
           trip_stops={stops}
           trip={trip}
           day={day}
@@ -536,8 +537,9 @@ export function App() {
           onCancel={() => setEditor(null)}
           onDelete={(stop) => confirmRemoval({ kind: 'stop', stop })}
           onSave={async (stop) => {
+            const original = stops.find((item) => item.id === stop.id);
             await persist((snapshot) => upsertStop(snapshot, stop));
-            if (!editor.stop || editor.stop.day === day || !isContinuingStay(stop, day))
+            if (!original || original.day === day || !isContinuingStay(stop, day))
               setChosenDay(stop.day);
             setEditor(null);
           }}

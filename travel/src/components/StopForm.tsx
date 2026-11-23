@@ -1,4 +1,5 @@
-import { useLayoutEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { citiesOnDay } from '../lib/city-days';
 import { daysBetween, isCalendarDate, itineraryDayLabel, offsetDay } from '../lib/dates';
 import { createId } from '../lib/identity';
 import { readCoordinates, text_limits } from '../lib/model';
@@ -15,6 +16,9 @@ import { Dialog, DiscardPrompt } from './Dialog';
 import { EditorForm } from './EditorForm';
 import { Icon } from './Icon';
 import { StopPlacePicker } from './StopPlacePicker';
+import { isContinuingStay } from '../lib/hotel-stays';
+
+const PlaceMapPreview = lazy(() => import('./PlaceMapPreview'));
 
 interface StopFormProps {
   trip: Trip;
@@ -22,6 +26,7 @@ interface StopFormProps {
   day: string;
   initial_category?: StopSearchCategory;
   stop?: PlannedStop;
+  native: boolean;
   lookup: StopLookup;
   onSave(stop: PlannedStop): Promise<void>;
   onCancel(): void;
@@ -104,7 +109,25 @@ function ScheduleField({
   );
 }
 
-export function StopForm({
+export function StopForm(props: StopFormProps) {
+  const [planned, setPlanned] = useState<PlannedStop | null>(null);
+  return (
+    <>
+      <StopEditor {...props} onEditPlanned={props.stop ? undefined : setPlanned} />
+      {planned && (
+        <StopEditor
+          {...props}
+          key={planned.id}
+          stop={planned}
+          initial_category={undefined}
+          onCancel={() => setPlanned(null)}
+        />
+      )}
+    </>
+  );
+}
+
+function StopEditor({
   trip,
   trip_stops,
   day,
@@ -114,7 +137,9 @@ export function StopForm({
   onSave,
   onCancel,
   onDelete,
-}: StopFormProps) {
+  onEditPlanned,
+  native,
+}: StopFormProps & { onEditPlanned?(stop: PlannedStop): void }) {
   const [picking, setPicking] = useState<'initial' | 'change' | null>(stop ? null : 'initial');
   const [picker_day, setPickerDay] = useState<string | null>(stop ? null : day);
   const [directory_ref, setDirectoryRef] = useState(stop?.directory_ref);
@@ -137,6 +162,19 @@ export function StopForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [discard, setDiscard] = useState(false);
+  const [show_map, setShowMap] = useState(false);
+  const position = useMemo(() => {
+    try {
+      return readCoordinates(latitude, longitude);
+    } catch {
+      // Incomplete coordinate edits become previewable once both fields are valid.
+      return null;
+    }
+  }, [latitude, longitude]);
+  const preview_stops = useMemo(
+    () => trip_stops.filter((item) => item.day === stop_day),
+    [trip_stops, stop_day],
+  );
   const last_pick = useRef<HTMLElement | null>(null);
   const change_place = useRef<HTMLButtonElement>(null);
   useLayoutEffect(() => {
@@ -167,6 +205,9 @@ export function StopForm({
     directory_ref?.subtitle !== stop?.directory_ref?.subtitle;
   const day_label =
     trip.start_date && isCalendarDate(stop_day) ? itineraryDayLabel(stop_day, day, trip) : '';
+  const place_context = [day_label, city || citiesOnDay(trip, stop_day).join(' → ') || trip.title]
+    .filter(Boolean)
+    .join(' · ');
 
   function chooseKind(value: StopKind) {
     if (value === 'stay' && kind !== 'stay') setCheckout(checkoutAfter(stop_day, 1));
@@ -255,192 +296,246 @@ export function StopForm({
   }
 
   return (
-    <Dialog
-      title={
-        picking
-          ? picker_titles[picker_category]
-          : stop
-            ? 'Edit stop'
-            : !picking && kind === 'stay'
-              ? 'Hotel stay'
-              : 'Add stop'
-      }
-      full_screen
-      dismiss_disabled={busy}
-      onDismiss={dismiss}
-      onBack={!stop && !picking && !discard ? () => setPicking('initial') : dismiss}
-    >
-      {picker_day !== null && (
-        <div className="stop-picker-pane" hidden={!picking}>
-          <StopPlacePicker
-            key={picker_day}
-            trip={trip}
-            day={picker_day}
-            initial_city={city}
-            initial_city_id={city_id}
-            initial_category={picker_category}
-            onCategoryChange={setPickerCategory}
-            day_stops={trip_stops.filter((item) => item.day === picker_day)}
-            lookup={lookup}
-            onPick={choosePlace}
-            onManual={enterManually}
-          />
-        </div>
-      )}
-      {!picking && (
-        <EditorForm onSave={submit}>
-          {(save) => (
-            <>
-              <fieldset className="form-body stop-form" disabled={busy}>
-                <div className="stop-form-heading">
-                  <p className="stop-form-trip">
-                    <Icon name="book" size={17} />
-                    {[day_label, city ?? trip.title].filter(Boolean).join(' · ')}
-                  </p>
-                  <button
-                    ref={change_place}
-                    className="stop-form-lookup"
-                    type="button"
-                    onClick={() => {
-                      const search_day = isCalendarDate(stop_day) ? stop_day : day;
-                      if (picker_day !== search_day) {
-                        setPickerCategory(
-                          directory_ref?.provider === 'ourairports'
-                            ? 'airport'
-                            : search_categories[kind],
-                        );
-                      }
-                      setPickerDay(search_day);
-                      setPicking('change');
-                    }}
-                  >
-                    <Icon name="search" size={16} />{' '}
-                    {directory_ref ? 'Change place' : 'Find a place'}
-                  </button>
-                </div>
-                <div className="stop-place-fields">
-                  <label className="stop-name-field">
-                    Stop name
-                    <input
-                      required
-                      autoFocus={!directory_ref && !stop}
-                      maxLength={text_limits.stop_title}
-                      value={title}
-                      onChange={(e) => setTitle(e.target.value)}
-                    />
-                  </label>
-                  {directory_ref?.subtitle && (
-                    <p className="stop-place-address">
-                      <Icon name="pin" size={15} /> {directory_ref.subtitle}
+    <>
+      <Dialog
+        title={
+          picking
+            ? picker_titles[picker_category]
+            : stop
+              ? 'Edit stop'
+              : !picking && kind === 'stay'
+                ? 'Hotel stay'
+                : 'Add stop'
+        }
+        full_screen
+        dismiss_disabled={busy}
+        onDismiss={dismiss}
+        onBack={!stop && !picking && !discard ? () => setPicking('initial') : dismiss}
+      >
+        {picker_day !== null && (
+          <div className="stop-picker-pane" hidden={!picking}>
+            <StopPlacePicker
+              key={picker_day}
+              trip={trip}
+              day={picker_day}
+              initial_city={city}
+              initial_city_id={city_id}
+              initial_category={picker_category}
+              onCategoryChange={setPickerCategory}
+              day_stops={trip_stops.filter(
+                (item) =>
+                  item.day === picker_day ||
+                  (isContinuingStay(item, picker_day) && item.checkout_date !== picker_day),
+              )}
+              lookup={lookup}
+              onPick={choosePlace}
+              onManual={enterManually}
+              onEditPlanned={
+                picking === 'initial' && !dirty && !source_changed ? onEditPlanned : undefined
+              }
+            />
+          </div>
+        )}
+        {!picking && (
+          <EditorForm onSave={submit}>
+            {(save) => (
+              <>
+                <fieldset className="form-body stop-form" disabled={busy}>
+                  <div className="stop-form-heading">
+                    <p className="stop-form-trip">
+                      <Icon name="book" size={17} />
+                      {place_context}
                     </p>
-                  )}
-                  <label className="stop-setting">
-                    Category
-                    <span className="stop-setting-control stop-category-control">
-                      <select value={kind} onChange={(e) => chooseKind(e.target.value as StopKind)}>
-                        {stop_kinds.map((value) => (
-                          <option key={value} value={value}>
-                            {stop_kind_labels[value]}
-                          </option>
-                        ))}
-                      </select>
-                      <Icon name="next" size={14} />
-                    </span>
-                  </label>
-                </div>
-                <div
-                  className="stop-schedule"
-                  role="group"
-                  aria-label={kind === 'stay' ? 'Stay dates and time' : 'Stop date and time'}
-                >
-                  <ScheduleField
-                    label={kind === 'stay' ? 'Check-in date' : 'Day'}
-                    type="date"
-                    required
-                    value={stop_day}
-                    onChange={changeDay}
-                  />
-                  {kind === 'stay' && (
-                    <ScheduleField
-                      label="Check-out date"
-                      type="date"
-                      min={checkoutAfter(stop_day, 1) || undefined}
-                      value={checkout}
-                      onChange={setCheckout}
-                      detail={
-                        nights > 0 ? `${nights} ${nights === 1 ? 'night' : 'nights'}` : undefined
-                      }
-                    />
-                  )}
-                  <ScheduleField label="Time" type="time" value={time} onChange={setTime} />
-                </div>
-                <label className="stop-notes">
-                  <span>
-                    Notes <span className="optional">(optional)</span>
-                  </span>
-                  <textarea
-                    rows={2}
-                    maxLength={text_limits.stop_notes}
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                  />
-                </label>
-                <details className="stop-coordinates" open={Boolean(stop?.position) || undefined}>
-                  <summary>
-                    Map coordinates <span className="optional">(optional)</span>
-                  </summary>
-                  <CoordinateInputs
-                    prefix="Stop"
-                    latitude={latitude}
-                    longitude={longitude}
-                    onLatitude={setLatitude}
-                    onLongitude={setLongitude}
-                  />
-                </details>
-                {stop && onDelete && (
-                  <button type="button" className="stop-delete" onClick={() => onDelete(stop)}>
-                    <Icon name="trash" size={17} /> Delete stop
-                  </button>
-                )}
-              </fieldset>
-              <footer className="dialog-footer stop-form-footer">
-                {error && (
-                  <p className="form-error" role="alert">
-                    {error}
-                  </p>
-                )}
-                {discard ? (
-                  <DiscardPrompt
-                    disabled={busy}
-                    onKeep={() => setDiscard(false)}
-                    onDiscard={onCancel}
-                  />
-                ) : (
-                  <div className="stop-form-actions">
-                    <button type="button" className="secondary" disabled={busy} onClick={dismiss}>
-                      Cancel
-                    </button>
                     <button
+                      ref={change_place}
+                      className="stop-form-lookup"
                       type="button"
-                      className="primary"
-                      disabled={busy || !title.trim() || !stop_day}
-                      onClick={save}
+                      onClick={() => {
+                        const search_day = isCalendarDate(stop_day) ? stop_day : day;
+                        if (picker_day !== search_day) {
+                          setPickerCategory(
+                            directory_ref?.provider === 'ourairports'
+                              ? 'airport'
+                              : search_categories[kind],
+                          );
+                        }
+                        setPickerDay(search_day);
+                        setPicking('change');
+                      }}
                     >
-                      {busy
-                        ? 'Saving…'
-                        : stop
-                          ? 'Save changes'
-                          : day_label.startsWith('Day ')
-                            ? `Add to ${day_label}`
-                            : 'Add to itinerary'}
+                      <Icon name="search" size={16} />{' '}
+                      {directory_ref ? 'Change place' : 'Find a place'}
                     </button>
                   </div>
-                )}
-              </footer>
-            </>
-          )}
-        </EditorForm>
+                  <div className="stop-place-fields">
+                    <label className="stop-name-field">
+                      Stop name
+                      <input
+                        required
+                        autoFocus={!directory_ref && !stop}
+                        maxLength={text_limits.stop_title}
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                      />
+                    </label>
+                    {position ? (
+                      <button
+                        type="button"
+                        className="stop-map-action"
+                        aria-label="View on map"
+                        aria-description={directory_ref?.subtitle}
+                        onClick={() => setShowMap(true)}
+                      >
+                        <Icon name="map" size={19} />
+                        <span>
+                          View on map
+                          {directory_ref?.subtitle && <small>{directory_ref.subtitle}</small>}
+                        </span>
+                        <Icon name="next" size={15} />
+                      </button>
+                    ) : (
+                      directory_ref?.subtitle && (
+                        <p className="stop-place-address">
+                          <Icon name="pin" size={15} /> {directory_ref.subtitle}
+                        </p>
+                      )
+                    )}
+                    <label className="stop-setting">
+                      Category
+                      <span className="stop-setting-control stop-category-control">
+                        <select
+                          value={kind}
+                          onChange={(e) => chooseKind(e.target.value as StopKind)}
+                        >
+                          {stop_kinds.map((value) => (
+                            <option key={value} value={value}>
+                              {stop_kind_labels[value]}
+                            </option>
+                          ))}
+                        </select>
+                        <Icon name="next" size={14} />
+                      </span>
+                    </label>
+                  </div>
+                  <div
+                    className="stop-schedule"
+                    role="group"
+                    aria-label={kind === 'stay' ? 'Stay dates and time' : 'Stop date and time'}
+                  >
+                    <ScheduleField
+                      label={kind === 'stay' ? 'Check-in date' : 'Day'}
+                      type="date"
+                      required
+                      value={stop_day}
+                      onChange={changeDay}
+                    />
+                    {kind === 'stay' && (
+                      <ScheduleField
+                        label="Check-out date"
+                        type="date"
+                        min={checkoutAfter(stop_day, 1) || undefined}
+                        value={checkout}
+                        onChange={setCheckout}
+                        detail={
+                          nights > 0 ? `${nights} ${nights === 1 ? 'night' : 'nights'}` : undefined
+                        }
+                      />
+                    )}
+                    <ScheduleField label="Time" type="time" value={time} onChange={setTime} />
+                  </div>
+                  <label className="stop-notes">
+                    <span>
+                      Notes <span className="optional">(optional)</span>
+                    </span>
+                    <textarea
+                      rows={2}
+                      maxLength={text_limits.stop_notes}
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                    />
+                  </label>
+                  <details className="stop-coordinates" open={Boolean(stop?.position) || undefined}>
+                    <summary>
+                      Map coordinates <span className="optional">(optional)</span>
+                    </summary>
+                    <CoordinateInputs
+                      prefix="Stop"
+                      latitude={latitude}
+                      longitude={longitude}
+                      onLatitude={setLatitude}
+                      onLongitude={setLongitude}
+                    />
+                  </details>
+                  {stop && onDelete && (
+                    <button type="button" className="stop-delete" onClick={() => onDelete(stop)}>
+                      <Icon name="trash" size={17} /> Delete stop
+                    </button>
+                  )}
+                </fieldset>
+                <footer className="dialog-footer stop-form-footer">
+                  {error && (
+                    <p className="form-error" role="alert">
+                      {error}
+                    </p>
+                  )}
+                  {discard ? (
+                    <DiscardPrompt
+                      disabled={busy}
+                      onKeep={() => setDiscard(false)}
+                      onDiscard={onCancel}
+                    />
+                  ) : (
+                    <div className="stop-form-actions">
+                      <button type="button" className="secondary" disabled={busy} onClick={dismiss}>
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        className="primary"
+                        disabled={busy || !title.trim() || !stop_day}
+                        onClick={save}
+                      >
+                        {busy
+                          ? 'Saving…'
+                          : stop
+                            ? 'Save changes'
+                            : day_label.startsWith('Day ')
+                              ? `Add to ${day_label}`
+                              : 'Add to itinerary'}
+                      </button>
+                    </div>
+                  )}
+                </footer>
+              </>
+            )}
+          </EditorForm>
+        )}
+      </Dialog>
+      {show_map && position && (
+        <Dialog
+          title="Place map"
+          back_label="Back to stop"
+          full_screen
+          onDismiss={() => setShowMap(false)}
+        >
+          <Suspense
+            fallback={
+              <p className="map-loading" role="status">
+                Opening map…
+              </p>
+            }
+          >
+            <PlaceMapPreview
+              title={title.trim() || 'Selected place'}
+              position={position}
+              context={place_context}
+              stops={preview_stops}
+              editing_id={stop?.id}
+              native={native}
+            />
+          </Suspense>
+        </Dialog>
       )}
-    </Dialog>
+    </>
   );
 }

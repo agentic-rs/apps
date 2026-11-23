@@ -1,48 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  GridLayer,
-  divIcon,
-  layerGroup,
-  map as createMap,
-  marker,
-  polyline,
-  type Coords,
-  type DoneCallback,
-  type Map as LeafletMap,
-  type Marker,
-  type TileEvent,
-} from 'leaflet';
-import 'leaflet/dist/leaflet.css';
-import '../map.css';
+import { divIcon, layerGroup, marker, polyline, type Point, type Marker } from 'leaflet';
 import { formatVisitDate, formatVisitTime } from '../lib/dates';
 import {
-  fitCoordinates,
+  groupPins,
   mapPoints,
   mapStops,
-  normalizeLongitude,
   routeLines,
   visiblePosition,
   type MapMode,
-  type MapPoint,
 } from '../lib/map';
-import { createTileSource } from '../lib/map-tiles';
+import { useLeafletMap, useMapFit, useMapTiles, type MapPadding } from '../lib/leaflet-map';
+import '../map.css';
 import { formatCoordinates, formatEntryCount, visitTitle } from '../lib/model';
-import {
-  type CheckIn,
-  type Coordinates,
-  type Place,
-  type PlannedStop,
-  type TravelPlatform,
-} from '../lib/types';
+import { type CheckIn, type Place, type PlannedStop, type TravelPlatform } from '../lib/types';
 import { Icon } from './Icon';
 import { useBackLayer } from '../lib/back-navigation';
 import { Photo } from './Photo';
 import { MapStopButton, MapStopList } from './MapStopList';
 import type { MoveStop } from './StopOrderButtons';
-
-type TileSource = ReturnType<typeof createTileSource>;
-type TileState = { controller: AbortController; object_url: string; failed: boolean };
-type PinGroup = { key: string; position: Coordinates; points: MapPoint[]; entry_ids: string[] };
 
 const map_modes = {
   stops: {
@@ -77,126 +52,14 @@ const map_modes = {
   },
 };
 
-/** Native tiles use the host HTTP bridge; images only see private blob URLs. */
-class JournalTiles extends GridLayer {
-  private readonly tiles = new Map<HTMLImageElement, TileState>();
-
-  constructor(
-    private readonly source: TileSource,
-    private readonly reportFailures: (count: number) => void,
-  ) {
-    super({
-      tileSize: 256,
-      minZoom: 2,
-      maxZoom: 19,
-      updateWhenIdle: true,
-      updateWhenZooming: false,
-      keepBuffer: 0,
-      bounds: [
-        [-85.05112878, -180],
-        [85.05112878, 180],
-      ],
-    });
-    this.on('tileunload', (event: TileEvent) => this.release(event.tile as HTMLImageElement));
-  }
-
-  createTile(coords: Coords, done: DoneCallback): HTMLElement {
-    const image = document.createElement('img');
-    image.alt = '';
-    image.setAttribute('role', 'presentation');
-    image.decoding = 'async';
-    const state = { controller: new AbortController(), object_url: '', failed: false };
-    this.tiles.set(image, state);
-
-    const fail = (reason: unknown) => {
-      if (!this.tiles.has(image) || state.controller.signal.aborted) return;
-      state.failed = true;
-      image.style.opacity = '0';
-      this.report();
-      done(reason instanceof Error ? reason : new Error('Map tile unavailable.'), image);
-    };
-    image.onload = () => {
-      if (!this.tiles.has(image)) return;
-      done(undefined, image);
-      this.report();
-    };
-    image.onerror = () => fail(new Error('The map tile could not be displayed.'));
-    this.source
-      .readTile({ z: coords.z, x: coords.x, y: coords.y }, state.controller.signal)
-      .then((blob) => {
-        if (!this.tiles.has(image) || state.controller.signal.aborted) return;
-        state.object_url = URL.createObjectURL(blob);
-        image.src = state.object_url;
-      })
-      .catch(fail);
-    return image;
-  }
-
-  private report() {
-    this.reportFailures([...this.tiles.values()].filter((tile) => tile.failed).length);
-  }
-
-  private release(image: HTMLImageElement) {
-    const state = this.tiles.get(image);
-    if (!state) return;
-    this.tiles.delete(image);
-    state.controller.abort();
-    image.onload = null;
-    image.onerror = null;
-    image.removeAttribute('src');
-    if (state.object_url) URL.revokeObjectURL(state.object_url);
-    this.report();
-  }
-
-  dispose() {
-    for (const image of this.tiles.keys()) this.release(image);
-  }
-}
-
-function groupPins(points: MapPoint[]): PinGroup[] {
-  const groups = new Map<string, PinGroup>();
-  for (const point of points) {
-    const key = `${point.position.latitude}/${normalizeLongitude(point.position.longitude)}`;
-    const existing = groups.get(key);
-    if (existing) {
-      existing.points.push(point);
-      existing.entry_ids.push(...point.entry_ids);
-    } else {
-      groups.set(key, {
-        key,
-        position: point.position,
-        points: [point],
-        entry_ids: [...point.entry_ids],
-      });
-    }
-  }
-  return [...groups.values()];
-}
-
-function fitPins(map: LeafletMap, points: MapPoint[]) {
-  map.invalidateSize();
-  const bounds = fitCoordinates(points);
-  if (!bounds) {
-    map.setView([20, 0], 2, { animate: false });
-    return;
-  }
-  const height = map.getSize().y;
+function dayMapPadding({ y: height }: Point): MapPadding {
   // Leave room for the right-hand zoom buttons and the full pin bubbles. The
   // caption is hidden on short maps, so more of that height can show the route.
   const top = Math.min(height <= 360 ? 106 : 156, Math.floor(height * 0.45));
-  const clamp = (value: number) => Math.min(85.05112878, Math.max(-85.05112878, value));
-  map.fitBounds(
-    [
-      [clamp(bounds.south), bounds.west],
-      [clamp(bounds.north), bounds.east],
-    ],
-    {
-      paddingTopLeft: [32, top],
-      paddingBottomRight: [82, Math.min(90, Math.floor(height * 0.25))],
-      maxZoom: 14,
-      animate: false,
-    },
-  );
+  return {
+    paddingTopLeft: [32, top],
+    paddingBottomRight: [82, Math.min(90, Math.floor(height * 0.25))],
+  };
 }
 
 export default function MapView({
@@ -220,16 +83,10 @@ export default function MapView({
   onOptimize(): void;
   active: boolean;
 }) {
-  const container = useRef<HTMLDivElement>(null);
+  const { container, map, zoom } = useLeafletMap();
   const panel = useRef<HTMLElement>(null);
-  const tile_layer = useRef<JournalTiles | null>(null);
   const markers = useRef(new Map<string, Marker>());
-  const last_fitted = useRef('');
-  const following_pins = useRef(true);
-  const [map, setMap] = useState<LeafletMap | null>(null);
   const [mode, setMode] = useState<MapMode>('stops');
-  const [zoom, setZoom] = useState(2);
-  const [tile_failures, setTileFailures] = useState(0);
   const [selected_key, setSelectedKey] = useState<string | null>(null);
   const [unlocated_open, setUnlocatedOpen] = useState(false);
   const data = useMemo(
@@ -263,83 +120,8 @@ export default function MapView({
     setUnlocatedOpen(false);
   }, [stops, visits]);
 
-  useEffect(() => {
-    if (!container.current) return;
-    const instance = createMap(container.current, {
-      zoomControl: false,
-      attributionControl: true,
-      trackResize: false,
-      minZoom: 2,
-      maxZoom: 19,
-      zoomAnimation: false,
-      fadeAnimation: false,
-      markerZoomAnimation: false,
-    }).setView([20, 0], 2);
-    instance.attributionControl.setPrefix(false);
-    instance.attributionControl.addAttribution(
-      '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors',
-    );
-    const updateZoom = () => setZoom(instance.getZoom());
-    instance.on('zoomend', updateZoom);
-    setMap(instance);
-    return () => {
-      instance.remove();
-    };
-  }, []);
-
-  // Fit before attaching tiles, so opening the map only downloads its actual viewport.
-  useEffect(() => {
-    if (!map || !active) return;
-    const markMoved = () => {
-      following_pins.current = false;
-    };
-    map.on('movestart zoomstart', markMoved);
-    const refit = () => {
-      fitPins(map, data.points);
-      following_pins.current = true;
-      last_fitted.current = fit_key;
-    };
-    if (last_fitted.current !== fit_key) refit();
-    const element = map.getContainer();
-    const updateSize = () => {
-      const previous = map.getSize();
-      if (
-        !element.clientHeight ||
-        !element.clientWidth ||
-        (element.clientWidth === previous.x && element.clientHeight === previous.y)
-      )
-        return;
-      if (following_pins.current) refit();
-      else map.invalidateSize();
-    };
-    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(updateSize);
-    if (observer) observer.observe(element);
-    else window.addEventListener('resize', updateSize);
-    return () => {
-      map.off('movestart zoomstart', markMoved);
-      observer?.disconnect();
-      window.removeEventListener('resize', updateSize);
-    };
-  }, [map, active, fit_key, data.points]);
-
-  useEffect(() => {
-    if (!map || !active) return;
-    let live = true;
-    setTileFailures(0);
-    const source = createTileSource(platform.native);
-    const tiles = new JournalTiles(source, (count) => {
-      if (live) setTileFailures(count);
-    });
-    tile_layer.current = tiles;
-    tiles.addTo(map);
-    return () => {
-      live = false;
-      tile_layer.current = null;
-      tiles.remove();
-      tiles.dispose();
-      source.dispose();
-    };
-  }, [map, active, platform.native]);
+  const fitPins = useMapFit(map, active, fit_key, data.points, dayMapPadding);
+  const { tile_failures, retryTiles } = useMapTiles(map, platform.native, active);
 
   useEffect(() => {
     if (!map || !active || mode !== 'stops' || stops.length < 2) return;
@@ -477,12 +259,7 @@ export default function MapView({
             className="map-square-control"
             aria-label="Fit all map pins"
             title="Fit all pins"
-            onClick={() => {
-              if (map) {
-                fitPins(map, data.points);
-                following_pins.current = true;
-              }
-            }}
+            onClick={fitPins}
           >
             <Icon name="compass" size={20} />
           </button>
@@ -517,7 +294,7 @@ export default function MapView({
         {tile_failures > 0 && data.points.length > 0 && !selected && !unlocated_open && (
           <div className="map-tile-status" role="status">
             <span>Map background unavailable. Your pins still work.</span>
-            <button type="button" onClick={() => tile_layer.current?.redraw()}>
+            <button type="button" onClick={retryTiles}>
               Retry
             </button>
           </div>
@@ -530,7 +307,7 @@ export default function MapView({
             {tile_failures > 0 && (
               <span className="map-empty-offline" role="status">
                 Map background unavailable.{' '}
-                <button type="button" onClick={() => tile_layer.current?.redraw()}>
+                <button type="button" onClick={retryTiles}>
                   Retry
                 </button>
               </span>

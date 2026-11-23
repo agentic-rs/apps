@@ -1,4 +1,5 @@
 import { parseCoordinates, visitTitle } from './model';
+import { distanceKm } from './distance';
 import type { CheckIn, Coordinates, Place, PlannedStop } from './types';
 
 export type MapMode = 'stops' | 'visits' | 'places';
@@ -92,6 +93,48 @@ export function mapStops(stops: readonly PlannedStop[]): MapPointsResult {
     }
   }
   return { points, unlocated_ids };
+}
+
+type PinGroup = { key: string; position: Coordinates; points: MapPoint[]; entry_ids: string[] };
+
+export function groupPins(points: MapPoint[]): PinGroup[] {
+  const groups = new Map<string, PinGroup>();
+  for (const point of points) {
+    const key = `${point.position.latitude}/${normalizeLongitude(point.position.longitude)}`;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.points.push(point);
+      existing.entry_ids.push(...point.entry_ids);
+    } else {
+      groups.set(key, {
+        key,
+        position: point.position,
+        points: [point],
+        entry_ids: [...point.entry_ids],
+      });
+    }
+  }
+  return [...groups.values()];
+}
+
+/** Keep the itinerary's numbering even when an edited or unlocated stop has no preview pin. */
+export function previewDayStops(
+  position: Coordinates,
+  stops: readonly PlannedStop[],
+  editing_id?: string,
+) {
+  const numbers = new Map(stops.map((stop, index) => [stop.id, index + 1]));
+  const others = stops.filter((stop) => stop.id !== editing_id);
+  const { points } = mapStops(others);
+  const groups = groupPins(points);
+  let closest: { title: string; number: number; km: number } | undefined;
+  for (const point of points) {
+    const km = distanceKm(position, point.position);
+    if (!closest || km < closest.km) {
+      closest = { title: point.label, number: numbers.get(point.id)!, km };
+    }
+  }
+  return { groups, numbers, closest, other_count: others.length };
 }
 
 export function normalizeLongitude(value: number): number {

@@ -347,6 +347,28 @@
   margin: 0 0 10px;
   line-height: 1.4;
 }
+.stop-map-action {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 6px 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--apell-primary);
+  text-align: start;
+  font-size: 0.95rem;
+}
+.stop-map-action span {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+.stop-map-action small {
+  display: block;
+  margin-top: 2px;
+  color: var(--apell-muted);
+  font-size: 0.85rem;
+}
 .stop-setting {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 57%);

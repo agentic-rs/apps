@@ -13,6 +13,10 @@ The mobile interaction reference is QYER’s 穷游行程助手. Its separate da
 
 Open **Overview** to see the cities and planned stops for each day. Tap a day to open it. **Add day** extends the itinerary by one calendar day and opens that day.
 
+From a stop’s review, **View on map** shows its pin alongside the day’s numbered stops. The closest stop and straight-line distance help you compare locations before saving. Use **Back** to return to the same dates and notes. The map action is available for directory results and manually entered coordinates.
+
+When a search result says **On this day**, tap it to edit the saved visit or stay, or choose **Add another visit** or **Add another stay**. Typing also searches the day's saved stops in the selected city. If the directory uses a different pin for a sight, you can reopen your original stop under **On this day**. Saved stops remain searchable offline. Hotel stays appear on each night from check-in through the night before check-out.
+
 When your plans expand, tap **Add a city**, pick the destination and choose the day you travel. On the transfer day, the itinerary shows both cities, such as **Tokyo → Kyoto**. The following days show **Kyoto** until the next transfer. On a trip with no dates or entries, scheduling a later transfer keeps the day you were planning as Day 1. If the transfer falls after an existing end date, the app shows the new end date before you save.
 
 Use **Choose date later** to keep a destination without assigning it to a day. **Edit trip** lets you set or clear its travel date later. Moving a city earlier swaps destinations between the scheduled dates. Stops, check-ins and photos stay on their respective days.
@@ -49,7 +53,7 @@ Tap the map button beside **Add stop** to see the day's numbered route. Open **S
 
 The map uses locally bundled Leaflet and online OpenStreetMap tiles. **Actual visits** shows recorded event coordinates for the selected day. **Named places** shows the reference positions of places in those entries. Counted pins group check-ins at exactly the same position, including different places. Open a pin to choose a visit. Check-ins without the selected kind of coordinates remain accessible in a separate list. Pins near the date line fit together correctly.
 
-Tiles load only while Map is active. The browser uses ordinary HTTP caching; native Apell uses its HTTP bridge, two concurrent downloads, conditional revalidation, and a private cache bounded to 256 PNG slots plus metadata. Cache reads/writes never modify journal data. The loader honors server cache headers and uses seven days when freshness is unspecified. It does not prefetch areas or download offline map packages. When a background tile is unavailable, saved pins and check-in details remain usable and a retry control is shown.
+Tiles load when you open a map, including a place preview. The browser uses ordinary HTTP caching. Native Apell uses its HTTP bridge, two concurrent downloads, conditional revalidation, and a private cache bounded to 256 PNG slots plus metadata. Cache reads and writes are independent of journal data. The loader honors server cache headers and uses seven days when freshness is unspecified. It requests the visible area as you pan and zoom. When the background is unavailable, the map still shows place pins and offers a retry.
 
 Opening or moving the map sends the requested tile coordinates to OpenStreetMap, revealing the displayed map area. Photos, notes, and named-place records are not sent. The app and journal remain local. Attribution is visible on the map; Leaflet's license is included in the package. See the [OpenStreetMap tile usage policy](https://operations.osmfoundation.org/policies/tiles/) for service terms.
 

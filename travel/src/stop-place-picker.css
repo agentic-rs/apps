@@ -133,6 +133,11 @@
   letter-spacing: -0.025em;
   overflow-wrap: anywhere;
 }
+.stop-picker-section-title {
+  margin: 16px 0 0;
+  color: var(--apell-muted);
+  font-size: 0.84rem;
+}
 .stop-picker-status,
 .stop-picker-credit,
 .stop-picker-label small {
@@ -165,7 +170,7 @@
 .stop-picker-results li + li {
   border-top: 1px solid var(--apell-line);
 }
-.stop-picker-results button {
+.stop-picker-result {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -176,8 +181,45 @@
   background: transparent;
   text-align: start;
 }
-.stop-picker-results button > svg {
+.stop-picker-result > svg {
   color: var(--apell-muted);
+}
+.stop-picker-result[aria-expanded='true'] > svg {
+  transform: rotate(90deg);
+}
+.stop-picker-saved {
+  display: grid;
+  margin: 0 0 8px;
+  padding: 0 12px;
+  border-radius: 12px;
+  background: var(--apell-subtle);
+}
+.stop-picker-saved button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 8px 2px;
+  border: 0;
+  background: transparent;
+  color: var(--apell-primary);
+  text-align: start;
+  font-weight: 600;
+}
+.stop-picker-saved button + button {
+  border-top: 1px solid var(--apell-line);
+}
+.stop-picker-saved button > svg {
+  flex: none;
+}
+.stop-picker-saved button span {
+  display: grid;
+  gap: 2px;
+  overflow-wrap: anywhere;
+}
+.stop-picker-saved small {
+  color: var(--apell-muted);
+  font-weight: 400;
 }
 .stop-picker-pin {
   display: grid;

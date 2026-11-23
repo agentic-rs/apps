@@ -60,6 +60,8 @@ let photo_bytes: number[] = [];
 let cancel_photo = true;
 let cancel_location = true;
 let fail_next_write = false;
+let journal_writes = 0;
+let fail_map_tiles = false;
 let image_sequence = 0;
 
 async function eventImage(local_time: string, latitude: number): Promise<number[]> {
@@ -135,7 +137,7 @@ function placeResponse(url: URL) {
       })
     : [];
   return {
-    status: query === 'Unavailable inn' ? 503 : 200,
+    status: query === 'Unavailable inn' || query === 'Nara Park' ? 503 : 200,
     headers: [{ name: 'Content-Type', value: 'application/json' }],
     body: Array.from(
       new TextEncoder().encode(JSON.stringify({ type: 'FeatureCollection', features })),
@@ -184,6 +186,7 @@ function hostCall(request: BridgeRequest): unknown {
       assert(Array.isArray(params.bytes));
       const bytes = params.bytes as number[];
       files.set(path, [...bytes]);
+      if (path === 'journal/journal.json') journal_writes++;
       return { size_bytes: bytes.length };
     }
     case 'fs.remove':
@@ -263,6 +266,7 @@ function hostCall(request: BridgeRequest): unknown {
       );
       assert(/^\/\d+\/\d+\/\d+\.png$/.test(url.pathname));
       http_urls.push(url.href);
+      if (fail_map_tiles) return { status: 503, headers: [], body: [] };
       return {
         status: 200,
         headers: [
@@ -1062,6 +1066,7 @@ try {
   const check_in = dialog.getByLabel('Check-in date', { exact: true });
   const check_out = dialog.getByLabel('Check-out date', { exact: true });
   const day_two = '2030-05-21';
+  const tiles_before_picking = http_urls.length;
   await add_stop.click();
   await kyoto_museum.waitFor();
   assert.equal(await sights.getAttribute('aria-pressed'), 'true');
@@ -1069,6 +1074,26 @@ try {
   await nara.click();
   await nara_museum.waitFor();
   assert.equal(await kyoto_museum.count(), 0);
+  const original_park = journal().stops.find((stop) => stop.title === 'Nara Park');
+  assert(original_park?.position);
+  await place_search.fill('Nara Park');
+  await search.click();
+  await dialog.getByRole('alert').waitFor();
+  const saved_park = dialog
+    .getByRole('list', { name: 'On this day' })
+    .getByRole('button', { name: 'Edit planned stop Nara Park' });
+  await saved_park.click();
+  const park_editor = frame.getByRole('dialog', { name: 'Edit stop', exact: true });
+  await park_editor.getByText('Day 2 · Kyoto → Nara', { exact: true }).waitFor();
+  assert.equal(await park_editor.getByLabel('Notes').inputValue(), original_park.notes);
+  assert.equal(
+    await park_editor.getByLabel('Stop longitude', { exact: true }).inputValue(),
+    String(original_park.position.longitude),
+  );
+  assert.equal(await shellBack(), true);
+  assert.equal(await place_search.inputValue(), 'Nara Park');
+  await dialog.getByRole('button', { name: 'Clear search', exact: true }).click();
+  await nara_museum.waitFor();
   await hotels.click();
   await nara_inn.waitFor();
   await sights.click();
@@ -1194,8 +1219,99 @@ try {
     .screenshot({ path: resolve(qa_directory, 'native-transfer-place-search.png') });
   await nara_inn.click();
   await check_out.fill('2030-05-23');
+  const hotel_notes = 'Leave luggage before check-in.';
+  await dialog.getByLabel('Notes').fill(hotel_notes);
+  const before_preview = journal();
+  const writes_before_preview = journal_writes;
+  assert(!before_preview.stops.some((stop) => stop.title === 'Nara test inn'));
+  assert.equal(
+    http_urls.length,
+    tiles_before_picking,
+    'Searching and reviewing a place loads no map tiles.',
+  );
+  const view_on_map = dialog.getByRole('button', { name: 'View on map', exact: true });
+  const map_preview = frame.getByRole('dialog', { name: 'Place map', exact: true });
+  const preview_map = map_preview.getByRole('region', {
+    name: 'Map of selected place and day stops',
+  });
+  const candidate_pin = preview_map.locator('[data-candidate-pin]');
+  const review_after_map = async () => {
+    await view_on_map.waitFor();
+    assert(
+      await view_on_map.evaluate((button) => document.activeElement === button),
+      'Focus returns to the map action in the draft.',
+    );
+    assert.equal(await dialog.getByLabel('Stop name').inputValue(), 'Nara test inn');
+    assert.equal(await dialog.getByLabel('Category').inputValue(), 'stay');
+    await dialog.getByText('Day 2 · Nara', { exact: true }).waitFor();
+    assert.equal(await check_in.inputValue(), day_two);
+    assert.equal(await check_out.inputValue(), '2030-05-23');
+    assert.equal(await dialog.getByLabel('Notes').inputValue(), hotel_notes);
+    assert.deepEqual(journal(), before_preview);
+    assert.equal(
+      journal_writes,
+      writes_before_preview,
+      'Previewing and returning leave the journal untouched.',
+    );
+  };
+  fail_map_tiles = true;
+  await view_on_map.click();
+  await candidate_pin.waitFor();
+  await map_preview.getByRole('status').filter({ hasText: 'Map background unavailable' }).waitFor();
+  assert(http_urls.length > tiles_before_picking, 'Opening the preview requests its basemap.');
+  assert(
+    http_urls
+      .slice(tiles_before_picking)
+      .every((href) => Number(new URL(href).pathname.split('/')[1]) > 8),
+    'The first tiles should show the Nara itinerary at city scale.',
+  );
+  for (const [number, title] of [
+    'JR Nara Station',
+    'Nara Park',
+    'Tōdai-ji',
+    'Nara test museum',
+  ].entries()) {
+    const pin = preview_map.locator(`[data-stop-numbers="${number + 1}"]`);
+    assert.equal(await pin.getAttribute('aria-label'), `Stop ${number + 1}, ${title}`);
+  }
+  assert.equal(await candidate_pin.getAttribute('aria-label'), 'Selected place, Nara test inn');
+  fail_map_tiles = false;
+  await map_preview.getByRole('button', { name: /^Retry/ }).click();
+  await preview_map.locator('.leaflet-tile-loaded').first().waitFor();
+  await map_preview
+    .getByRole('status')
+    .filter({ hasText: 'Map background unavailable' })
+    .waitFor({ state: 'hidden' });
+  await page
+    .locator('#applet')
+    .screenshot({ path: resolve(qa_directory, 'native-transfer-place-map.png') });
+  assert.equal(await shellBack(), true, 'Native Back from the candidate map returns to the draft.');
+  await review_after_map();
+  await view_on_map.click();
+  await candidate_pin.waitFor();
+  await candidate_pin.click();
+  const pin_popup = preview_map.locator('.leaflet-popup-content');
+  await pin_popup.getByText('Selected place, Nara test inn', { exact: true }).waitFor();
+  await preview_map.locator('[data-stop-numbers="4"]').click();
+  await pin_popup.getByText('Stop 4, Nara test museum', { exact: true }).waitFor();
+  await map_preview.getByRole('button', { name: 'Back to stop', exact: true }).click();
+  await review_after_map();
   await save_stop.click();
   await dialog.waitFor({ state: 'hidden' });
+  assert.equal(journal_writes, writes_before_preview + 1);
+  const saved_hotel = journal().stops.find((stop) => stop.title === 'Nara test inn');
+  assert.equal(saved_hotel?.notes, hotel_notes);
+  await day_map.click();
+  if ((await map_order_toggle.getAttribute('aria-expanded')) === 'false')
+    await map_order_toggle.click();
+  await map_order.getByRole('button', { name: 'Edit Nara test inn', exact: true }).waitFor();
+  await frame.locator('.map-route-line').first().waitFor();
+  assert.equal(
+    await frame.locator('[data-candidate-pin]').count(),
+    0,
+    'The saved route uses regular numbered pins.',
+  );
+  assert.equal(journal_writes, writes_before_preview + 1);
 
   // Reload the applet to empty its search caches, with packaged assets still
   // available through the local host as they are on the device when offline.
@@ -1282,6 +1398,33 @@ try {
   await nara.click();
   await nara_museum.getByText('On this day', { exact: true }).waitFor();
   await nara_museum.click();
+  const edit_planned = dialog.getByRole('button', { name: /^Edit planned visit/ });
+  await edit_planned.waitFor();
+  assert(await edit_planned.evaluate((button) => document.activeElement === button));
+  assert.equal(await shellBack(), true);
+  assert.equal(await nara_museum.getAttribute('aria-expanded'), 'false');
+  assert(await nara_museum.evaluate((button) => document.activeElement === button));
+  await nara_museum.click();
+  await kyoto.click();
+  await nara.click();
+  await nara_museum.waitFor();
+  assert.equal(await nara_museum.getAttribute('aria-expanded'), 'false');
+  await nara_museum.click();
+  await edit_planned.click();
+  await frame.getByRole('dialog', { name: 'Edit stop' }).waitFor();
+  assert.equal(
+    await frame.getByRole('dialog', { name: 'Edit stop' }).getByLabel('Stop name').inputValue(),
+    museum.title,
+  );
+  assert.equal(await shellBack(), true);
+  await edit_planned.waitFor();
+  assert.deepEqual(
+    journal(),
+    persisted,
+    'Opening a scheduled visit keeps its record and itinerary intact.',
+  );
+  await dialog.getByRole('button', { name: 'Add another visit', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Add to Day 2', exact: true }).waitFor();
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
   const discard_stop = dialog.getByRole('button', { name: 'Discard changes' });
   assert(
@@ -1295,6 +1438,19 @@ try {
   );
   await discard_stop.click();
   await frame.getByRole('button', { name: 'Day 3, 22 May' }).click();
+  await add_hotel.click();
+  await nara.click();
+  await nara_inn.getByText('On this day', { exact: true }).waitFor();
+  await nara_inn.click();
+  await dialog.getByRole('button', { name: /^Edit planned stay/ }).click();
+  const continuing_editor = frame.getByRole('dialog', { name: 'Edit stop', exact: true });
+  assert.equal(
+    await continuing_editor.getByLabel('Check-in date', { exact: true }).inputValue(),
+    day_two,
+  );
+  await continuing_editor.getByRole('button', { name: 'Save changes' }).click();
+  await continuing_editor.waitFor({ state: 'hidden' });
+  assert.equal(await frame.getByLabel('Choose itinerary date').inputValue(), '2030-05-22');
   await frame.getByRole('button', { name: 'Staying at Nara test inn' }).click();
   assert.equal(await check_in.inputValue(), day_two);
   await dialog.getByRole('button', { name: 'Close dialog' }).click();
@@ -1365,6 +1521,7 @@ try {
           'atomic event batch retry, edit and reopen with photos',
           'three example journals, including a city transfer day and its ordered stops',
           'transfer-day sight and hotel browsing, named place selection, manual fallback and restored search',
+          'on-demand place preview, day pins, tile failure and retry, both returns to the unsaved stay, and saved day route',
           'overnight dates after reopening, cold offline airport selection and persisted map pins',
         ],
       },

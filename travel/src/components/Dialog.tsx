@@ -10,6 +10,7 @@ export function Dialog({
   wide = false,
   full_screen = false,
   dismiss_disabled = false,
+  back_label,
 }: {
   title: string;
   children: ReactNode;
@@ -18,6 +19,7 @@ export function Dialog({
   wide?: boolean;
   full_screen?: boolean;
   dismiss_disabled?: boolean;
+  back_label?: string;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const outside_press = useRef(false);
@@ -65,17 +67,30 @@ export function Dialog({
         dismissBackLayer();
       }}
     >
-      <header className="dialog-header">
+      <header className={`dialog-header${back_label ? ' dialog-back-header' : ''}`}>
+        {back_label && (
+          <button
+            type="button"
+            className="dialog-back"
+            aria-label={back_label}
+            disabled={dismiss_disabled}
+            onClick={onBack}
+          >
+            <Icon name="back" size={17} /> Back
+          </button>
+        )}
         <h2 id={id}>{title}</h2>
-        <button
-          type="button"
-          className="icon-button"
-          aria-label="Close dialog"
-          disabled={dismiss_disabled}
-          onClick={onDismiss}
-        >
-          <Icon name="close" />
-        </button>
+        {!back_label && (
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="Close dialog"
+            disabled={dismiss_disabled}
+            onClick={onDismiss}
+          >
+            <Icon name="close" />
+          </button>
+        )}
       </header>
       {children}
     </dialog>

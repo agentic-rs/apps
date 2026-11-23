@@ -33,12 +33,20 @@ export interface StopLookup {
 }
 
 export function filterNearbyPlaces(places: StopSearchResult[], query: string): StopSearchResult[] {
+  const matches = placeNameMatcher(query);
+  return places.filter((place) => matches(place.title + ' ' + place.subtitle));
+}
+
+export function placeNameMatcher(query: string): (value: string) => boolean {
   const tokens = directoryKey(query).split(' ').filter(Boolean);
-  if (!tokens.length) return [];
-  return places.filter((place) => {
-    const label = directoryKey(place.title + ' ' + place.subtitle);
-    return tokens.every((token) => label.includes(token));
-  });
+  return (value) => {
+    const label = directoryKey(value);
+    return tokens.length > 0 && tokens.every((token) => label.includes(token));
+  };
+}
+
+export async function resolveSearchCity(city: string) {
+  return city ? (await searchDirectoryCities(city)).find((match) => match.exact_match) : undefined;
 }
 
 /** A day trip to an unlisted town still belongs to the selected itinerary city. */
@@ -167,9 +175,7 @@ export function createStopLookup(
         throw new Error('You’re offline. Search airports or enter a stop manually.');
       // Older trips store names only. Prefer an exact directory match and
       // retain the city text in the remote query if it is a custom location.
-      const center =
-        location ??
-        (city ? (await searchDirectoryCities(city)).find((match) => match.exact_match) : undefined);
+      const center = location ?? (await resolveSearchCity(city));
       signal.throwIfAborted();
       const url = placeSearchUrl(query, category, city, center, public_key);
       const payload = await requestPlaces(url, signal, native);

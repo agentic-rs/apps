@@ -1,0 +1,195 @@
+.place-map-preview {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-bottom: var(--safe-area-bottom);
+}
+.place-map-detail {
+  flex: none;
+  padding: 0.9rem 1.125rem;
+  overflow-wrap: anywhere;
+}
+.place-map-title {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+}
+.place-map-context {
+  display: block;
+  margin-bottom: 0.25rem;
+  color: var(--apell-muted);
+  font-size: 0.8rem;
+  font-weight: 550;
+}
+.place-map-title > svg {
+  align-self: flex-start;
+  flex: none;
+  margin-top: 0.16rem;
+  color: var(--apell-accent-line);
+}
+.place-map-title h3 {
+  margin: 0;
+  font-size: 1.18rem;
+  line-height: 1.25;
+}
+.place-map-detail p {
+  margin: 0.4rem 0 0;
+  color: var(--apell-muted);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+.place-map-detail p strong {
+  font-weight: 600;
+  color: var(--apell-text);
+}
+.place-map-detail p span {
+  display: block;
+}
+.place-map-canvas {
+  isolation: isolate;
+  z-index: 0;
+  width: 100%;
+  flex: 1 0 310px;
+  min-height: 310px;
+  border-block: 1px solid var(--apell-line);
+  background-color: var(--apell-subtle);
+  background-image:
+    linear-gradient(var(--apell-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--apell-line) 1px, transparent 1px);
+  background-size: 32px 32px;
+  font-family: inherit;
+}
+.place-map-canvas .leaflet-control-attribution {
+  padding-inline: 5px;
+  color: var(--apell-muted);
+  background: var(--apell-surface);
+  font:
+    0.68rem/1.5 system-ui,
+    sans-serif;
+}
+.place-map-canvas .leaflet-control-attribution a {
+  color: var(--apell-primary);
+}
+.place-map-canvas .leaflet-popup-content-wrapper,
+.place-map-canvas .leaflet-popup-tip {
+  color: var(--apell-text);
+  background: var(--apell-surface);
+}
+.place-map-canvas .leaflet-popup-content {
+  max-width: min(65vw, 18rem);
+  max-height: 150px;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  font-size: 0.9rem;
+  margin-inline-end: 42px;
+}
+.place-map-canvas a.leaflet-popup-close-button {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  color: var(--apell-muted);
+  font-size: 22px;
+}
+.place-map-canvas .leaflet-popup-content > div > div + div {
+  margin-top: 0.4rem;
+}
+.place-preview-pin {
+  display: grid;
+  place-items: center;
+  background: transparent;
+  border: 0;
+}
+.place-preview-pin:focus-visible {
+  border-radius: 8px;
+  outline: 3px solid var(--apell-focus);
+}
+.place-stop-badge,
+.place-candidate-tip {
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--apell-surface);
+  box-shadow: 0 1px 5px var(--apell-shadow);
+}
+.place-stop-badge {
+  position: relative;
+  min-width: 32px;
+  height: 32px;
+  padding-inline: 2px;
+  background: var(--apell-primary);
+  color: var(--apell-primary-ink);
+  border-radius: 16px;
+  font:
+    700 14px/1 system-ui,
+    sans-serif;
+}
+.place-stop-badge small {
+  position: absolute;
+  bottom: -4px;
+  left: 75%;
+  border-radius: 7px;
+  padding: 2px 3px;
+  background: var(--apell-surface);
+  color: var(--apell-text);
+  font-size: 10px;
+}
+.place-candidate-tip {
+  width: 34px;
+  height: 34px;
+  border-radius: 50% 50% 50% 3px;
+  transform: rotate(-45deg);
+  background: var(--apell-accent);
+}
+.place-candidate-tip::after {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--apell-accent-ink);
+}
+.place-map-controls,
+.place-map-status {
+  flex: none;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 0.35rem 0.75rem;
+}
+.place-map-controls {
+  border-bottom: 1px solid var(--apell-line);
+}
+.place-map-controls button,
+.place-map-status button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-width: 44px;
+  min-height: 44px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--apell-primary);
+  background: var(--apell-surface);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.place-map-controls button:first-child {
+  margin-inline-end: auto;
+}
+.place-map-controls button:active,
+.place-map-status button:active {
+  background: var(--apell-primary-soft);
+}
+.place-map-controls button > span {
+  font:
+    400 24px/1 system-ui,
+    sans-serif;
+}
+.place-map-status {
+  color: var(--apell-muted);
+  font-size: 0.85rem;
+}

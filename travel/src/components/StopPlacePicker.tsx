@@ -2,17 +2,23 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { confirmsInput } from '../lib/keyboard';
 import { cityIndicesOnDay } from '../lib/city-days';
 import { isCalendarDate, itineraryDayLabel } from '../lib/dates';
-import { distanceKm, formatDistance } from '../lib/distance';
 import { text_limits } from '../lib/model';
+import {
+  matchesPlannedPlace,
+  searchPlannedStops,
+  type SearchCity,
+} from '../lib/planned-stop-search';
 import {
   filterNearbyPlaces,
   groupPlacesForCity,
+  resolveSearchCity,
   type StopLookup,
   type StopSearchRequest,
   type StopSearchResult,
 } from '../lib/stop-lookup';
 import type { PlannedStop, StopKind, Trip } from '../lib/types';
 import { Icon } from './Icon';
+import { PlannedSearchResult, StopPlaceResult } from './StopPlaceResult';
 import '../stop-place-picker.css';
 
 const categories = [
@@ -22,14 +28,6 @@ const categories = [
   ['airport', 'Airports', 'plane'],
   ['all', 'Places', 'compass'],
 ] as const;
-
-const place_icons = {
-  sight: 'landmark',
-  stay: 'bed',
-  food: 'food',
-  transport: 'route',
-  other: 'pin',
-} as const;
 
 const date_format = new Intl.DateTimeFormat('en-GB', {
   weekday: 'short',
@@ -62,6 +60,7 @@ export function StopPlacePicker({
   initial_city_id,
   day_stops = [],
   onCategoryChange,
+  onEditPlanned,
   onPick,
   onManual,
 }: {
@@ -73,12 +72,26 @@ export function StopPlacePicker({
   initial_city_id?: string;
   day_stops?: PlannedStop[];
   onCategoryChange?(category: StopSearchRequest['category']): void;
+  onEditPlanned?(stop: PlannedStop): void;
   onPick(place: StopSearchResult, city?: string, city_id?: string): void;
   onManual(name: string, kind: StopKind, city?: string, city_id?: string): void;
 }) {
   const cities = trip.cities ?? [];
-  const day_indices = cityIndicesOnDay(trip, day);
-  const options = day_indices.length ? day_indices : cities.map((_, index) => index);
+  const day_indices = useMemo(() => cityIndicesOnDay(trip, day), [trip, day]);
+  const options = useMemo(
+    () => (day_indices.length ? day_indices : (trip.cities ?? []).map((_, index) => index)),
+    [trip.cities, day_indices],
+  );
+  const route_cities = useMemo<SearchCity[]>(
+    () =>
+      options.map((index) => ({
+        index,
+        name: trip.cities![index],
+        location: trip.city_locations?.[index],
+      })),
+    [options, trip],
+  );
+  const [resolved, setResolved] = useState<{ route: SearchCity[]; cities: SearchCity[] }>();
   const [category, setCategory] = useState(initial_category);
   const [chosen_city, setChosenCity] = useState<number | undefined>(() => {
     if (initial_city_id) {
@@ -95,6 +108,7 @@ export function StopPlacePicker({
   const [searches, setSearches] = useState<Record<string, SearchInput>>({});
   const [retry, setRetry] = useState(0);
   const [state, setState] = useState<SearchState>();
+  const [expanded, setExpanded] = useState<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const airports = category === 'airport';
   const is_browsable = category === 'sight' || category === 'stay';
@@ -106,6 +120,31 @@ export function StopPlacePicker({
   const scoped_id = airports ? undefined : location?.id;
   const scope_key = searchKey(category, city_index, city);
   const { text: query, submitted: submitted_query } = searches[scope_key] ?? empty_search;
+  const needs_centers = Boolean(
+    onEditPlanned &&
+      !airports &&
+      query.trim() &&
+      route_cities.some((item) => !item.location) &&
+      day_stops.some(
+        (stop) => stop.city_id || (stop.position && (route_cities.length > 1 || stop.day !== day)),
+      ),
+  );
+  useEffect(() => {
+    if (!needs_centers || resolved?.route === route_cities) return;
+    let active = true;
+    void Promise.all(
+      route_cities.map(async (city) => {
+        if (city.location) return city;
+        const location = await resolveSearchCity(city.name).catch(() => undefined);
+        return { ...city, location };
+      }),
+    ).then((cities) => {
+      if (active) setResolved({ route: route_cities, cities });
+    });
+    return () => {
+      active = false;
+    };
+  }, [needs_centers, route_cities, resolved]);
   const can_search = Boolean(query.trim() && (airports || city));
   const can_browse = is_browsable && city_index !== undefined;
   // While composing, keep the nearby request alive and match its rows on device.
@@ -130,6 +169,18 @@ export function StopPlacePicker({
   const other_cities = submitted_query ? (scoped?.other_cities ?? []) : [];
   const filtering = submitted_query === null && can_browse;
   const places = results && filtering ? filterNearbyPlaces(results, query) : results;
+  const planned =
+    onEditPlanned && city && query.trim() && !airports
+      ? searchPlannedStops(
+          day_stops,
+          query,
+          category,
+          resolved?.route === route_cities ? resolved.cities : route_cities,
+          city_index,
+          day,
+          custom_city,
+        ).filter((stop) => !places?.some((place) => matchesPlannedPlace(stop, place)))
+      : [];
   const error = current && 'error' in current ? current.error : '';
   const category_label = categories.find(([key]) => key === category)![1];
   const scoped_label = city_index === undefined ? city : cityLabel(city_index);
@@ -164,19 +215,8 @@ export function StopPlacePicker({
     return [name, country, `City ${index + 1}`].filter(Boolean).join(' · ');
   }
 
-  function onThisDay(place: StopSearchResult) {
-    return day_stops.some((stop) => {
-      if (stop.directory_ref)
-        return stop.directory_ref.provider === place.source && stop.directory_ref.id === place.id;
-      return (
-        stop.position &&
-        stop.title.localeCompare(place.title, undefined, { sensitivity: 'accent' }) === 0 &&
-        distanceKm(stop.position, place.position) <= 0.25
-      );
-    });
-  }
-
   function changeSearch(text: string, submitted: string | null, key = scope_key) {
+    setExpanded(null);
     setSearches((previous) => ({ ...previous, [key]: { text, submitted } }));
   }
 
@@ -185,7 +225,20 @@ export function StopPlacePicker({
     setChosenCity(index);
   }
 
+  function emptyResultsMessage() {
+    if (filtering)
+      return planned.length
+        ? 'No other nearby matches. Tap Search to look farther afield.'
+        : 'No nearby matches. Tap Search to look farther afield.';
+    if (planned.length) return 'No additional matches from place search.';
+    if (other_cities.length) return `No matches in ${scoped_label}.`;
+    return submitted_query
+      ? 'No matches. Try another name or enter the stop manually.'
+      : 'No nearby places found. Search by name or enter the stop manually.';
+  }
+
   function tryAgain() {
+    setExpanded(null);
     setState(undefined);
     setRetry((count) => count + 1);
   }
@@ -233,7 +286,10 @@ export function StopPlacePicker({
                         type="button"
                         aria-label={`Search in ${cityLabel(index)}`}
                         aria-pressed={city_index === index}
-                        onClick={() => setChosenCity(index)}
+                        onClick={() => {
+                          setExpanded(null);
+                          setChosenCity(index);
+                        }}
                       >
                         <Icon name={city_index === index ? 'check' : 'pin'} size={16} />
                         {cityLabel(index)}
@@ -261,6 +317,7 @@ export function StopPlacePicker({
                 aria-pressed={value === category}
                 onClick={() => {
                   if (value === category) return;
+                  setExpanded(null);
                   setCategory(value);
                   onCategoryChange?.(value);
                 }}
@@ -325,6 +382,17 @@ export function StopPlacePicker({
         </div>
         <section className="stop-picker-content" aria-label="Place suggestions">
           <h3>{heading}</h3>
+          {onEditPlanned && planned.length > 0 && (
+            <>
+              <h4 className="stop-picker-section-title">On this day</h4>
+              <ul className="stop-picker-results" aria-label="On this day">
+                {planned.map((stop) => (
+                  <PlannedSearchResult key={stop.id} stop={stop} onEdit={onEditPlanned} />
+                ))}
+              </ul>
+              <h4 className="stop-picker-section-title">Place search</h4>
+            </>
+          )}
           <div role="status" aria-atomic="true">
             {loading && (
               <p className="stop-picker-status">
@@ -338,15 +406,7 @@ export function StopPlacePicker({
                   {filtering && ' Matching nearby places.'}
                 </p>
               ) : (
-                <p className="stop-picker-status">
-                  {filtering
-                    ? 'No nearby matches. Tap Search to look farther afield.'
-                    : other_cities.length
-                      ? `No matches in ${scoped_label}.`
-                      : submitted_query
-                        ? 'No matches. Try another name or enter the stop manually.'
-                        : 'No nearby places found. Search by name or enter the stop manually.'}
-                </p>
+                <p className="stop-picker-status">{emptyResultsMessage()}</p>
               ))}
           </div>
           {error && (
@@ -371,30 +431,18 @@ export function StopPlacePicker({
           {places && places.length > 0 && (
             <ul className="stop-picker-results" aria-label="Place results">
               {places.map((place) => (
-                <li key={place.id}>
-                  <button type="button" onClick={() => onPick(place, scoped_city, scoped_id)}>
-                    <span className="stop-picker-pin" data-kind={place.kind}>
-                      <Icon name={airports ? 'plane' : place_icons[place.kind]} size={21} />
-                    </span>
-                    <span className="stop-picker-label">
-                      <strong>{place.title}</strong>
-                      {(place.subtitle || place.distance_km !== undefined) && (
-                        <small>
-                          {place.subtitle}
-                          {place.subtitle && place.distance_km !== undefined && ' · '}
-                          {place.distance_km !== undefined &&
-                            `${formatDistance(place.distance_km)} from city center`}
-                        </small>
-                      )}
-                      {onThisDay(place) && (
-                        <span className="stop-picker-planned">
-                          <Icon name="check" size={12} /> On this day
-                        </span>
-                      )}
-                    </span>
-                    <Icon name="next" size={16} />
-                  </button>
-                </li>
+                <StopPlaceResult
+                  key={place.id}
+                  place={place}
+                  day_stops={day_stops}
+                  expanded={expanded === place.id}
+                  onExpand={(open) => setExpanded(open ? place.id : null)}
+                  onEditPlanned={onEditPlanned}
+                  onPick={() => {
+                    setExpanded(null);
+                    onPick(place, scoped_city, scoped_id);
+                  }}
+                />
               ))}
             </ul>
           )}
@@ -448,14 +496,15 @@ export function StopPlacePicker({
         <button
           type="button"
           className="secondary"
-          onClick={() =>
+          onClick={() => {
+            setExpanded(null);
             onManual(
               query.trim(),
               category === 'airport' ? 'transport' : category === 'all' ? 'sight' : category,
               scoped_city,
               scoped_id,
-            )
-          }
+            );
+          }}
         >
           <Icon name="edit" size={17} /> Enter manually
         </button>

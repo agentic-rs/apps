@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { fitCoordinates, mapPoints, mapStops, routeLines } from '../src/lib/map';
+import { fitCoordinates, mapPoints, mapStops, previewDayStops, routeLines } from '../src/lib/map';
 import type { CheckIn, Coordinates, Place, PlannedStop } from '../src/lib/types';
 
 const now = '2026-05-12T14:20:00.000Z';
@@ -39,6 +39,31 @@ function stop(id: string, longitude: number | null): PlannedStop {
 }
 
 describe('daily route', () => {
+  test('preview uses original numbers and the first equally close stop on either side of 180°', () => {
+    const stops = [
+      stop('missing', null),
+      stop('edited', 180),
+      stop('one', -180),
+      stop('two', 180),
+      stop('far', 170),
+    ];
+    const preview = previewDayStops({ latitude: 10, longitude: 180 }, stops, 'edited');
+    expect(preview.closest).toEqual({ title: 'Stop one', number: 3, km: 0 });
+    expect(preview.groups.map((group) => group.entry_ids)).toEqual([['one', 'two'], ['far']]);
+    expect(preview.numbers.get('two')).toBe(4);
+    expect(preview.other_count).toBe(4);
+  });
+
+  test('preview distinguishes an empty day from a day with no other located stops', () => {
+    const position = { latitude: 0, longitude: 0 };
+    const stops = [stop('edited', 7), stop('unlocated', null)];
+    for (const day of [[], stops]) {
+      const preview = previewDayStops(position, day, 'edited');
+      expect(preview.closest).toBeUndefined();
+      expect(preview.groups).toHaveLength(0);
+      expect(preview.other_count).toBe(day.length ? 1 : 0);
+    }
+  });
   test('keeps stop identities and itinerary order, including a return to a shared position', () => {
     const stops = [stop('a', 11), stop('b', null), stop('c', 8), stop('d', 11)];
     const { points, unlocated_ids } = mapStops(stops);
