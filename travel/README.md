@@ -19,13 +19,15 @@ Tap **Undo** beside the confirmation to remove the most recent addition. It work
 
 Tap a new directory sight or hotel in the results to see its available opening hours, admission, wheelchair access, address and website. Its location shows the straight-line distance to the nearest mapped stop or hotel on that day. Tap it to see the place in your proposed route. You can add a sight to the day or choose a hotel’s stay dates here. **Edit itinerary details** lets you change its name, time, notes and route position. **Back** returns to the venue with your edits, then to the selected result. Existing stops open for editing and offer **Visitor details** for another look. [行程助手’s museum details, steps 13–15](https://www.sohu.com/a/331566931_503432)
 
-Open **Overview** to see the cities and planned stops for each day. Tap a day to open it. **Add day** extends the itinerary by one calendar day and opens that day.
+Open **Overview** to see the cities and planned stops for each day. Hotel check-ins, continuing nights and checkouts each have a named line, even on a day with many activities. Tap a day to open it. On a day with stops and an open night, **Add overnight stay** at the end of the route opens hotels in the last scheduled city. **Add day** extends the itinerary by one calendar day and opens that day.
 
 On a day with two or more planned stops, tap the reorder arrows beside **Map**, or **Reorder** on the day map. Drag a handle to move a stop several places, or tap it to choose a position. The numbered map previews each move. **Done** saves the whole order and **Cancel** returns to the original route. Stop times, hotel dates and check-ins stay with their stops. Stops without coordinates can also be rearranged. [行程助手’s mobile arrangement screen, page 14](https://www.pmdaniu.com/index.php/storages/95419/27de68b70b9d6a22b410d2a0eabd8926-54667/1303sZobr5wc.pdf#page=14)
 
 When you finish adding places, the itinerary brings the last saved stop into view. If you edit a stay from an overnight or checkout day, returning to that day brings its hotel row into view.
 
 Tap **Stay dates** when adding or editing a hotel to see check-in and check-out together. Pick a day by its date and scheduled cities, or use the calendar for a date farther away. Moving check-in carries the number of nights forward. You can also leave check-out open. **Done** returns the selected dates to the hotel review, where you can save the stay. [行程助手’s hotel date screen](https://pic.downxia.com/upload/2020/0429/20200429122045718.jpg)
+
+As you select dates, the sheet lists other hotels already in the trip for those nights, including hotels in another city. The checkout day is available for a new stay. A hotel with open checkout counts on its arrival night. You can keep two hotels for the same night.
 
 If you change the day while reviewing a new stop or hotel, **Back** opens results for the revised day. The selected city carries over when it is on that day’s route.
 

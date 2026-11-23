@@ -653,7 +653,8 @@
 .itinerary-place-credit a {
   color: inherit;
 }
-.ongoing-stay {
+.ongoing-stay,
+.itinerary-add-stay {
   display: flex;
   align-items: center;
   gap: 9px;
@@ -666,7 +667,21 @@
   text-align: start;
   font-size: 0.84rem;
 }
-.ongoing-stay span {
+.ongoing-stay span,
+.itinerary-add-stay span {
   flex: 1;
   overflow-wrap: anywhere;
+}
+.itinerary-add-stay {
+  min-height: 44px;
+  background: var(--apell-surface);
+  color: var(--apell-primary);
+  font-weight: 600;
+}
+.itinerary-add-stay small {
+  display: block;
+  margin-top: 2px;
+  color: var(--apell-muted);
+  font-size: 0.78rem;
+  font-weight: 400;
 }

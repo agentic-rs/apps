@@ -48,3 +48,42 @@ export function continuingStays(stops: readonly PlannedStop[], day: string): Con
       label: `${day === stop.checkout_date ? 'Check out of' : 'Staying at'} ${stop.title}`,
     }));
 }
+
+/** Search the validated stops of one trip. Both returned dates are occupied nights.
+ * A stay with open checkout contributes only its known arrival night.
+ */
+export function staysInRange(
+  stops: readonly PlannedStop[],
+  check_in: string,
+  check_out: string,
+  except_id?: string,
+) {
+  const overlaps: { stop: PlannedStop; first_night: string; last_night: string }[] = [];
+  if (
+    !isCalendarDate(check_in) ||
+    (check_out && (!isCalendarDate(check_out) || check_out <= check_in))
+  )
+    return overlaps;
+  const through = check_out ? offsetDay(check_out, -1) : check_in;
+  for (const stop of stops) {
+    if (stop.kind !== 'stay' || stop.id === except_id || stop.day > through) continue;
+    const final_stay_night = stop.checkout_date ? offsetDay(stop.checkout_date, -1) : stop.day;
+    const first_night = stop.day > check_in ? stop.day : check_in;
+    const last_night = final_stay_night < through ? final_stay_night : through;
+    if (first_night <= last_night) overlaps.push({ stop, first_night, last_night });
+  }
+  // Stable sort keeps itinerary order for multiple hotels on the same night.
+  return overlaps.sort((a, b) => a.first_night.localeCompare(b.first_night));
+}
+
+/** Checkout day is available for a new hotel even though the old stay still appears on the route. */
+export function staysForNight(stops: readonly PlannedStop[], night: string, except_id?: string) {
+  if (!isCalendarDate(night)) return [];
+  return stops.filter(
+    (stop) =>
+      stop.kind === 'stay' &&
+      stop.id !== except_id &&
+      stop.day <= night &&
+      (stop.checkout_date ? night < stop.checkout_date : night === stop.day),
+  );
+}

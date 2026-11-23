@@ -145,7 +145,7 @@ export function App() {
   const first = bounds[0] ?? today;
   const last = bounds.at(-1) ?? today;
   const day = chosen_day || (first <= today && today <= last ? today : first);
-  const day_cities = trip && view === 'Itinerary' ? citiesOnDay(trip, day).join(' → ') : '';
+  const day_cities = trip && view === 'Itinerary' ? citiesOnDay(trip, day) : [];
   const day_stops = useMemo(() => stops.filter((stop) => stop.day === day), [stops, day]);
   const day_stays = useMemo(() => continuingStays(stops, day), [stops, day]);
   const day_visits = useMemo(
@@ -310,7 +310,9 @@ export function App() {
                     onClick={() => setEditor({ kind: 'edit_trip' })}
                   />
                 </div>
-                {route_summary && route_summary !== day_cities && <p>{route_summary}</p>}
+                {route_summary && route_summary !== day_cities.join(' → ') && (
+                  <p>{route_summary}</p>
+                )}
               </div>
             ) : (
               <h1>Fieldnotes</h1>

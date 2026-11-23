@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef } from 'react';
 import { daysBetween, formatVisitDate, formatVisitTime, toVisitInput } from '../lib/dates';
 import { formatEntryCount, visitTitle } from '../lib/model';
 import { distanceKm, formatDistance } from '../lib/distance';
-import type { ContinuingStay } from '../lib/hotel-stays';
+import { staysForNight, type ContinuingStay } from '../lib/hotel-stays';
 import { stop_kind_labels } from '../lib/types';
 import type { CheckIn, PhotoAsset, Place, PlannedStop, TravelPlatform, Trip } from '../lib/types';
 import { Icon } from './Icon';
@@ -20,7 +20,7 @@ const day_heading = new Intl.DateTimeFormat('en-GB', {
 
 interface ItineraryDayProps {
   day: string;
-  day_cities: string;
+  day_cities: string[];
   trip: Trip;
   stops: PlannedStop[];
   continuing_stays: ContinuingStay[];
@@ -91,12 +91,25 @@ export function ItineraryDay({
     return () => cancelAnimationFrame(frame);
   }, [reveal_stop_id, onReveal]);
   const day_label = day_heading.format(new Date(day + 'T00:00:00Z'));
+  const city_route = day_cities.join(' → ');
+  const overnight_city = day_cities.at(-1);
+  const needs_overnight_stay =
+    stops.length > 0 &&
+    (!trip.start_date || day >= trip.start_date) &&
+    (!trip.end_date || day < trip.end_date) &&
+    staysForNight([...stops, ...continuing_stays.map(({ stop }) => stop)], day).length === 0;
   const by_place = new Map(places.map((place) => [place.id, place]));
   const by_stop = new Map(stops.map((stop) => [stop.id, [] as CheckIn[]]));
   for (const visit of trip_visits) {
     if (visit.stop_id) by_stop.get(visit.stop_id)?.push(visit);
   }
   const journal_entries = visits.filter((visit) => !visit.stop_id || !by_stop.has(visit.stop_id));
+
+  function openPicker(button: HTMLButtonElement, category: 'sight' | 'stay') {
+    // Touch WebKit needs an explicit opener to restore focus when the picker closes.
+    button.focus({ preventScroll: true });
+    onAddStop(category);
+  }
 
   function renderVisit(visit: CheckIn, stop?: PlannedStop) {
     const place = visit.place_id ? by_place.get(visit.place_id) : undefined;
@@ -149,12 +162,12 @@ export function ItineraryDay({
       <header className="itinerary-day-heading">
         <div className="day-plan-tools">
           <div className="day-summary">
-            {day_cities && (
+            {city_route && (
               <time className="day-location-date" dateTime={day}>
                 {day_label}
               </time>
             )}
-            <h2>{day_cities || <time dateTime={day}>{day_label}</time>}</h2>
+            <h2>{city_route || <time dateTime={day}>{day_label}</time>}</h2>
             {(stops.length > 0 || visits.length > 0) && (
               <p>
                 {stops.length > 0 && `${stops.length} ${stops.length === 1 ? 'stop' : 'stops'}`}
@@ -183,10 +196,18 @@ export function ItineraryDay({
           </div>
         </div>
         <div className="day-place-actions">
-          <button type="button" className="primary" onClick={() => onAddStop('sight')}>
+          <button
+            type="button"
+            className="primary"
+            onClick={(event) => openPicker(event.currentTarget, 'sight')}
+          >
             <Icon name="landmark" size={18} /> Add stop
           </button>
-          <button type="button" className="secondary" onClick={() => onAddStop('stay')}>
+          <button
+            type="button"
+            className="secondary"
+            onClick={(event) => openPicker(event.currentTarget, 'stay')}
+          >
             <Icon name="bed" size={18} /> Add hotel
           </button>
         </div>
@@ -325,6 +346,22 @@ export function ItineraryDay({
             OpenStreetMap contributors
           </a>
         </small>
+      )}
+      {needs_overnight_stay && (
+        <button
+          type="button"
+          className="itinerary-add-stay"
+          aria-label="Add overnight stay"
+          aria-description={overnight_city && `Search hotels in ${overnight_city}`}
+          onClick={(event) => openPicker(event.currentTarget, 'stay')}
+        >
+          <Icon name="bed" size={19} />
+          <span>
+            Add overnight stay
+            {overnight_city && <small>{overnight_city}</small>}
+          </span>
+          <Icon name="plus" size={18} />
+        </button>
       )}
       <section className="itinerary-journal" aria-label="Day journal">
         <h3>Day journal</h3>

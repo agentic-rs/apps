@@ -1056,10 +1056,15 @@ function StopEditor({
       {date_action && (
         <StayDates
           trip={trip}
+          trip_stops={trip_stops}
+          editing_id={stop?.id}
+          adding_stay={date_action.from !== 'dates'}
           first={first}
           hotel={
             date_action.from === 'dates'
-              ? undefined
+              ? title.trim()
+                ? { title: title.trim(), city: planning_city }
+                : undefined
               : { title: date_action.stop.title, city: date_action.city_label }
           }
           check_in={hotel_to_add?.day ?? stop_day}

@@ -1,6 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { citiesOnDay } from '../lib/city-days';
-import { continuingStays } from '../lib/hotel-stays';
+import { staysForNight } from '../lib/hotel-stays';
 import { daysBetween, isCalendarDate, itineraryDayLabel, offsetDay } from '../lib/dates';
 import type { PlannedStop, Trip } from '../lib/types';
 import { Dialog } from './Dialog';
@@ -19,6 +19,22 @@ const range_date = new Intl.DateTimeFormat('en-GB', {
   year: 'numeric',
   timeZone: 'UTC',
 });
+
+function lodgingOnDay(hotels: PlannedStop[], date: string) {
+  const departures = hotels.filter((stop) => stop.checkout_date === date);
+  return [...departures, ...staysForNight(hotels, date)].map((stop) => {
+    const action =
+      stop.checkout_date === date
+        ? 'Check out of'
+        : stop.day === date
+          ? 'Check in at'
+          : 'Staying at';
+    const label = [`${action} ${stop.title}`, stop.city, !stop.checkout_date && 'Check-out open']
+      .filter(Boolean)
+      .join(' · ');
+    return { id: stop.id, label };
+  });
+}
 
 export function TripOverview({
   trip,
@@ -50,14 +66,19 @@ export function TripOverview({
   const [error, setError] = useState('');
   const adding = useRef(false);
   const anchor_row = useRef<HTMLButtonElement>(null);
-  const stops_by_day = useMemo(() => {
+  const { stops_by_day, hotels } = useMemo(() => {
     const grouped = new Map<string, string[]>();
+    const hotels: PlannedStop[] = [];
     for (const stop of stops) {
+      if (stop.kind === 'stay') {
+        hotels.push(stop);
+        continue;
+      }
       const titles = grouped.get(stop.day);
       if (titles) titles.push(stop.title);
       else grouped.set(stop.day, [stop.title]);
     }
-    return grouped;
+    return { stops_by_day: grouped, hotels };
   }, [stops]);
 
   useLayoutEffect(() => {
@@ -128,19 +149,26 @@ export function TripOverview({
             const heading = itineraryDayLabel(date, first, trip);
             const cities = citiesOnDay(trip, date).join(' → ');
             const titles = stops_by_day.get(date) ?? [];
-            const stays = continuingStays(stops, date);
-            const summary =
+            const lodging = lodgingOnDay(hotels, date);
+            const stops_summary =
               titles.slice(0, 3).join(' · ') +
               (titles.length > 3 ? ` · +${titles.length - 3} more` : '');
-            const lines = [summary, ...stays.map((stay) => stay.label)].filter(Boolean);
-            if (!lines.length) lines.push('No stops planned');
+            const summary = stops_summary || (!lodging.length ? 'No stops planned' : '');
+            const description = [
+              heading,
+              cities || 'City not scheduled',
+              summary,
+              ...lodging.map((stay) => stay.label),
+            ]
+              .filter(Boolean)
+              .join('. ');
             return (
               <li key={date}>
                 <button
                   className="overview-day"
                   ref={date === anchor ? anchor_row : undefined}
                   aria-label={`Open itinerary for ${date}`}
-                  aria-description={`${heading}. ${cities || 'City not scheduled'}. ${lines.join('. ')}.`}
+                  aria-description={description + '.'}
                   aria-current={date === day ? 'date' : undefined}
                   disabled={saving}
                   onClick={() => onSelect(date)}
@@ -151,9 +179,17 @@ export function TripOverview({
                   </span>
                   <span className="overview-day-plan">
                     <strong>{cities || 'City not scheduled'}</strong>
-                    {lines.map((line, index) => (
-                      <span key={index}>{line}</span>
-                    ))}
+                    {summary && <span className="overview-stop-summary">{summary}</span>}
+                    {lodging.length > 0 && (
+                      <span className="overview-lodging">
+                        {lodging.map(({ id, label }) => (
+                          <span key={id}>
+                            <Icon name="bed" size={15} />
+                            <span>{label}</span>
+                          </span>
+                        ))}
+                      </span>
+                    )}
                   </span>
                   <Icon name="next" size={16} />
                 </button>

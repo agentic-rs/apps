@@ -1,8 +1,14 @@
-import { useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { citiesOnDay } from '../lib/city-days';
 import { daysBetween, isCalendarDate, itineraryDayLabel } from '../lib/dates';
-import { checkoutAfter, moveStayCheckIn, stayDayPage } from '../lib/hotel-stays';
-import type { Trip } from '../lib/types';
+import {
+  checkoutAfter,
+  moveStayCheckIn,
+  stayDayPage,
+  staysForNight,
+  staysInRange,
+} from '../lib/hotel-stays';
+import type { PlannedStop, Trip } from '../lib/types';
 import { Dialog } from './Dialog';
 import { Icon } from './Icon';
 import '../stay-dates.css';
@@ -24,6 +30,9 @@ const row_date = new Intl.DateTimeFormat(undefined, {
 
 export function StayDates({
   trip,
+  trip_stops,
+  editing_id,
+  adding_stay,
   first,
   check_in,
   check_out,
@@ -33,6 +42,9 @@ export function StayDates({
   initial_field = 'check_in',
 }: {
   trip: Trip;
+  trip_stops: readonly PlannedStop[];
+  editing_id?: string;
+  adding_stay: boolean;
   first: string;
   check_in: string;
   check_out: string;
@@ -56,27 +68,57 @@ export function StayDates({
   const [save_error, setSaveError] = useState('');
   const in_flight = useRef(false);
   const departure = useRef<HTMLButtonElement>(null);
+  const day_rows = useRef<HTMLUListElement>(null);
+  const scroll_area = useRef<HTMLDivElement>(null);
+  const active_day_row = useRef<HTMLButtonElement>(null);
+  const return_to_days = useRef(false);
   const earliest = [first, trip.start_date, dates.check_in].filter(isCalendarDate).sort()[0];
+  const min_checkout = checkoutAfter(dates.check_in, 1);
   const last = [
     trip.end_date ? checkoutAfter(trip.end_date, 1) || trip.end_date : '9999-12-31',
     dates.check_in,
+    min_checkout,
     dates.check_out,
     first,
   ]
     .filter(isCalendarDate)
     .sort()
     .at(-1)!;
-  const min_checkout = checkoutAfter(dates.check_in, 1);
   const active_date = dates[field];
   const focus = page_day || active_date || min_checkout || dates.check_in;
   const page = stayDayPage(earliest, last, focus);
   const nights = dates.check_out ? daysBetween(dates.check_in, dates.check_out) : 0;
+  const overlaps = useMemo(
+    () => staysInRange(trip_stops, dates.check_in, dates.check_out, editing_id),
+    [trip_stops, dates.check_in, dates.check_out, editing_id],
+  );
   const error =
     invalid_input === null
       ? ''
       : field === 'check_in'
         ? 'Choose a check-in date.'
         : 'Choose a check-out date after check-in.';
+
+  useLayoutEffect(() => {
+    if (!return_to_days.current) return;
+    return_to_days.current = false;
+    // The new checkout can be on another page. Its row exists only after the range updates.
+    const target = active_day_row.current ?? departure.current;
+    target?.focus({ preventScroll: true });
+    target?.scrollIntoView({ block: 'nearest' });
+  }, [dates]);
+
+  useLayoutEffect(() => {
+    const viewport = scroll_area.current;
+    if (!viewport) return;
+    const resize = new ResizeObserver(() => {
+      const focused = document.activeElement;
+      if (focused && day_rows.current?.contains(focused))
+        focused.scrollIntoView({ block: 'nearest' });
+    });
+    resize.observe(viewport);
+    return () => resize.disconnect();
+  }, []);
 
   function selectField(next: Field) {
     setField(next);
@@ -96,13 +138,11 @@ export function StayDates({
         check_in: value,
         check_out: moveStayCheckIn(dates.check_in, dates.check_out, value),
       });
-      if (from_list) {
-        setField('check_out');
-        departure.current?.focus({ preventScroll: true });
-      }
+      if (from_list) setField('check_out');
     } else {
       setDates({ ...dates, check_out: value });
     }
+    return_to_days.current = from_list;
     setPageDay('');
     setInvalidInput(null);
   }
@@ -151,7 +191,7 @@ export function StayDates({
           disabled={Boolean(error) || saving}
           onClick={() => void apply()}
         >
-          {saving ? 'Saving…' : hotel ? 'Add stay' : 'Done'}
+          {saving ? 'Saving…' : adding_stay ? 'Add stay' : 'Done'}
         </button>
       }
     >
@@ -160,7 +200,7 @@ export function StayDates({
           {save_error}
         </p>
       )}
-      <div className="stay-date-scroll">
+      <div className="stay-date-scroll" ref={scroll_area}>
         <fieldset className="stay-date-fields" disabled={saving}>
           <div className="stay-date-body">
             <div className="stay-date-range">
@@ -194,9 +234,20 @@ export function StayDates({
                 })}
               </div>
               <div className="stay-date-summary">
-                <span role="status">
+                <span role="status" aria-atomic="true">
                   <Icon name="bed" size={17} />
-                  {nights > 0 ? `${nights} ${nights === 1 ? 'night' : 'nights'}` : 'Open check-out'}
+                  <span>
+                    {nights > 0
+                      ? `${nights} ${nights === 1 ? 'night' : 'nights'}`
+                      : 'Open check-out'}
+                  </span>
+                  {!error && overlaps.length > 0 && (
+                    <span className="sr-only">
+                      {overlaps.length === 1
+                        ? '1 stay already planned.'
+                        : `${overlaps.length} stays already planned.`}
+                    </span>
+                  )}
                 </span>
                 {field === 'check_out' && (
                   <button type="button" onClick={() => chooseDate('')}>
@@ -226,10 +277,43 @@ export function StayDates({
                   {error}
                 </p>
               )}
+              {!error && overlaps.length > 0 && (
+                <section className="stay-night-plan" aria-label="Planned for these nights">
+                  <h3>
+                    <Icon name="bed" size={17} />
+                    {nights > 1
+                      ? 'Already planned for these nights'
+                      : 'Already planned for this night'}
+                  </h3>
+                  <ul>
+                    {overlaps.map(({ stop, first_night, last_night }) => (
+                      <li key={stop.id}>
+                        <strong>{stop.title}</strong>
+                        <small>
+                          {stop.city && <>{stop.city} · </>}
+                          {first_night === last_night ? 'Night of ' : 'Nights of '}
+                          <time dateTime={first_night}>
+                            {row_date.format(new Date(first_night + 'T00:00:00Z'))}
+                          </time>
+                          {first_night !== last_night && (
+                            <>
+                              {' '}
+                              –{' '}
+                              <time dateTime={last_night}>
+                                {row_date.format(new Date(last_night + 'T00:00:00Z'))}
+                              </time>
+                            </>
+                          )}
+                        </small>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
             </div>
             <section aria-label="Trip days">
               <div className="stay-date-page">
-                <h3>Trip days</h3>
+                <h3>{field === 'check_in' ? 'Choose check-in day' : 'Choose check-out day'}</h3>
                 {(page.previous || page.next) && (
                   <div>
                     <button
@@ -251,18 +335,25 @@ export function StayDates({
                   </div>
                 )}
               </div>
-              <ul className="stay-date-days">
+              <ul className="stay-date-days" ref={day_rows}>
                 {page.dates.map((date) => {
                   const selected = date === active_date;
                   const description = [dayLabel(date), citiesOnDay(trip, date).join(' → ')]
                     .filter(Boolean)
                     .join(' · ');
+                  const count = staysForNight(trip_stops, date, editing_id).length;
+                  const occupancy = count
+                    ? `${count} ${count === 1 ? 'stay' : 'stays'} that night`
+                    : '';
                   return (
                     <li key={date}>
                       <button
                         type="button"
                         aria-label={`Choose ${date}`}
-                        aria-description={description}
+                        aria-description={[fields[field], description, occupancy]
+                          .filter(Boolean)
+                          .join('. ')}
+                        ref={date === (active_date || min_checkout) ? active_day_row : undefined}
                         aria-pressed={selected}
                         disabled={field === 'check_out' && date <= dates.check_in}
                         onClick={() => chooseDate(date, true)}
@@ -270,6 +361,12 @@ export function StayDates({
                         <span>
                           <strong>{row_date.format(new Date(date + 'T00:00:00Z'))}</strong>
                           <small>{description}</small>
+                          {occupancy && (
+                            <small className="stay-night-count">
+                              <Icon name="bed" size={14} />
+                              {occupancy}
+                            </small>
+                          )}
                         </span>
                         {selected && <Icon name="check" size={19} />}
                       </button>

@@ -195,6 +195,53 @@
   gap: 3px;
   overflow-wrap: anywhere;
 }
+.stay-night-count,
+.stay-night-plan h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.stay-night-count svg,
+.stay-night-plan h3 svg {
+  flex: none;
+}
+.stay-night-plan {
+  margin-top: 14px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--apell-subtle);
+  overflow-wrap: anywhere;
+}
+.stay-night-plan h3 {
+  margin: 0;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+.stay-night-plan h3 svg {
+  color: var(--apell-muted);
+}
+.stay-night-plan ul {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+.stay-night-plan li {
+  display: grid;
+  gap: 2px;
+}
+.stay-night-plan li + li {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--apell-line);
+}
+.stay-night-plan li strong {
+  font-size: 0.93rem;
+  font-weight: 600;
+}
+.stay-night-plan li small {
+  color: var(--apell-muted);
+  font-size: 0.82rem;
+}
 @media (min-width: 560px) and (max-height: 480px) {
   .stay-date-body {
     display: grid;
