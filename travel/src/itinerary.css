@@ -354,11 +354,12 @@
   margin: 0 0 10px;
   line-height: 1.4;
 }
-.stop-map-action {
+.stop-place-action {
   display: flex;
   align-items: center;
   gap: 9px;
   width: 100%;
+  min-height: 44px;
   padding: 6px 0 10px;
   border: 0;
   background: transparent;
@@ -366,11 +367,15 @@
   text-align: start;
   font-size: 0.95rem;
 }
-.stop-map-action span {
+.stop-place-action + .stop-place-action {
+  border-top: 1px solid var(--apell-line);
+  padding-block: 8px;
+}
+.stop-place-action span {
   flex: 1;
   overflow-wrap: anywhere;
 }
-.stop-map-action small {
+.stop-place-action small {
   display: block;
   margin-top: 2px;
   color: var(--apell-muted);

@@ -224,6 +224,11 @@ function parseDirectoryRef(value: unknown): DirectoryRef {
   return {
     provider: row.provider,
     id: text(row.id, 'Place source ID', 512, true),
+    ...(row.name !== undefined && {
+      name: text(row.name, 'Directory name', text_limits.stop_title),
+    }),
+    ...(typeof row.country_code === 'string' &&
+      /^[A-Z]{2}$/.test(row.country_code) && { country_code: row.country_code }),
     ...(row.provider === 'geoapify' &&
       typeof row.osm_ref === 'string' &&
       /^[NWR][1-9]\d{0,18}$/.test(row.osm_ref) && { osm_ref: row.osm_ref }),

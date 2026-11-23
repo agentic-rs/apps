@@ -12,6 +12,9 @@ export interface TripCityLocation extends Coordinates {
 }
 
 export interface DirectoryRef {
+  /** Original directory name, independent of a traveler's itinerary title. */
+  name?: string;
+  country_code?: string;
   subtitle?: string;
   place_type?: PlaceType;
   /** The underlying OSM element when a service uses a different ID for the same place. */

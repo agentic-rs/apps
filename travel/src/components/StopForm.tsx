@@ -2,6 +2,7 @@ import { lazy, Suspense, useId, useLayoutEffect, useMemo, useRef, useState } fro
 import { citiesOnDay, cityIndicesOnDay } from '../lib/city-days';
 import { daysBetween, isCalendarDate, itineraryDayLabel } from '../lib/dates';
 import { createId } from '../lib/identity';
+import { canShowPlaceDetails } from '../lib/place-details';
 import { placeTypeLabel } from '../lib/place-types';
 import {
   plannedStopCityIndex,
@@ -27,6 +28,7 @@ import { Icon } from './Icon';
 import { StopPlacePicker, type PickerCity } from './StopPlacePicker';
 import { checkoutAfter, continuingStays } from '../lib/hotel-stays';
 import { StayDates } from './StayDates';
+import { PlaceDetailsSheet } from './PlaceDetailsSheet';
 
 const PlaceMapPreview = lazy(() => import('./PlaceMapPreview'));
 
@@ -110,6 +112,8 @@ function directoryReference(place: StopSearchResult) {
   return {
     provider: place.source,
     id: place.id,
+    ...(place.source !== 'ourairports' && { name: place.title.slice(0, text_limits.stop_title) }),
+    ...(place.country_code && { country_code: place.country_code }),
     ...(place.osm_ref && { osm_ref: place.osm_ref }),
     ...(place.place_type && { place_type: place.place_type }),
     ...(place.subtitle && { subtitle: place.subtitle.slice(0, text_limits.place_locality) }),
@@ -230,6 +234,9 @@ function StopEditor({
   const [error, setError] = useState('');
   const [discard, setDiscard] = useState(false);
   const [show_map, setShowMap] = useState(false);
+  const [show_details, setShowDetails] = useState(false);
+  const details_button = useRef<HTMLButtonElement>(null);
+  const details_return = useRef<'focus' | 'validate' | null>(null);
   const [date_action, setDateAction] = useState<StayDateAction | null>(null);
   const hotel_to_add = date_action && date_action.from !== 'dates' ? date_action.stop : undefined;
   const picking_dates = date_action?.from === 'result';
@@ -315,6 +322,12 @@ function StopEditor({
     date_return_focus.current = [];
     target?.focus({ preventScroll: true });
   }, [date_action]);
+  useLayoutEffect(() => {
+    if (show_details || !details_return.current) return;
+    if (details_return.current === 'validate') primary_button.current?.form?.reportValidity();
+    else details_button.current?.focus({ preventScroll: true });
+    details_return.current = null;
+  }, [show_details]);
   function staySummary() {
     if (!isCalendarDate(stop_day)) return 'Choose check-in';
     const start = new Date(stop_day + 'T00:00:00Z');
@@ -342,6 +355,8 @@ function StopEditor({
   const source_changed =
     directory_ref?.id !== stop?.directory_ref?.id ||
     directory_ref?.provider !== stop?.directory_ref?.provider ||
+    directory_ref?.name !== stop?.directory_ref?.name ||
+    directory_ref?.country_code !== stop?.directory_ref?.country_code ||
     directory_ref?.osm_ref !== stop?.directory_ref?.osm_ref ||
     directory_ref?.place_type !== stop?.directory_ref?.place_type ||
     directory_ref?.subtitle !== stop?.directory_ref?.subtitle;
@@ -365,6 +380,12 @@ function StopEditor({
     .filter(Boolean)
     .join(' · ');
   const needs_stay_dates = kind === 'stay' && !stop && !draft.dates_confirmed;
+  const add_label = needs_stay_dates
+    ? 'Choose stay dates'
+    : day_label.startsWith('Day ')
+      ? `Add to ${day_label}`
+      : 'Add to itinerary';
+  const cannot_save = busy || !title.trim() || !stop_day;
 
   function stayDatesFor(value: StopKind) {
     return {
@@ -534,7 +555,7 @@ function StopEditor({
     }
   }
 
-  async function submit(another = false) {
+  async function submit(another = false, details_trigger?: HTMLButtonElement) {
     if (busy) return;
     setError('');
     setDiscard(false);
@@ -554,7 +575,8 @@ function StopEditor({
         ...(directory_ref && { directory_ref }),
       };
       if (needs_stay_dates) {
-        const trigger = another ? another_button.current : primary_button.current;
+        const trigger =
+          details_trigger ?? (another ? another_button.current : primary_button.current);
         setDateAction({ from: 'review', stop: value, city_label: planning_city, another, trigger });
         return;
       }
@@ -562,6 +584,16 @@ function StopEditor({
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not save this stop.');
     }
+  }
+
+  function addFromDetails(trigger: HTMLButtonElement) {
+    // An edited field can be invalid behind the details sheet. Return to it for validation.
+    if (!primary_button.current?.form?.checkValidity()) {
+      details_return.current = 'validate';
+      setShowDetails(false);
+      return;
+    }
+    void submit(false, trigger);
   }
 
   async function saveReviewed(value: PlannedStop, another: boolean) {
@@ -701,7 +733,7 @@ function StopEditor({
                     {position ? (
                       <button
                         type="button"
-                        className="stop-map-action"
+                        className="stop-place-action"
                         aria-label="View on map"
                         aria-description={place_description || undefined}
                         disabled={placement_pending}
@@ -721,6 +753,21 @@ function StopEditor({
                         </p>
                       )
                     )}
+                    {directory_ref &&
+                      (kind === 'sight' || kind === 'stay') &&
+                      canShowPlaceDetails(directory_ref, lookup.attribution) && (
+                        <button
+                          ref={details_button}
+                          type="button"
+                          className="stop-place-action"
+                          aria-haspopup="dialog"
+                          onClick={() => setShowDetails(true)}
+                        >
+                          <Icon name="info" size={19} />
+                          <span>Visitor details</span>
+                          <Icon name="next" size={15} />
+                        </button>
+                      )}
                     <label className="stop-setting">
                       Category
                       <span className="stop-setting-control stop-category-control">
@@ -846,7 +893,7 @@ function StopEditor({
                           ref={another_button}
                           type="button"
                           className="secondary"
-                          disabled={busy || !title.trim() || !stop_day}
+                          disabled={cannot_save}
                           onClick={(event) => {
                             if (event.currentTarget.form?.reportValidity()) void submit(true);
                           }}
@@ -858,18 +905,10 @@ function StopEditor({
                         ref={primary_button}
                         type="button"
                         className="primary"
-                        disabled={busy || !title.trim() || !stop_day}
+                        disabled={cannot_save}
                         onClick={save}
                       >
-                        {busy
-                          ? 'Saving…'
-                          : stop
-                            ? 'Save changes'
-                            : needs_stay_dates
-                              ? 'Choose stay dates'
-                              : day_label.startsWith('Day ')
-                                ? `Add to ${day_label}`
-                                : 'Add to itinerary'}
+                        {busy ? 'Saving…' : stop ? 'Save changes' : add_label}
                       </button>
                     </div>
                   )}
@@ -879,6 +918,37 @@ function StopEditor({
           </EditorForm>
         )}
       </Dialog>
+      {show_details && directory_ref && (
+        <PlaceDetailsSheet
+          title={directory_ref.name || stop?.title || title}
+          kind={kind}
+          city={planning_city}
+          day_label={
+            day_label ||
+            (isCalendarDate(stop_day)
+              ? date_format.format(new Date(stop_day + 'T00:00:00Z'))
+              : undefined)
+          }
+          directory_ref={directory_ref}
+          lookup={lookup}
+          native={native}
+          busy={busy}
+          action_error={error}
+          primary_action={
+            stop
+              ? undefined
+              : {
+                  label: busy ? 'Saving…' : add_label,
+                  disabled: cannot_save,
+                  onClick: addFromDetails,
+                }
+          }
+          onClose={() => {
+            details_return.current = 'focus';
+            setShowDetails(false);
+          }}
+        />
+      )}
       {date_action && (
         <StayDates
           trip={trip}

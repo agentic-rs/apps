@@ -55,6 +55,7 @@ const directories = new Set<string>();
 const calls: string[] = [];
 const http_urls: string[] = [];
 const place_requests: { city: string; query: string }[] = [];
+const visitor_requests: string[] = [];
 const event_images: number[][] = [];
 const title_requests: LlmRequest[] = [];
 const model_target = { connection_id: 'smoke-provider', model_id: 'smoke-model' };
@@ -65,6 +66,7 @@ let fail_next_write = false;
 let journal_writes = 0;
 let fail_map_tiles = false;
 let fail_place_search = false;
+let fail_visitor_details = false;
 let image_sequence = 0;
 
 async function eventImage(local_time: string, latitude: number): Promise<number[]> {
@@ -154,6 +156,7 @@ function placeResponse(url: URL) {
               : {
                   name,
                   city: city.name,
+                  countrycode: 'jp',
                   osm_id: id,
                   osm_type: 'N',
                   osm_key: venue.key ?? 'tourism',
@@ -179,6 +182,56 @@ function placeResponse(url: URL) {
         }),
       ),
     ),
+  };
+}
+
+function visitorResponse(url: URL, params: Record<string, unknown>) {
+  const geoapify = url.origin === 'https://api.geoapify.com';
+  let id: string;
+  if (geoapify) {
+    assert.equal(url.searchParams.get('features'), 'details');
+    id = url.searchParams.get('id') ?? '';
+  } else {
+    assert.equal(params.method, 'POST');
+    const body = new TextDecoder().decode(Uint8Array.from(params.body as number[]));
+    const query = new URLSearchParams(body).get('data');
+    const node = query?.match(/node\((\d+)\)/);
+    assert(node, 'The fixture must be looked up by its exact OSM node ID.');
+    id = 'N' + node[1];
+  }
+  visitor_requests.push(id);
+  const number = Number(id.match(/\d+$/)?.[0]);
+  const museum = number === 110;
+  const website = museum ? 'https://museum.example/visit' : 'https://inn.example/stay';
+  const opening_hours = museum ? 'Tu-Su 09:30-17:00' : '24/7';
+  const tags = {
+    opening_hours,
+    website,
+    ...(museum && {
+      fee: 'yes',
+      'charge:adult': '700 JPY',
+      'charge:child': '300 JPY',
+      wheelchair: 'limited',
+      'addr:street': 'Gallery Lane',
+      'addr:housenumber': '7',
+    }),
+  };
+  const listed = museum || number === 109;
+  const properties = {
+    feature_type: 'details',
+    place_id: id,
+    website,
+    opening_hours,
+    ...(museum && { formatted: '7 Gallery Lane, Nara' }),
+    datasource: { sourcename: 'openstreetmap', raw: tags },
+  };
+  const facts = geoapify
+    ? { type: 'FeatureCollection', features: listed ? [{ type: 'Feature', properties }] : [] }
+    : { elements: listed ? [{ type: 'node', id: number, tags }] : [] };
+  return {
+    status: fail_visitor_details ? 503 : 200,
+    headers: [{ name: 'Content-Type', value: 'application/json' }],
+    body: [...new TextEncoder().encode(JSON.stringify(facts))],
   };
 }
 
@@ -294,6 +347,11 @@ function hostCall(request: BridgeRequest): unknown {
     }
     case 'http.request': {
       const url = new URL(String(params.url));
+      if (
+        (url.origin === 'https://api.geoapify.com' && url.pathname === '/v2/place-details') ||
+        url.href === 'https://ovp.dresel.systems/api-as/interpreter'
+      )
+        return visitorResponse(url, params);
       if (url.origin === 'https://photon.komoot.io' || url.origin === 'https://api.geoapify.com')
         return placeResponse(url);
       assert.equal(
@@ -1105,6 +1163,9 @@ try {
   const kyoto_museum = dialog.getByRole('button', { name: /^Kyoto test museum/ });
   const nara_museum = dialog.getByRole('button', { name: /^Nara test museum/ });
   const nara_inn = dialog.getByRole('button', { name: /^Nara test inn/ });
+  const visitor_action = dialog.getByRole('button', { name: 'Visitor details', exact: true });
+  const visitor_sheet = frame.getByRole('dialog', { name: 'Visitor details', exact: true });
+  const visitor_back = visitor_sheet.getByRole('button', { name: 'Back to stop', exact: true });
   const change_dates = dialog.getByRole('button', { name: 'Change stay dates', exact: true });
   const stay_dates = frame.getByRole('dialog', { name: 'Stay dates', exact: true });
   const arrival = stay_dates.getByRole('button', { name: 'Check-in', exact: true });
@@ -1517,6 +1578,7 @@ try {
   await dialog.getByRole('searchbox', { name: 'Search airports' }).fill('KIX');
   await dialog.getByRole('button', { name: /Kansai International Airport.*KIX/ }).click();
   assert.equal(await dialog.getByLabel('Category').inputValue(), 'transport');
+  assert.equal(await visitor_action.count(), 0);
   await save_stop.click();
   await dialog.waitFor({ state: 'hidden' });
   assert.equal(calls.filter((method) => method === 'http.request').length, http_before_airport);
@@ -1547,6 +1609,44 @@ try {
   await frame.getByRole('button', { name: 'Edit Nara test inn' }).click();
   await assertStayDates(day_two, '2030-05-23');
   assert.equal(place_requests.length, requests_before_edit, 'Opening a saved stop stays local.');
+  assert.deepEqual(visitor_requests, [], 'Opening reviews and dates must not fetch venue details.');
+  const writes_before_details = journal_writes;
+  fail_visitor_details = true;
+  await visitor_action.click();
+  await visitor_sheet.getByRole('button', { name: 'Try again', exact: true }).waitFor();
+  assert.deepEqual(visitor_requests, [inn.directory_ref.id]);
+  fail_visitor_details = false;
+  await visitor_sheet.getByRole('button', { name: 'Try again', exact: true }).click();
+  await visitor_sheet.getByRole('heading', { name: 'Nara test inn', exact: true }).waitFor();
+  await visitor_sheet.getByText(/inn\.example/).waitFor();
+  await visitor_sheet.getByText('Open 24 hours daily', { exact: true }).waitFor();
+  assert.equal(
+    await visitor_sheet.getByRole('button', { name: /^(Add|Save|Choose stay dates)/ }).count(),
+    0,
+  );
+  assert.deepEqual(visitor_requests, [inn.directory_ref.id, inn.directory_ref.id]);
+  assert.equal(
+    await visitor_sheet.getByRole('link').count(),
+    0,
+    'Native website text stays in the app.',
+  );
+  assert.equal(await shellBack(), true);
+  await visitor_action.and(dialog.locator(':focus')).waitFor();
+  await native_frame.evaluate(() =>
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false }),
+  );
+  await visitor_action.click();
+  await visitor_sheet.getByText(/inn\.example/).waitFor();
+  assert.equal(
+    visitor_requests.length,
+    2,
+    'Reopening the same listing offline uses its cached facts.',
+  );
+  await native_frame.evaluate(() => Reflect.deleteProperty(navigator, 'onLine'));
+  await visitor_back.click();
+  await visitor_action.and(dialog.locator(':focus')).waitFor();
+  await assertStayDates(day_two, '2030-05-23');
+  assert.equal(journal_writes, writes_before_details);
   await page.locator('#applet').evaluate((element) => {
     element.style.width = '320px';
   });
@@ -1713,6 +1813,17 @@ try {
   await dialog.getByRole('button', { name: 'Change place' }).click();
   await kyoto.click();
   await dialog.getByRole('button', { name: /^Kyoto test inn/ }).click();
+  await visitor_action.click();
+  await visitor_sheet
+    .getByText('No visitor information is listed for this place.', { exact: true })
+    .waitFor();
+  assert.equal(
+    visitor_requests.at(-1),
+    inn.directory_ref.provider === 'osm' ? 'N101' : 'fixture-101',
+  );
+  assert.equal(await visitor_sheet.getByText(/inn\.example/).count(), 0);
+  await visitor_back.click();
+  assert.equal(await dialog.getByLabel('Notes').inputValue(), 'Arrive after dinner.');
   await save_stop.click();
   await dialog.waitFor({ state: 'hidden' });
   const updated_hotel = journal().stops.find((stop) => stop.id === inn.id);
@@ -1838,6 +1949,43 @@ try {
   assert.equal(await shellBack(), true);
   await route_position.waitFor();
   assert.equal(await dialog.getByLabel('Stop name').inputValue(), museum_name);
+  const museum_notes = 'Meet at the gallery entrance.';
+  const custom_museum_title = 'Afternoon at the galleries';
+  await dialog.getByLabel('Stop name').fill(custom_museum_title);
+  await dialog.getByLabel('Notes').fill(museum_notes);
+  await dialog.getByLabel('Time', { exact: true }).fill('14:20');
+  await visitor_action.click();
+  await visitor_sheet.getByRole('heading', { name: museum_name, exact: true }).waitFor();
+  await visitor_sheet.getByText(/museum\.example/).waitFor();
+  await visitor_sheet.getByText('Opening hours', { exact: true }).waitFor();
+  await visitor_sheet.getByText('Tue–Sun 09:30–17:00', { exact: true }).waitFor();
+  await visitor_sheet.getByText(/Gallery Lane/).waitFor();
+  await visitor_sheet.getByText('Admission', { exact: true }).waitFor();
+  await visitor_sheet.getByText(/Adult · 700 JPY\s+Child · 300 JPY/).waitFor();
+  await visitor_sheet.getByText('Wheelchair access', { exact: true }).waitFor();
+  await visitor_sheet.getByText('Limited', { exact: true }).waitFor();
+  await page
+    .locator('#applet')
+    .screenshot({ path: resolve(qa_directory, 'native-visitor-details.png') });
+  await visitor_sheet.getByText('Source information', { exact: true }).click();
+  await visitor_sheet
+    .getByText(inn.directory_ref.provider === 'osm' ? 'Dresel Overpass' : 'Geoapify', {
+      exact: true,
+    })
+    .waitFor();
+  assert.equal(
+    visitor_requests.at(-1),
+    inn.directory_ref.provider === 'osm' ? 'N110' : 'fixture-110',
+  );
+  assert.equal(await shellBack(), true);
+  await visitor_action.and(dialog.locator(':focus')).waitFor();
+  assert.equal(await dialog.getByLabel('Stop name').inputValue(), custom_museum_title);
+  assert.equal(await dialog.getByLabel('Time', { exact: true }).inputValue(), '14:20');
+  assert.equal(await dialog.getByLabel('Notes').inputValue(), museum_notes);
+  await dialog.getByLabel('Stop name').fill(museum_name);
+  await route_position.click();
+  assert.equal(await before_park.getAttribute('aria-pressed'), 'true');
+  await position_sheet.getByRole('button', { name: 'Back to stop', exact: true }).click();
   await view_on_map.click();
   await candidate_pin.waitFor();
   assert.equal(
@@ -1859,12 +2007,15 @@ try {
     'A failed save keeps the chosen slot.',
   );
   await position_sheet.getByRole('button', { name: 'Back to stop', exact: true }).click();
-  await save_stop.click();
+  await visitor_action.click();
+  await visitor_sheet.getByRole('button', { name: 'Add to Day 2', exact: true }).click();
+  await visitor_sheet.waitFor({ state: 'hidden' });
   await dialog.waitFor({ state: 'hidden' });
   const inserted = journal();
   await assertReturnedToStop(`Edit ${museum_name}`);
   const new_museum = inserted.stops.find((stop) => stop.title === museum_name);
   assert(new_museum?.directory_ref && new_museum.kind === 'sight' && new_museum.city === 'Nara');
+  assert.equal(new_museum.directory_ref.country_code, 'JP');
   const expected_day = day_titles(before_insert, day_two);
   expected_day.splice(1, 0, museum_name);
   assert.deepEqual(day_titles(inserted, day_two), expected_day);
@@ -2335,11 +2486,24 @@ try {
   await choose_stay_dates.click();
   await cancel_dates.click();
   assert.equal(await dialog.getByLabel('Notes').inputValue(), 'Ask about a luggage locker.');
-  await choose_stay_dates.click();
+  const before_visitor_booking = journal_writes;
+  await visitor_action.click();
+  const visitor_dates = visitor_sheet.getByRole('button', {
+    name: 'Choose stay dates',
+    exact: true,
+  });
+  await visitor_dates.click();
+  await stay_dates.getByText('Nara test inn', { exact: true }).waitFor();
+  assert.equal(await shellBack(), true);
+  await visitor_dates.and(visitor_sheet.locator(':focus')).waitFor();
+  assert.equal(journal_writes, before_visitor_booking);
+  await visitor_dates.click();
   await stay_dates.getByText('Nara test inn', { exact: true }).waitFor();
   await confirm_stay.click();
   await stay_dates.waitFor({ state: 'hidden' });
+  await visitor_sheet.waitFor({ state: 'hidden' });
   await dialog.waitFor({ state: 'hidden' });
+  assert.equal(journal_writes, before_visitor_booking + 1);
   const route_with_stay = [...quick_sights, ...nara_route, 'Nara test inn'];
   assert.deepEqual(day_titles(journal(), day_two), route_with_stay);
   assert.equal(
@@ -2975,6 +3139,7 @@ try {
           'paired hotel dates, preserved nights, saved booking moves, and finding places after a day change',
           'scheduling named hotel results from list and map, and adding named sights with their city and directory identity',
           'city-scoped live sight and hotel suggestions, IME composition, explicit search and offline airport completion',
+          'exact venue details, regional lookup, admission and access, offline reopen, draft return, and adding a sight or hotel from its listing',
         ],
       },
       null,

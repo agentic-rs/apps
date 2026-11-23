@@ -15,6 +15,8 @@ Tap **＋** beside a sight to add it directly to the selected day, including aft
 
 The calendar beside a hotel result opens its dates directly. The selected hotel on the results map has the same **Choose dates** action. Tap **Add stay** to save and continue browsing. Tapping the hotel name or **Review place** opens the full review for notes, time and route position. [行程助手’s hotel review and date sequence](https://www.downxia.com/downinfo/67867.html)
 
+Tap **Visitor details** in a sight or hotel review to look up the selected venue’s available opening hours, admission, wheelchair access, address and website. You can add a new sight to the day or choose the hotel’s stay dates from that screen. **Back** returns to your edits. [行程助手’s museum details, steps 13–15](https://www.sohu.com/a/331566931_503432)
+
 Open **Overview** to see the cities and planned stops for each day. Tap a day to open it. **Add day** extends the itinerary by one calendar day and opens that day.
 
 On a day with two or more planned stops, tap the reorder arrows beside **Map**, or **Reorder** on the day map. Drag a handle to move a stop several places, or tap it to choose a position. The numbered map previews each move. **Done** saves the whole order and **Cancel** returns to the original route. Stop times, hotel dates and check-ins stay with their stops. Stops without coordinates can also be rearranged. [行程助手’s mobile arrangement screen, page 14](https://www.pmdaniu.com/index.php/storages/95419/27de68b70b9d6a22b410d2a0eabd8926-54667/1303sZobr5wc.pdf#page=14)
@@ -52,6 +54,8 @@ The app package includes searchable names and alternate spellings for 34,247 cit
 On a transfer day, switch between the city buttons to revisit each city’s search and type filter. When a result belongs to another city on the route, its shortcut repeats the search there. Fieldnotes reuses successful searches in memory for five minutes. A custom city without a known position is included in a Photon text search. Saved stops keep the selected planning city, place name, available address and coordinates offline.
 
 The default provider is Photon's public service for moderate traffic. To use Geoapify, supply `VITE_GEOAPIFY_PUBLIC_KEY` when building Fieldnotes. This must be a client-distributable key because the applet includes its value. Geoapify searches require a city with known coordinates. [Photon service](https://github.com/komoot/photon#usage) · [Geoapify Places API](https://apidocs.geoapify.com/docs/places/places/)
+
+Opening visitor details looks up the directory identifier of the chosen venue. For OpenStreetMap venues, Fieldnotes selects a regional Overpass service using the venue’s country, or uses Private.coffee’s worldwide service when the region is unknown. Geoapify records use Place Details when a public key is configured. The request includes the place identifier and omits the itinerary, notes and stay dates. Coverage varies by venue. [OpenStreetMap contributors and license](https://www.openstreetmap.org/copyright) · [Dresel regional service](https://ovp.dresel.systems/en/) · [Private.coffee service and privacy policy](https://overpass.private.coffee/) · [Geoapify Place Details](https://apidocs.geoapify.com/docs/place-details/)
 
 Source URLs, hashes and credits are in [directory/sources.json](public/directory/sources.json). From the app directory, run `bun run directory:build` to refresh the bundled indexes, or supply a directory containing the three named source files to regenerate them offline.
 

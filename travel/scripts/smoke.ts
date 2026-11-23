@@ -58,6 +58,9 @@ try {
   let failed_tile_requests = 0;
   let successful_tile_requests = 0;
   let fail_tiles = false;
+  const visitor_url = 'https://lantern.example/visit';
+  let visitor_offline = false;
+  let visitor_reads = 0;
   const tile_png = await page.evaluate(() => {
     const canvas = document.createElement('canvas');
     canvas.width = 256;
@@ -87,6 +90,29 @@ try {
   await context.route('**/*', async (route) => {
     const url = new URL(route.request().url());
     if (url.hostname === '127.0.0.1') return route.continue();
+    const geo_details =
+      url.origin === 'https://api.geoapify.com' && url.pathname === '/v2/place-details';
+    if (geo_details || url.href === 'https://overpass.private.coffee/api/interpreter') {
+      visitor_reads++;
+      if (visitor_offline) return route.abort('internetdisconnected');
+      if (geo_details) {
+        assert.equal(url.searchParams.get('id'), 'fixture-lantern');
+      } else {
+        const body = new URLSearchParams(route.request().postData() ?? '');
+        assert.match(body.get('data') ?? '', /node\(431\)/);
+      }
+      const properties = {
+        feature_type: 'details',
+        place_id: 'fixture-lantern',
+        website: visitor_url,
+      };
+      return route.fulfill({
+        json: geo_details
+          ? { type: 'FeatureCollection', features: [{ type: 'Feature', properties }] }
+          : { elements: [{ type: 'node', id: 431, tags: { website: visitor_url } }] },
+        headers: { 'Access-Control-Allow-Origin': '*' },
+      });
+    }
     const photon =
       url.origin === 'https://photon.komoot.io' && url.searchParams.get('q') === 'Lantern';
     const geo_suggestion =
@@ -94,9 +120,15 @@ try {
       url.pathname === '/v1/geocode/autocomplete' &&
       url.searchParams.get('text') === 'Lantern';
     if (photon || geo_suggestion) {
+      // This Photon fixture has no country code, so its exact ID uses the worldwide service.
       const properties = photon
         ? { osm_type: 'N', osm_id: 431, osm_key: 'tourism', osm_value: 'museum' }
-        : { place_id: 'fixture-lantern', category: 'entertainment.museum', result_type: 'amenity' };
+        : {
+            place_id: 'fixture-lantern',
+            category: 'entertainment.museum',
+            result_type: 'amenity',
+            country_code: 'jp',
+          };
       return route.fulfill({
         json: {
           type: 'FeatureCollection',
@@ -107,7 +139,6 @@ try {
                 ...properties,
                 name: 'Tokyo Lantern Museum',
                 city: 'Tokyo',
-                country_code: 'jp',
               },
               geometry: { type: 'Point', coordinates: [139.7, 35.69] },
             },
@@ -337,6 +368,31 @@ try {
     .getByRole('button', { name: 'Add Tokyo Lantern Museum to day', exact: true })
     .waitFor();
   assert(await place_input.evaluate((input) => document.activeElement === input));
+  await place_picker.getByRole('button', { name: /^Tokyo Lantern Museum/ }).click();
+  const visitor = page.getByRole('dialog', { name: 'Visitor details', exact: true });
+  const visitor_button = place_picker.getByRole('button', { name: 'Visitor details', exact: true });
+  assert.equal(visitor_reads, 0);
+  visitor_offline = true;
+  await context.setOffline(true);
+  await visitor_button.click();
+  const retry_visitor = visitor.getByRole('button', { name: 'Try again', exact: true });
+  await retry_visitor.waitFor();
+  assert(await visitor.getByRole('button', { name: /^Add to (Day \d+|itinerary)$/ }).isEnabled());
+  assert.equal(visitor_reads, 0, 'An uncached offline listing waits for the traveler to retry.');
+  visitor_offline = false;
+  await context.setOffline(false);
+  await retry_visitor.click();
+  const website = visitor.getByRole('link').filter({ hasText: /lantern\.example/ });
+  await website.waitFor();
+  assert.equal(visitor_reads, 1);
+  assert.equal(await website.getAttribute('href'), visitor_url);
+  assert.equal(await visitor.getByText('Admission', { exact: true }).count(), 0);
+  await visitor.getByText('Source information', { exact: true }).click();
+  await visitor.getByRole('link', { name: /overpass\.private\.coffee|geoapify\.com/ }).waitFor();
+  await visitor.getByRole('button', { name: 'Back to stop', exact: true }).click();
+  await visitor_button.and(page.locator(':focus')).waitFor();
+  await place_picker.getByRole('button', { name: 'Back to place results', exact: true }).click();
+  assert.equal(await place_input.inputValue(), 'Lantern');
   await place_picker.getByRole('button', { name: 'Airports', exact: true }).click();
   const airport_input = place_picker.getByRole('searchbox', { name: 'Search airports' });
   await airport_input.fill('H');

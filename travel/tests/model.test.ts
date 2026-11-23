@@ -439,7 +439,7 @@ describe('planned stops', () => {
       expect(parseStop({ ...stop, directory_ref: source }).directory_ref).toEqual(directory_ref);
     }
     const geo_ref = { provider: 'geoapify' as const, id: 'place-12' };
-    const identified = { ...geo_ref, osm_ref: 'R12' };
+    const identified = { ...geo_ref, osm_ref: 'R12', name: 'Nara Museum', country_code: 'JP' };
     expect(parseStop({ ...stop, directory_ref: identified }).directory_ref).toEqual(identified);
     expect(
       parseStop({ ...stop, directory_ref: { ...geo_ref, osm_ref: '12' } }).directory_ref,

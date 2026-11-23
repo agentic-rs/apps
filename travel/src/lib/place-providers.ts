@@ -192,7 +192,7 @@ function geoapifyKind(values: string[], category: PlaceCategory): StopKind {
   return 'other';
 }
 
-function geoapifyOsmRef(props: Record<string, unknown>): string | undefined {
+export function geoapifyOsmRef(props: Record<string, unknown>): string | undefined {
   const source = asObject(props.datasource);
   if (string(source.sourcename).toLowerCase() !== 'openstreetmap') return;
   const raw = asObject(source.raw);

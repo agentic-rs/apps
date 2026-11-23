@@ -1,5 +1,7 @@
 import { searchDirectoryAirports, searchDirectoryCities } from './offline-directory';
 import { distanceKm } from './distance';
+import { createPlaceDetailsLookup, type PlaceVisitorDetails } from './place-details';
+import { requestPlaceJson } from './place-http';
 import { directoryKey } from './directory-format';
 import { placeTypeLabel, type PlaceType, type PlaceTypeFilter } from './place-types';
 import {
@@ -36,6 +38,7 @@ export interface StopSearchResult {
 export interface StopLookup {
   attribution: 'Geoapify' | 'Photon';
   search(request: StopSearchRequest, signal: AbortSignal): Promise<StopSearchResult[]>;
+  details(ref: DirectoryRef, signal: AbortSignal): Promise<PlaceVisitorDetails>;
 }
 
 export function filterNearbyPlaces(places: StopSearchResult[], query: string): StopSearchResult[] {
@@ -99,47 +102,6 @@ export function groupPlacesForCity(
   return { places: visible, other_cities: options.filter((index) => other_cities.has(index)) };
 }
 
-async function requestPlaces(url: URL, signal: AbortSignal, native: boolean): Promise<unknown> {
-  // The opaque Apell frame uses the host HTTP capability for external requests.
-  let status: number;
-  let body: string;
-  try {
-    if (native) {
-      const { http } = await import('@apell/sdk');
-      signal.throwIfAborted();
-      const response = await http.request({
-        url: url.href,
-        timeout_ms: 12_000,
-        headers: [{ name: 'Accept', value: 'application/json' }],
-      });
-      status = response.status;
-      body = new TextDecoder().decode(Uint8Array.from(response.body));
-    } else {
-      const response = await fetch(url, {
-        signal: AbortSignal.any([signal, AbortSignal.timeout(12_000)]),
-        referrerPolicy: 'no-referrer',
-        credentials: 'omit',
-      });
-      status = response.status;
-      body = await response.text();
-    }
-  } catch {
-    signal.throwIfAborted();
-    throw new Error(
-      'Could not reach place search. Check your connection or enter the stop manually.',
-    );
-  }
-  signal.throwIfAborted();
-  if (status === 429) throw new Error('Place search is busy. Try again shortly.');
-  if (status < 200 || status >= 300)
-    throw new Error('The place service is unavailable. Try again or enter the stop manually.');
-  try {
-    return JSON.parse(body);
-  } catch {
-    throw new Error('The place service returned an unreadable result.');
-  }
-}
-
 export function createStopLookup(
   native: boolean,
   public_key = import.meta.env?.VITE_GEOAPIFY_PUBLIC_KEY?.trim() ?? '',
@@ -148,6 +110,7 @@ export function createStopLookup(
   const cache = new Map<string, { expires_at: number; places: StopSearchResult[] }>();
   return {
     attribution: public_key ? 'Geoapify' : 'Photon',
+    details: createPlaceDetailsLookup(native, public_key),
     async search({ query, category, type_filter, city, location, suggest }, signal) {
       query = query.trim();
       signal.throwIfAborted();
@@ -203,7 +166,7 @@ export function createStopLookup(
         type_filter,
         autocomplete,
       );
-      const payload = await requestPlaces(url, signal, native);
+      const payload = await requestPlaceJson(url, signal, native);
       signal.throwIfAborted();
       const radius_km = placeSearchRadiusKm(query);
       const places = readPlaceResults(
