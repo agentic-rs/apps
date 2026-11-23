@@ -1,5 +1,5 @@
 {
   "project_url": "https://github.com/agentic-rs/apps/tree/main/travel",
   "description": "Choose a city and plan daily routes. Add another city when your trip takes you farther. Keep track of packing, expenses, check-ins and photos. Photos stay on your device. Optional AI title suggestions use event times and coordinates.",
-  "release_notes": "Choose where a sight or hotel fits in the day before saving. Preview the new order on the map, or move a saved stop directly to another position."
+  "release_notes": "Add nearby sights straight from the list. When reviewing a sight or hotel, choose Add and choose another to keep browsing the same city, with your search and place in the list preserved."
 }

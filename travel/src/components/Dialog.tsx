@@ -11,6 +11,7 @@ export function Dialog({
   full_screen = false,
   dismiss_disabled = false,
   back_label,
+  dismiss_label,
 }: {
   title: string;
   children: ReactNode;
@@ -20,6 +21,7 @@ export function Dialog({
   full_screen?: boolean;
   dismiss_disabled?: boolean;
   back_label?: string;
+  dismiss_label?: string;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const outside_press = useRef(false);
@@ -80,15 +82,15 @@ export function Dialog({
           </button>
         )}
         <h2 id={id}>{title}</h2>
-        {!back_label && (
+        {(dismiss_label || !back_label) && (
           <button
             type="button"
-            className="icon-button"
-            aria-label="Close dialog"
+            className={dismiss_label ? 'dialog-dismiss-label' : 'icon-button'}
+            aria-label={dismiss_label || 'Close dialog'}
             disabled={dismiss_disabled}
             onClick={onDismiss}
           >
-            <Icon name="close" />
+            {dismiss_label || <Icon name="close" />}
           </button>
         )}
       </header>

@@ -39,6 +39,24 @@ function checkoutAfter(day: string, nights: number) {
   return offsetDay(day, Math.min(nights, daysBetween(day, '9999-12-31')));
 }
 
+function stopDraft(day: string, stop?: PlannedStop) {
+  return {
+    id: stop?.id ?? createId(),
+    directory_ref: stop?.directory_ref,
+    city: stop?.city,
+    city_id: stop?.city_id,
+    title: stop?.title ?? '',
+    day: stop?.day ?? day,
+    before_stop_id: undefined as string | null | undefined,
+    checkout: stop?.checkout_date ?? '',
+    kind: stop?.kind ?? 'sight',
+    time: stop?.time ?? '',
+    notes: stop?.notes ?? '',
+    latitude: stop?.position?.latitude.toString() ?? '',
+    longitude: stop?.position?.longitude.toString() ?? '',
+  };
+}
+
 const date_format = new Intl.DateTimeFormat(undefined, {
   month: 'short',
   day: 'numeric',
@@ -64,6 +82,14 @@ const picker_titles: Record<StopSearchCategory, string> = {
   airport: 'Choose an airport',
   all: 'Choose a place',
 };
+
+function directoryReference(place: StopSearchResult) {
+  return {
+    provider: place.source,
+    id: place.id,
+    ...(place.subtitle && { subtitle: place.subtitle.slice(0, text_limits.place_locality) }),
+  };
+}
 
 function ScheduleField({
   label,
@@ -114,13 +140,18 @@ export function StopForm(props: StopFormProps) {
   const [planned, setPlanned] = useState<PlannedStop | null>(null);
   return (
     <>
-      <StopEditor {...props} onEditPlanned={props.stop ? undefined : setPlanned} />
+      <StopEditor
+        {...props}
+        onFinish={props.onCancel}
+        onEditPlanned={props.stop ? undefined : setPlanned}
+      />
       {planned && (
         <StopEditor
           {...props}
           key={planned.id}
           stop={planned}
           initial_category={undefined}
+          onFinish={props.onCancel}
           onCancel={() => setPlanned(null)}
         />
       )}
@@ -137,31 +168,39 @@ function StopEditor({
   lookup,
   onSave,
   onCancel,
+  onFinish,
   onDelete,
   onEditPlanned,
   native,
-}: StopFormProps & { onEditPlanned?(stop: PlannedStop): void }) {
-  const [draft_id] = useState(() => stop?.id ?? createId());
+}: StopFormProps & { onFinish(): void; onEditPlanned?(stop: PlannedStop): void }) {
+  const [draft, setDraft] = useState(() => stopDraft(day, stop));
+  const {
+    id: draft_id,
+    directory_ref,
+    city,
+    city_id,
+    title,
+    day: stop_day,
+    before_stop_id: chosen_before,
+    checkout,
+    kind,
+    time,
+    notes,
+    latitude,
+    longitude,
+  } = draft;
+  function updateDraft(fields: Partial<typeof draft>) {
+    setDraft((previous) => ({ ...previous, ...fields }));
+  }
+  const [saved_message, setSavedMessage] = useState('');
   const [picking, setPicking] = useState<'initial' | 'change' | null>(stop ? null : 'initial');
   const [picker_day, setPickerDay] = useState<string | null>(stop ? null : day);
-  const [directory_ref, setDirectoryRef] = useState(stop?.directory_ref);
-  const [city, setCity] = useState(stop?.city);
-  const [city_id, setCityId] = useState(stop?.city_id);
-  const [title, setTitle] = useState(stop?.title ?? '');
-  const [stop_day, setDay] = useState(stop?.day ?? day);
-  const [chosen_before, setChosenBefore] = useState<string | null>();
-  const [checkout, setCheckout] = useState(stop?.checkout_date ?? '');
-  const [kind, setKind] = useState<StopKind>(stop?.kind ?? 'sight');
   const [picker_category, setPickerCategory] = useState<StopSearchCategory>(
     initial_category ??
       (stop?.directory_ref?.provider === 'ourairports'
         ? 'airport'
         : search_categories[stop?.kind ?? 'sight']),
   );
-  const [time, setTime] = useState(stop?.time ?? '');
-  const [notes, setNotes] = useState(stop?.notes ?? '');
-  const [latitude, setLatitude] = useState(stop?.position?.latitude.toString() ?? '');
-  const [longitude, setLongitude] = useState(stop?.position?.longitude.toString() ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [discard, setDiscard] = useState(false);
@@ -189,9 +228,11 @@ function StopEditor({
   const before_stop_id = insertion_index === default_index ? undefined : chosen_before;
   const last_pick = useRef<HTMLElement | null>(null);
   const change_place = useRef<HTMLButtonElement>(null);
+  const picker_pane = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
-    if (picking && last_pick.current?.isConnected) {
-      last_pick.current.focus({ preventScroll: true });
+    if (picking && last_pick.current) {
+      const target = last_pick.current.isConnected ? last_pick.current : picker_pane.current;
+      target?.focus({ preventScroll: true });
     } else if (!picking && picker_day && (stop || directory_ref)) {
       change_place.current?.focus({ preventScroll: true });
     }
@@ -222,50 +263,60 @@ function StopEditor({
     .filter(Boolean)
     .join(' · ');
 
-  function chooseKind(value: StopKind) {
-    if (value === 'stay' && kind !== 'stay') setCheckout(checkoutAfter(stop_day, 1));
-    setKind(value);
+  function checkoutFor(value: StopKind) {
+    return value === 'stay' && kind !== 'stay' ? checkoutAfter(stop_day, 1) : checkout;
   }
 
   function changeDay(value: string) {
-    if (value !== stop_day) setChosenBefore(undefined);
-    if (kind === 'stay' && isCalendarDate(value) && isCalendarDate(checkout)) {
-      const nights = isCalendarDate(stop_day) ? Math.max(1, daysBetween(stop_day, checkout)) : 1;
-      setCheckout(checkoutAfter(value, nights));
-    }
-    setDay(value);
+    if (value === stop_day) return;
+    updateDraft({
+      day: value,
+      before_stop_id: undefined,
+      checkout:
+        kind === 'stay' && isCalendarDate(value) && isCalendarDate(checkout)
+          ? checkoutAfter(value, Math.max(1, nights))
+          : checkout,
+    });
   }
 
-  function choosePlace(place: StopSearchResult, city?: string, city_id?: string) {
-    last_pick.current =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    setTitle(place.title);
-    setCity(city);
-    setCityId(city_id);
-    chooseKind(place.kind);
-    setLatitude(String(place.position.latitude));
-    setLongitude(String(place.position.longitude));
-    setDirectoryRef({
-      provider: place.source,
-      id: place.id,
-      ...(place.subtitle && { subtitle: place.subtitle.slice(0, text_limits.place_locality) }),
+  function choosePlace(
+    place: StopSearchResult,
+    origin: HTMLElement,
+    city?: string,
+    city_id?: string,
+  ) {
+    last_pick.current = origin;
+    updateDraft({
+      title: place.title,
+      city,
+      city_id,
+      kind: place.kind,
+      checkout: checkoutFor(place.kind),
+      latitude: String(place.position.latitude),
+      longitude: String(place.position.longitude),
+      directory_ref: directoryReference(place),
     });
     setPicking(null);
     setError('');
   }
 
-  function enterManually(name: string, suggested_kind: StopKind, city?: string, city_id?: string) {
-    last_pick.current =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    if (picking !== 'change' || name) setTitle(name);
-    setCity(city);
-    setCityId(city_id);
-    chooseKind(suggested_kind);
-    if (picking !== 'change' || (name && name !== title)) {
-      setLatitude('');
-      setLongitude('');
-    }
-    setDirectoryRef(undefined);
+  function enterManually(
+    name: string,
+    suggested_kind: StopKind,
+    origin: HTMLElement,
+    city?: string,
+    city_id?: string,
+  ) {
+    last_pick.current = origin;
+    updateDraft({
+      title: picking === 'change' && !name ? title : name,
+      city,
+      city_id,
+      kind: suggested_kind,
+      checkout: checkoutFor(suggested_kind),
+      directory_ref: undefined,
+      ...((picking !== 'change' || (name && name !== title)) && { latitude: '', longitude: '' }),
+    });
     setPicking(null);
     setError('');
   }
@@ -282,29 +333,66 @@ function StopEditor({
     }
   }
 
-  async function submit() {
+  function resumePicking(saved: PlannedStop) {
+    const label = trip.start_date ? itineraryDayLabel(saved.day, day, trip) : '';
+    const destination = label.startsWith('Day ')
+      ? label
+      : date_format.format(new Date(saved.day + 'T00:00:00Z'));
+    setSavedMessage(`${saved.title} added to ${destination}.`);
+    setDraft(stopDraft(saved.day));
+    setPickerDay(saved.day);
+    setPicking('initial');
+  }
+
+  async function quickAdd(place: StopSearchResult, city?: string, city_id?: string) {
+    const value: PlannedStop = {
+      id: draft_id,
+      trip_id: trip.id,
+      day: picker_day ?? day,
+      title: place.title,
+      kind: place.kind,
+      city,
+      city_id,
+      notes: '',
+      time: '',
+      position: place.position,
+      directory_ref: directoryReference(place),
+    };
+    setBusy(true);
+    try {
+      await onSave(value);
+      resumePicking(value);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submit(another = false) {
     if (busy) return;
     setBusy(true);
     setError('');
     setDiscard(false);
     try {
-      await onSave(
-        {
-          id: draft_id,
-          trip_id: trip.id,
-          day: stop_day,
-          ...(city && { city }),
-          ...(city_id && { city_id }),
-          ...(kind === 'stay' && checkout && { checkout_date: checkout }),
-          title: title.trim(),
-          kind,
-          time,
-          notes: notes.trim(),
-          position: readCoordinates(latitude, longitude),
-          ...(directory_ref && { directory_ref }),
-        },
-        before_stop_id,
-      );
+      const value: PlannedStop = {
+        id: draft_id,
+        trip_id: trip.id,
+        day: stop_day,
+        ...(city && { city }),
+        ...(city_id && { city_id }),
+        ...(kind === 'stay' && checkout && { checkout_date: checkout }),
+        title: title.trim(),
+        kind,
+        time,
+        notes: notes.trim(),
+        position: readCoordinates(latitude, longitude),
+        ...(directory_ref && { directory_ref }),
+      };
+      await onSave(value, before_stop_id);
+      if (another) {
+        resumePicking(value);
+      } else {
+        onFinish();
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not save this stop.');
     } finally {
@@ -326,11 +414,19 @@ function StopEditor({
         }
         full_screen
         dismiss_disabled={busy}
+        back_label={!stop && !picking && !discard ? 'Back to place results' : undefined}
+        dismiss_label={
+          !stop && !picking && !discard
+            ? 'Cancel'
+            : picking && !dirty && saved_message
+              ? 'Done'
+              : undefined
+        }
         onDismiss={dismiss}
         onBack={!stop && !picking && !discard ? () => setPicking('initial') : dismiss}
       >
         {picker_day !== null && (
-          <div className="stop-picker-pane" hidden={!picking}>
+          <div ref={picker_pane} tabIndex={-1} className="stop-picker-pane" hidden={!picking}>
             <StopPlacePicker
               key={picker_day}
               trip={trip}
@@ -347,6 +443,8 @@ function StopEditor({
               lookup={lookup}
               onPick={choosePlace}
               onManual={enterManually}
+              saved_message={saved_message}
+              onQuickAdd={picking === 'initial' && !dirty && !source_changed ? quickAdd : undefined}
               onEditPlanned={
                 picking === 'initial' && !dirty && !source_changed ? onEditPlanned : undefined
               }
@@ -392,7 +490,7 @@ function StopEditor({
                         autoFocus={!directory_ref && !stop}
                         maxLength={text_limits.stop_title}
                         value={title}
-                        onChange={(e) => setTitle(e.target.value)}
+                        onChange={(e) => updateDraft({ title: e.target.value })}
                       />
                     </label>
                     {position ? (
@@ -422,7 +520,10 @@ function StopEditor({
                       <span className="stop-setting-control stop-category-control">
                         <select
                           value={kind}
-                          onChange={(e) => chooseKind(e.target.value as StopKind)}
+                          onChange={(e) => {
+                            const kind = e.target.value as StopKind;
+                            updateDraft({ kind, checkout: checkoutFor(kind) });
+                          }}
                         >
                           {stop_kinds.map((value) => (
                             <option key={value} value={value}>
@@ -452,22 +553,28 @@ function StopEditor({
                         type="date"
                         min={checkoutAfter(stop_day, 1) || undefined}
                         value={checkout}
-                        onChange={setCheckout}
+                        onChange={(checkout) => updateDraft({ checkout })}
                         detail={
                           nights > 0 ? `${nights} ${nights === 1 ? 'night' : 'nights'}` : undefined
                         }
                       />
                     )}
-                    <ScheduleField label="Time" type="time" value={time} onChange={setTime} />
+                    <ScheduleField
+                      label="Time"
+                      type="time"
+                      value={time}
+                      onChange={(time) => updateDraft({ time })}
+                    />
                     <RoutePosition
                       stops={other_stops}
                       index={insertion_index}
                       title={title.trim() || (kind === 'stay' ? 'New hotel stay' : 'New stop')}
                       context={place_context}
                       onChange={(id) =>
-                        setChosenBefore(
-                          id === (other_stops[default_index]?.id ?? null) ? undefined : id,
-                        )
+                        updateDraft({
+                          before_stop_id:
+                            id === (other_stops[default_index]?.id ?? null) ? undefined : id,
+                        })
                       }
                     />
                   </div>
@@ -479,7 +586,7 @@ function StopEditor({
                       rows={2}
                       maxLength={text_limits.stop_notes}
                       value={notes}
-                      onChange={(e) => setNotes(e.target.value)}
+                      onChange={(e) => updateDraft({ notes: e.target.value })}
                     />
                   </label>
                   <details className="stop-coordinates" open={Boolean(stop?.position) || undefined}>
@@ -490,8 +597,8 @@ function StopEditor({
                       prefix="Stop"
                       latitude={latitude}
                       longitude={longitude}
-                      onLatitude={setLatitude}
-                      onLongitude={setLongitude}
+                      onLatitude={(latitude) => updateDraft({ latitude })}
+                      onLongitude={(longitude) => updateDraft({ longitude })}
                     />
                   </details>
                   {stop && onDelete && (
@@ -513,10 +620,28 @@ function StopEditor({
                       onDiscard={onCancel}
                     />
                   ) : (
-                    <div className="stop-form-actions">
-                      <button type="button" className="secondary" disabled={busy} onClick={dismiss}>
-                        Cancel
-                      </button>
+                    <div className={`stop-form-actions${stop ? '' : ' stop-add-actions'}`}>
+                      {stop ? (
+                        <button
+                          type="button"
+                          className="secondary"
+                          disabled={busy}
+                          onClick={dismiss}
+                        >
+                          Cancel
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="secondary"
+                          disabled={busy || !title.trim() || !stop_day}
+                          onClick={(event) => {
+                            if (event.currentTarget.form?.reportValidity()) void submit(true);
+                          }}
+                        >
+                          Add and choose another
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="primary"

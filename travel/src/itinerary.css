@@ -556,6 +556,15 @@
 .stop-form-actions button {
   justify-content: center;
 }
+.stop-add-actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.stop-add-actions button {
+  min-height: 44px;
+  line-height: 1.2;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 
 .stop-coordinates {
   padding-block: 2px;

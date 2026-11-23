@@ -541,7 +541,6 @@ export function App() {
             await persist((snapshot) => upsertStop(snapshot, stop, before_stop_id));
             if (!original || original.day === day || !isContinuingStay(stop, day))
               setChosenDay(stop.day);
-            setEditor(null);
           }}
         />
       )}

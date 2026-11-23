@@ -914,6 +914,19 @@ summary {
   font-size: 1.15rem;
   text-align: center;
 }
+.dialog-dismiss-label {
+  justify-self: end;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 4px;
+  border: 0;
+  background: transparent;
+  color: var(--apell-primary);
+  font-weight: 600;
+}
+.dialog-back-header:has(.dialog-dismiss-label) {
+  grid-template-columns: minmax(max-content, 1fr) minmax(0, max-content) minmax(max-content, 1fr);
+}
 .full-screen > form {
   display: flex;
   flex-direction: column;

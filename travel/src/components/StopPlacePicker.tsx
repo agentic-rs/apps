@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { confirmsInput } from '../lib/keyboard';
 import { cityIndicesOnDay } from '../lib/city-days';
 import { isCalendarDate, itineraryDayLabel } from '../lib/dates';
@@ -59,8 +59,10 @@ export function StopPlacePicker({
   initial_city,
   initial_city_id,
   day_stops = [],
+  saved_message = '',
   onCategoryChange,
   onEditPlanned,
+  onQuickAdd,
   onPick,
   onManual,
 }: {
@@ -71,10 +73,18 @@ export function StopPlacePicker({
   initial_city?: string;
   initial_city_id?: string;
   day_stops?: PlannedStop[];
+  saved_message?: string;
   onCategoryChange?(category: StopSearchRequest['category']): void;
   onEditPlanned?(stop: PlannedStop): void;
-  onPick(place: StopSearchResult, city?: string, city_id?: string): void;
-  onManual(name: string, kind: StopKind, city?: string, city_id?: string): void;
+  onQuickAdd?(place: StopSearchResult, city?: string, city_id?: string): Promise<void>;
+  onPick(place: StopSearchResult, origin: HTMLElement, city?: string, city_id?: string): void;
+  onManual(
+    name: string,
+    kind: StopKind,
+    origin: HTMLElement,
+    city?: string,
+    city_id?: string,
+  ): void;
 }) {
   const cities = trip.cities ?? [];
   const day_indices = useMemo(() => cityIndicesOnDay(trip, day), [trip, day]);
@@ -109,6 +119,10 @@ export function StopPlacePicker({
   const [retry, setRetry] = useState(0);
   const [state, setState] = useState<SearchState>();
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [adding_id, setAddingId] = useState<string | null>(null);
+  const [save_error, setSaveError] = useState<{ id: string; message: string }>();
+  const saving = useRef(false);
+  const return_focus = useRef<HTMLElement | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const airports = category === 'airport';
   const is_browsable = category === 'sight' || category === 'stay';
@@ -149,6 +163,8 @@ export function StopPlacePicker({
   const can_browse = is_browsable && city_index !== undefined;
   // While composing, keep the nearby request alive and match its rows on device.
   const search_term = submitted_query ?? (can_browse ? '' : null);
+  // Saving reparses the journal and its city objects. Keep the current results
+  // mounted when the city's actual search parameters are unchanged.
   const request = useMemo<StopSearchRequest | null>(() => {
     if (search_term === null || (!airports && !city) || (!search_term && !can_browse)) return null;
     return {
@@ -157,7 +173,17 @@ export function StopPlacePicker({
       location: airports ? null : location,
       query: search_term,
     };
-  }, [airports, can_browse, category, city, location, search_term]);
+  }, [
+    airports,
+    can_browse,
+    category,
+    city,
+    location?.id,
+    location?.country_code,
+    location?.latitude,
+    location?.longitude,
+    search_term,
+  ]);
   const current = state?.request === request ? state : undefined;
   const loading = Boolean(request && !current);
   const response_places = current && 'places' in current ? current.places : undefined;
@@ -185,6 +211,33 @@ export function StopPlacePicker({
   const category_label = categories.find(([key]) => key === category)![1];
   const scoped_label = city_index === undefined ? city : cityLabel(city_index);
   const heading = scoped_city ? `${category_label} near ${scoped_label}` : category_label;
+
+  useLayoutEffect(() => {
+    if (!adding_id && return_focus.current) {
+      return_focus.current.focus({ preventScroll: true });
+      return_focus.current = null;
+    }
+  });
+
+  async function addSight(place: StopSearchResult, row: HTMLElement, button: HTMLElement) {
+    if (!onQuickAdd || saving.current) return;
+    saving.current = true;
+    setAddingId(place.id);
+    setSaveError(undefined);
+    try {
+      await onQuickAdd(place, scoped_city, scoped_id);
+      return_focus.current = row;
+    } catch (reason) {
+      setSaveError({
+        id: place.id,
+        message: reason instanceof Error ? reason.message : 'Could not add this sight. Try again.',
+      });
+      return_focus.current = button;
+    } finally {
+      saving.current = false;
+      setAddingId(null);
+    }
+  }
 
   useEffect(() => {
     if (!request) return;
@@ -255,7 +308,7 @@ export function StopPlacePicker({
   }
 
   return (
-    <div className="stop-picker">
+    <fieldset className="stop-picker" aria-label="Place picker" disabled={adding_id !== null}>
       <div className="stop-picker-scroll">
         <div className="stop-picker-controls">
           {isCalendarDate(day) && (
@@ -438,9 +491,21 @@ export function StopPlacePicker({
                   expanded={expanded === place.id}
                   onExpand={(open) => setExpanded(open ? place.id : null)}
                   onEditPlanned={onEditPlanned}
-                  onPick={() => {
+                  adding={adding_id === place.id}
+                  error={save_error?.id === place.id ? save_error.message : undefined}
+                  onQuickAdd={
+                    onQuickAdd &&
+                    can_browse &&
+                    !submitted_query &&
+                    category === 'sight' &&
+                    place.kind === 'sight'
+                      ? (row, button) => void addSight(place, row, button)
+                      : undefined
+                  }
+                  onPick={(origin) => {
+                    setSaveError(undefined);
                     setExpanded(null);
-                    onPick(place, scoped_city, scoped_id);
+                    onPick(place, origin, scoped_city, scoped_id);
                   }}
                 />
               ))}
@@ -493,14 +558,24 @@ export function StopPlacePicker({
         </section>
       </div>
       <footer className="stop-picker-footer">
+        <p role="status" aria-atomic="true" className="stop-picker-confirmation">
+          {saved_message && (
+            <>
+              <Icon name="check" size={15} />
+              <span>{saved_message}</span>
+            </>
+          )}
+        </p>
         <button
           type="button"
           className="secondary"
-          onClick={() => {
+          onClick={(event) => {
             setExpanded(null);
+            setSaveError(undefined);
             onManual(
               query.trim(),
               category === 'airport' ? 'transport' : category === 'all' ? 'sight' : category,
+              event.currentTarget,
               scoped_city,
               scoped_id,
             );
@@ -509,6 +584,6 @@ export function StopPlacePicker({
           <Icon name="edit" size={17} /> Enter manually
         </button>
       </footer>
-    </div>
+    </fieldset>
   );
 }

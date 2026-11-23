@@ -11,6 +11,8 @@ The mobile interaction reference is QYER’s 穷游行程助手. Its separate da
 3. When the day already has stops, tap **Route position** in the stop review to place a sight or hotel before another stop or at the end. New stops start at the end. A saved stop keeps its place until you change its position or day. The itinerary’s arrows also let you move a stop one place.
 4. Select **Check in** at a stop to attach an entry and photos, or **New check-in** to record an unplanned visit. The entry keeps its own local date even when the plan changes.
 
+Tap **＋** beside a nearby sight to add it at the end of the selected day. Its row changes to **On this day** and the list stays open. Tap the place name to review it first. From a new sight or hotel review, **Add and choose another** saves the stop and returns to the results. On the same day, the selected city, category, search and scroll position carry over. Each new review starts with its own schedule and notes. **Done** returns to the itinerary. [行程助手’s sightseeing picker, steps 10–15](https://www.sohu.com/a/331566931_503432)
+
 Open **Overview** to see the cities and planned stops for each day. Tap a day to open it. **Add day** extends the itinerary by one calendar day and opens that day.
 
 From a stop’s review, **View on map** previews the day in the proposed order. The highlighted pin carries the stop’s proposed number. Dashed lines connect consecutive stops with coordinates. The closest stop and straight-line distance help you compare locations before saving. Use **Back** to return to the same route position, dates and notes. The map action is available for directory results and manually entered coordinates.

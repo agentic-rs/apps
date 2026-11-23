@@ -62,6 +62,9 @@ export function StopPlaceResult({
   expanded,
   onExpand,
   onEditPlanned,
+  onQuickAdd,
+  adding,
+  error,
   onPick,
 }: {
   place: StopSearchResult;
@@ -69,13 +72,17 @@ export function StopPlaceResult({
   expanded: boolean;
   onExpand(expanded: boolean): void;
   onEditPlanned?(stop: PlannedStop): void;
-  onPick(): void;
+  onQuickAdd?(row: HTMLElement, button: HTMLElement): void;
+  adding: boolean;
+  error?: string;
+  onPick(origin: HTMLElement): void;
 }) {
   const id = useId();
   const row = useRef<HTMLButtonElement>(null);
   const edit = useRef<HTMLButtonElement>(null);
   const planned = day_stops.filter((stop) => matchesPlannedPlace(stop, place));
   const expandable = Boolean(planned.length && onEditPlanned);
+  const can_add = !planned.length && Boolean(onQuickAdd);
   const open = expandable && expanded;
   useBackLayer(open, collapse);
   useLayoutEffect(() => {
@@ -86,14 +93,14 @@ export function StopPlaceResult({
     row.current?.focus();
   }
   return (
-    <li>
+    <li className="stop-place-option">
       <button
         ref={row}
         type="button"
         className="stop-picker-result"
         aria-expanded={expandable ? open : undefined}
         aria-controls={open ? id : undefined}
-        onClick={expandable ? () => onExpand(!open) : onPick}
+        onClick={(event) => (expandable ? onExpand(!open) : onPick(event.currentTarget))}
       >
         <span className="stop-picker-pin" data-kind={place.kind}>
           <Icon
@@ -117,8 +124,25 @@ export function StopPlaceResult({
             </span>
           )}
         </span>
-        <Icon name="next" size={16} />
+        {!can_add && <Icon name="next" size={16} />}
       </button>
+      {can_add && (
+        <button
+          type="button"
+          className="stop-picker-add"
+          aria-label={adding ? `Adding ${place.title}` : `Add ${place.title} to day`}
+          onClick={(event) => {
+            if (row.current) onQuickAdd?.(row.current, event.currentTarget);
+          }}
+        >
+          <Icon name="plus" size={24} />
+        </button>
+      )}
+      {error && (
+        <p className="stop-picker-save-error" role="alert">
+          {error}
+        </p>
+      )}
       {open && onEditPlanned && (
         <div
           id={id}
@@ -150,7 +174,7 @@ export function StopPlaceResult({
             type="button"
             onClick={() => {
               collapse();
-              onPick();
+              if (row.current) onPick(row.current);
             }}
           >
             <Icon name="plus" size={17} /> Add another {place.kind === 'stay' ? 'stay' : 'visit'}
