@@ -1,5 +1,13 @@
 import { describe, expect, test } from 'bun:test';
-import { fitCoordinates, mapPoints, mapStops, previewDayStops, routeLines } from '../src/lib/map';
+import { continuingStays } from '../src/lib/hotel-stays';
+import {
+  dayMapPlaces,
+  fitCoordinates,
+  mapPoints,
+  mapStops,
+  previewDayStops,
+  routeLines,
+} from '../src/lib/map';
 import type { CheckIn, Coordinates, Place, PlannedStop } from '../src/lib/types';
 
 const now = '2026-05-12T14:20:00.000Z';
@@ -39,6 +47,35 @@ function stop(id: string, longitude: number | null): PlannedStop {
 }
 
 describe('daily route', () => {
+  test('groups overnight and check-out hotels with route pins while preserving stop numbers', () => {
+    const route = [stop('one', 11), stop('missing', null), stop('three', 180)];
+    function stay(id: string, longitude: number | null, checkout_date: string): PlannedStop {
+      return { ...stop(id, longitude), kind: 'stay', title: id, day: '2026-05-11', checkout_date };
+    }
+    const stays = continuingStays(
+      [
+        stay('East Inn', -180, '2026-05-13'),
+        stay('West Inn', 12, '2026-05-12'),
+        stay('Annex', null, '2026-05-12'),
+      ],
+      '2026-05-12',
+    );
+    const places = dayMapPlaces(route, stays);
+    expect(places.unlocated_ids).toEqual(['missing', 'Annex']);
+    expect(places.groups).toMatchObject([
+      { entry_ids: ['one'], numbers: [1], labels: ['Stop 1, Stop one'], has_stay: false },
+      {
+        entry_ids: ['three', 'East Inn'],
+        numbers: [3],
+        labels: ['Stop 3, Stop three', 'Staying at East Inn'],
+        has_stay: true,
+      },
+      { entry_ids: ['West Inn'], numbers: [], labels: ['Check out of West Inn'], has_stay: true },
+    ]);
+    const numbers = new Map(route.map((item, i) => [item.id, i + 2]));
+    expect(dayMapPlaces(route, stays, numbers).groups[1].numbers).toEqual([4]);
+  });
+
   test('preview uses original numbers and the first equally close stop on either side of 180°', () => {
     const stops = [
       stop('missing', null),
@@ -86,6 +123,20 @@ describe('daily route', () => {
       expect(preview.groups).toHaveLength(0);
       expect(preview.route.length).toBe(day.length || 1);
     }
+  });
+  test('an overnight hotel can be the closest place without taking a route position', () => {
+    const hotel = { ...stop('inn', 13), kind: 'stay' as const };
+    const stay = { stop: hotel, label: 'Check out of the inn' };
+    const route = [stop('station', 18), stop('museum', 11)];
+    const preview = previewDayStops(hotel.position!, route, 0, undefined, [stay]);
+    expect(preview.closest).toMatchObject({ title: hotel.title, km: 0 });
+    expect(preview.closest?.number).toBeUndefined();
+    expect(preview.route).toHaveLength(3);
+    expect(preview.groups.find((group) => group.has_stay)?.labels).toEqual([stay.label]);
+    const moving_hotel = previewDayStops(hotel.position!, route, 0, hotel.id, [stay]);
+    expect(moving_hotel.groups.some((group) => group.has_stay)).toBe(false);
+    expect(moving_hotel.closest?.title).toBe('Stop museum');
+    expect(moving_hotel.closest?.number).toBe(3);
   });
   test('keeps stop identities and itinerary order, including a return to a shared position', () => {
     const stops = [stop('a', 11), stop('b', null), stop('c', 8), stop('d', 11)];

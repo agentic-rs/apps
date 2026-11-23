@@ -71,6 +71,7 @@ export function App() {
   const [search, setSearch] = useState('');
   const [trip_search, setTripSearch] = useState('');
   const [editor, setEditor] = useState<Editor | null>(null);
+  const [saved_stop_id, setSavedStopId] = useState('');
   const [detail_id, setDetailId] = useState('');
   const [open_photo, setOpenPhoto] = useState<{ asset: PhotoAsset; caption: string } | null>(null);
   const [removal, setRemoval] = useState<Removal | null>(null);
@@ -116,6 +117,7 @@ export function App() {
   const day = chosen_day || (first <= today && today <= last ? today : first);
   const day_cities = trip && view === 'Itinerary' ? citiesOnDay(trip, day).join(' → ') : '';
   const day_stops = useMemo(() => stops.filter((stop) => stop.day === day), [stops, day]);
+  const day_stays = useMemo(() => continuingStays(stops, day), [stops, day]);
   const day_visits = useMemo(
     () => visits.filter((visit) => recordedDay(visit) === day),
     [visits, day],
@@ -128,6 +130,7 @@ export function App() {
 
   function openTrip(id: string) {
     setTripId(id);
+    setSavedStopId('');
     setChosenDay('');
     setView('Itinerary');
     setSearch('');
@@ -187,6 +190,7 @@ export function App() {
         return removeCheckIn(snapshot, removal.visit.id);
       });
       if (removal.kind === 'trip') openTrip('');
+      if (removal.kind === 'stop' && removal.stop.id === saved_stop_id) setSavedStopId('');
       setRemoval(null);
       setEditor(null);
       setDetailId('');
@@ -330,7 +334,9 @@ export function App() {
                   day_cities={day_cities}
                   trip={trip}
                   stops={day_stops}
-                  continuing_stays={continuingStays(stops, day)}
+                  continuing_stays={day_stays}
+                  reveal_stop_id={editor ? '' : saved_stop_id}
+                  onReveal={() => setSavedStopId('')}
                   visits={day_visits}
                   trip_visits={visits}
                   places={journal.places}
@@ -356,6 +362,7 @@ export function App() {
                 >
                   <MapView
                     stops={day_stops}
+                    continuing_stays={day_stays}
                     visits={day_visits}
                     places={journal.places}
                     platform={platform}
@@ -539,6 +546,7 @@ export function App() {
           onSave={async (stop, before_stop_id) => {
             const original = stops.find((item) => item.id === stop.id);
             await persist((snapshot) => upsertStop(snapshot, stop, before_stop_id));
+            if (view === 'Itinerary') setSavedStopId(stop.id);
             if (!original || original.day === day || !isContinuingStay(stop, day))
               setChosenDay(stop.day);
           }}

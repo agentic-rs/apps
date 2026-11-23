@@ -1079,6 +1079,26 @@ try {
   const nara_inn = dialog.getByRole('button', { name: /^Nara test inn/ });
   const check_in = dialog.getByLabel('Check-in date', { exact: true });
   const check_out = dialog.getByLabel('Check-out date', { exact: true });
+  const day_scroll = frame.locator('.daily-scroll');
+  async function assertReturnedToStop(action_name: string) {
+    // A Playwright click would scroll an offscreen stop into view, masking a lost return.
+    const action = frame.getByRole('button', { name: action_name, exact: true });
+    const location = await action.evaluate(async (button) => {
+      await new Promise<void>((done) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => done())),
+      );
+      const bounds = button.getBoundingClientRect();
+      const viewport = button.closest('.daily-scroll')!.getBoundingClientRect();
+      return {
+        focused: document.activeElement === button,
+        visible: bounds.top >= viewport.top - 1 && bounds.bottom <= viewport.bottom + 1,
+        top: Math.round(bounds.top),
+        bottom: Math.round(bounds.bottom),
+        viewport_bottom: Math.round(viewport.bottom),
+      };
+    });
+    assert(location.focused && location.visible, `${action_name}: ${JSON.stringify(location)}`);
+  }
   const day_two = '2030-05-21';
   const tiles_before_picking = http_urls.length;
   await add_stop.click();
@@ -1120,7 +1140,14 @@ try {
   await nara_museum.click();
   await save_stop.click();
   await dialog.waitFor({ state: 'hidden' });
+  await assertReturnedToStop('Edit Nara test museum');
 
+  await add_hotel.click();
+  const before_clean_cancel = await day_scroll.evaluate((element) => element.scrollTop);
+  assert.equal(await shellBack(), true);
+  await dialog.waitFor({ state: 'hidden' });
+  assert.equal(await day_scroll.evaluate((element) => element.scrollTop), before_clean_cancel);
+  assert(await add_hotel.evaluate((button) => document.activeElement === button));
   await add_hotel.click();
   await nara_inn.waitFor();
   assert.equal(await hotels.getAttribute('aria-pressed'), 'true');
@@ -1346,6 +1373,7 @@ try {
   assert.equal(await place_search.inputValue(), 'test inn');
   assert.equal(await shellBack(), true, 'Back from the clean hotel picker finishes this session.');
   await dialog.waitFor({ state: 'hidden' });
+  await assertReturnedToStop('Edit Nara test inn');
   assert.equal(journal_writes, writes_before_preview + 1);
   const saved_hotel = journal().stops.find((stop) => stop.title === 'Nara test inn');
   assert.equal(saved_hotel?.notes, hotel_notes);
@@ -1499,11 +1527,49 @@ try {
   await continuing_editor.getByRole('button', { name: 'Save changes' }).click();
   await continuing_editor.waitFor({ state: 'hidden' });
   assert.equal(await frame.getByLabel('Choose itinerary date').inputValue(), '2030-05-22');
+  await assertReturnedToStop('Staying at Nara test inn');
   await frame.getByRole('button', { name: 'Staying at Nara test inn' }).click();
   assert.equal(await check_in.inputValue(), day_two);
   await dialog.getByRole('button', { name: 'Close dialog' }).click();
   await frame.getByRole('button', { name: 'Next day', exact: true }).click();
   await frame.getByRole('button', { name: 'Check out of Nara test inn' }).waitFor();
+  assert.deepEqual(journal(), persisted);
+  const writes_before_checkout_maps = journal_writes;
+  await add_hotel.click();
+  await nara.click();
+  await nara_inn.waitFor();
+  assert.equal(await nara_inn.getByText('On this day', { exact: true }).count(), 0);
+  await sights.click();
+  await nara_museum.waitFor();
+  const open_results_map = frame.getByRole('button', { name: 'Map of results', exact: true });
+  await open_results_map.click();
+  const checkout_map = frame.getByRole('dialog', { name: 'Sights near Nara', exact: true });
+  await checkout_map.getByRole('button', { name: 'Fit results and day route' }).click();
+  const checkout_label = 'Check out of Nara test inn';
+  const checkout_pin = checkout_map.getByRole('button', { name: checkout_label, exact: true });
+  assert.equal(await checkout_pin.getAttribute('data-stop-numbers'), null);
+  await checkout_pin.press('Enter');
+  await checkout_map.getByText(checkout_label, { exact: true }).waitFor();
+  await checkout_map
+    .getByRole('button', { name: 'Show Nara National Museum on map' })
+    .press('Enter');
+  await checkout_map.getByText(/straight line to hotel · Nara test inn/).waitFor();
+  await checkout_map.getByRole('button', { name: 'Review place' }).click();
+  await view_on_map.click();
+  const checkout_preview_pin = preview_map.getByRole('button', {
+    name: checkout_label,
+    exact: true,
+  });
+  assert.equal(await checkout_preview_pin.getAttribute('data-stop-numbers'), null);
+  await checkout_preview_pin.press('Enter');
+  await preview_map.getByText(checkout_label, { exact: true }).waitFor();
+  await map_preview.getByText(/Closest hotel/).waitFor();
+  assert.equal(await candidate_pin.getAttribute('aria-description'), 'Stop 1 of 1');
+  for (const step of ['preview', 'review', 'result map', 'place list']) {
+    assert.equal(await shellBack(), true, `Back from checkout-day ${step}.`);
+  }
+  await dialog.waitFor({ state: 'hidden' });
+  assert.equal(journal_writes, writes_before_checkout_maps);
   assert.deepEqual(journal(), persisted);
   await frame.getByRole('button', { name: 'Check out of Nara test inn' }).click();
   await dialog.getByLabel('Notes').fill('Arrive after dinner.');
@@ -1519,7 +1585,7 @@ try {
   assert.equal(updated_hotel.checkout_date, inn.checkout_date);
   assert.equal(updated_hotel.notes, 'Arrive after dinner.');
   assert.equal(journal().stops.length, persisted.stops.length);
-  await frame.getByRole('button', { name: 'Check out of Kyoto test inn' }).waitFor();
+  await assertReturnedToStop('Check out of Kyoto test inn');
   await frame.getByRole('button', { name: 'Check out of Kyoto test inn' }).click();
   await dialog.getByRole('button', { name: 'Change place' }).click();
   assert.equal(await kyoto.getAttribute('aria-pressed'), 'true');
@@ -1543,7 +1609,6 @@ try {
   const planned_list = frame.getByRole('list', { name: 'Planned stops', exact: true });
   await add_stop.click();
   await kyoto_museum.waitFor();
-  const open_results_map = frame.getByRole('button', { name: 'Map of results', exact: true });
   const sight_map = frame.getByRole('dialog', { name: 'Sights near Kyoto', exact: true });
   const result_pins = sight_map.getByRole('region', { name: 'Map of place results', exact: true });
   const results = dialog.getByRole('list', { name: 'Place results', exact: true });
@@ -1660,6 +1725,7 @@ try {
   await save_stop.click();
   await dialog.waitFor({ state: 'hidden' });
   const inserted = journal();
+  await assertReturnedToStop(`Edit ${museum_name}`);
   const new_museum = inserted.stops.find((stop) => stop.title === museum_name);
   assert(new_museum?.directory_ref && new_museum.kind === 'sight' && new_museum.city === 'Nara');
   const expected_day = day_titles(before_insert, day_two);
@@ -1732,6 +1798,7 @@ try {
   await save_stop.click();
   await dialog.waitFor({ state: 'hidden' });
   const after_move = journal();
+  await assertReturnedToStop(`Edit ${museum_name}`);
   const expected_move = day_titles(before_move, day_three);
   expected_move.splice(1, 0, museum_name);
   assert.deepEqual(day_titles(after_move, day_three), expected_move);
@@ -1870,9 +1937,7 @@ try {
   assert.equal(await shellBack(), true);
   await dialog.getByRole('button', { name: 'Done', exact: true }).click();
   await dialog.waitFor({ state: 'hidden' });
-  await planned_list
-    .getByRole('button', { name: 'Edit Kyoto history museum', exact: true })
-    .waitFor();
+  await assertReturnedToStop('Edit Kyoto history museum');
 
   await add_hotel.click();
   await place_search.fill('test inn');
@@ -1912,9 +1977,7 @@ try {
   assert.equal(await place_search.inputValue(), '', 'The previous day’s Nara search is cleared.');
   await dialog.getByRole('button', { name: 'Done', exact: true }).click();
   await dialog.waitFor({ state: 'hidden' });
-  await planned_list
-    .getByRole('button', { name: `Edit ${reviewed_hotel_name}`, exact: true })
-    .waitFor();
+  await assertReturnedToStop(`Edit ${reviewed_hotel_name}`);
   const rescheduled_stay = journal().stops.find((stop) => stop.title === reviewed_hotel_name);
   assert.equal(rescheduled_stay?.day, day_three);
   assert.equal(rescheduled_stay.checkout_date, '2030-05-23');
@@ -1970,6 +2033,8 @@ try {
           'directly adding two nearby sights, duplicate-tap protection, failed write and retry from the result',
           'city-scoped sight and hotel result maps, coincident venues, pin selection and return to reviewed drafts',
           'rescheduling a new hotel, then continuing at the arrival city on the new day',
+          'returning to the last saved stop, continuing stay or checkout in the day timeline',
+          'comparing a sight to an unnumbered checkout hotel in both maps without occupying another night',
         ],
       },
       null,

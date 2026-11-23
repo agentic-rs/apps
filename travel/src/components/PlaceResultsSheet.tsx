@@ -1,6 +1,7 @@
-import { lazy, Suspense, useMemo, useRef, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useRef, useState, type ReactNode } from 'react';
 import { formatDistance } from '../lib/distance';
-import { nearestDayStop } from '../lib/map';
+import type { ContinuingStay } from '../lib/hotel-stays';
+import { nearestDayPlace } from '../lib/map';
 import { matchesPlannedPlace } from '../lib/planned-stop-search';
 import type { StopSearchResult } from '../lib/stop-lookup';
 import type { PlannedStop } from '../lib/types';
@@ -15,8 +16,9 @@ interface PlaceResultsSheetProps {
   active: boolean;
   native: boolean;
   heading: string;
-  day: string;
   day_label: string;
+  route: PlannedStop[];
+  stays: ContinuingStay[];
   day_stops: PlannedStop[];
   cities: ReactNode;
   places: StopSearchResult[];
@@ -36,7 +38,8 @@ export function PlaceResultsSheet({
   active,
   native,
   heading,
-  day,
+  route,
+  stays,
   day_label,
   day_stops,
   cities,
@@ -58,9 +61,9 @@ export function PlaceResultsSheet({
     places.findIndex((place) => place.id === selection),
   );
   const place = places[index];
-  const route = useMemo(() => day_stops.filter((stop) => stop.day === day), [day_stops, day]);
   const planned = place ? day_stops.filter((stop) => matchesPlannedPlace(stop, place)) : [];
-  const closest = place && !planned.length ? nearestDayStop(place.position, route) : undefined;
+  const closest =
+    place && !planned.length ? nearestDayPlace(place.position, route, stays) : undefined;
   const card_title = useRef<HTMLHeadingElement>(null);
   return (
     <Dialog
@@ -80,7 +83,7 @@ export function PlaceResultsSheet({
           <>
             <Suspense
               fallback={
-                <p className="map-loading" role="status">
+                <p className="result-map-loading" role="status">
                   Opening map…
                 </p>
               }
@@ -88,6 +91,7 @@ export function PlaceResultsSheet({
               <PlaceResultsMap
                 places={places}
                 stops={route}
+                stays={stays}
                 selected_id={place.id}
                 onSelect={(id) => {
                   if (!saving) setSelection(id);
@@ -137,7 +141,7 @@ export function PlaceResultsSheet({
                   {[
                     place.subtitle,
                     closest
-                      ? `${formatDistance(closest.km)} straight line to stop ${closest.number} · ${closest.title}`
+                      ? `${formatDistance(closest.km)} straight line to ${closest.number === undefined ? 'hotel' : 'stop ' + closest.number} · ${closest.title}`
                       : place.distance_km === undefined
                         ? ''
                         : `${formatDistance(place.distance_km)} from city center`,

@@ -17,7 +17,7 @@ import { EditorForm } from './EditorForm';
 import { RoutePosition } from './RoutePosition';
 import { Icon } from './Icon';
 import { StopPlacePicker } from './StopPlacePicker';
-import { isContinuingStay } from '../lib/hotel-stays';
+import { continuingStays } from '../lib/hotel-stays';
 
 const PlaceMapPreview = lazy(() => import('./PlaceMapPreview'));
 
@@ -223,6 +223,14 @@ function StopEditor({
   const preview_stops = useMemo(
     () => trip_stops.filter((item) => item.day === stop_day),
     [trip_stops, stop_day],
+  );
+  const picker_stops = useMemo(
+    () => trip_stops.filter((item) => item.day === picker_day),
+    [trip_stops, picker_day],
+  );
+  const picker_stays = useMemo(
+    () => (picker_day ? continuingStays(trip_stops, picker_day) : []),
+    [trip_stops, picker_day],
   );
   const other_stops = preview_stops.filter((item) => item.id !== draft_id);
   const existing_index = preview_stops.findIndex((item) => item.id === draft_id);
@@ -477,11 +485,8 @@ function StopEditor({
               initial_city_id={city_id}
               initial_category={picker_category}
               onCategoryChange={setPickerCategory}
-              day_stops={trip_stops.filter(
-                (item) =>
-                  item.day === picker_day ||
-                  (isContinuingStay(item, picker_day) && item.checkout_date !== picker_day),
-              )}
+              route={picker_stops}
+              stays={picker_stays}
               lookup={lookup}
               onPick={choosePlace}
               onManual={enterManually}
@@ -725,6 +730,7 @@ function StopEditor({
               position={position}
               context={place_context}
               stops={preview_stops}
+              stays={continuingStays(trip_stops, stop_day)}
               editing_id={draft_id}
               insertion_index={insertion_index}
               native={native}

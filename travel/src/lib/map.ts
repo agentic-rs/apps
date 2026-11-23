@@ -1,3 +1,4 @@
+import type { ContinuingStay } from './hotel-stays';
 import { parseCoordinates, visitTitle } from './model';
 import { distanceKm } from './distance';
 import type { CheckIn, Coordinates, Place, PlannedStop } from './types';
@@ -117,13 +118,40 @@ export function groupPins(points: MapPoint[]): PinGroup[] {
   return [...groups.values()];
 }
 
-export function nearestDayStop(position: Coordinates, stops: readonly PlannedStop[]) {
-  let closest: { title: string; number: number; km: number } | undefined;
-  for (const [i, stop] of stops.entries()) {
-    if (!stop.position) continue;
+/** Group co-located pins without adding a carried-over hotel to the day's numbered route. */
+export function dayMapPlaces(
+  stops: readonly PlannedStop[],
+  stays: readonly ContinuingStay[],
+  numbers: ReadonlyMap<string, number> = new Map(stops.map((stop, i) => [stop.id, i + 1])),
+) {
+  const stay_labels = new Map(stays.map(({ stop, label }) => [stop.id, label]));
+  const data = mapStops([...stops, ...stays.map(({ stop }) => stop)]);
+  const groups = groupPins(data.points).map((group) => {
+    const sequence: number[] = [];
+    const labels = group.points.map((point) => {
+      const number = numbers.get(point.id);
+      if (number === undefined) return stay_labels.get(point.id) ?? point.label;
+      sequence.push(number);
+      return `Stop ${number}, ${point.label}`;
+    });
+    return { ...group, numbers: sequence, labels, has_stay: group.points.length > sequence.length };
+  });
+  return { ...data, groups };
+}
+
+export function nearestDayPlace(
+  position: Coordinates,
+  stops: readonly PlannedStop[],
+  stays: readonly ContinuingStay[],
+) {
+  let closest: { title: string; number?: number; km: number } | undefined;
+  function compare(stop: PlannedStop, number?: number) {
+    if (!stop.position) return;
     const km = distanceKm(position, stop.position);
-    if (!closest || km < closest.km) closest = { title: stop.title, number: i + 1, km };
+    if (!closest || km < closest.km) closest = { title: stop.title, number, km };
   }
+  stops.forEach((stop, i) => compare(stop, i + 1));
+  stays.forEach(({ stop }) => compare(stop));
   return closest;
 }
 
@@ -133,16 +161,18 @@ export function previewDayStops(
   stops: readonly PlannedStop[],
   insertion_index: number,
   editing_id?: string,
+  stays: readonly ContinuingStay[] = [],
 ) {
   const others = stops.filter((stop) => stop.id !== editing_id);
   const slot = Math.max(0, Math.min(insertion_index, others.length));
   const numbers = new Map(others.map((stop, i) => [stop.id, i < slot ? i + 1 : i + 2]));
   const route: Pick<PlannedStop, 'position'>[] = [...others];
   route.splice(slot, 0, { position });
-  const { points } = mapStops(others);
-  const groups = groupPins(points);
-  const closest = nearestDayStop(position, others);
-  if (closest && closest.number > slot) closest.number++;
+  // When moving a stay onto a later day, its existing hotel pin is the draft itself.
+  const other_stays = stays.filter(({ stop }) => stop.id !== editing_id);
+  const { groups } = dayMapPlaces(others, other_stays, numbers);
+  const closest = nearestDayPlace(position, others, other_stays);
+  if (closest?.number !== undefined && closest.number > slot) closest.number++;
   return { groups, numbers, closest, route, candidate_number: slot + 1 };
 }
 

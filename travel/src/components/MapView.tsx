@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { divIcon, layerGroup, marker, type Point, type Marker } from 'leaflet';
+import type { Map as LeafletMap, Point } from 'leaflet';
+import { MapMarker } from './MapMarker';
 import { formatVisitDate, formatVisitTime } from '../lib/dates';
-import { groupPins, mapPoints, mapStops, visiblePosition, type MapMode } from '../lib/map';
+import { dayMapPlaces, groupPins, mapPoints, visiblePosition, type MapMode } from '../lib/map';
+import type { ContinuingStay } from '../lib/hotel-stays';
 import {
   useDayRouteLine,
   useLeafletMap,
@@ -15,7 +17,7 @@ import { type CheckIn, type Place, type PlannedStop, type TravelPlatform } from 
 import { Icon } from './Icon';
 import { useBackLayer } from '../lib/back-navigation';
 import { Photo } from './Photo';
-import { MapStopButton, MapStopList } from './MapStopList';
+import { MapStayButton, MapStopButton, MapStopList } from './MapStopList';
 import type { MoveStop } from './StopOrderButtons';
 
 const map_modes = {
@@ -61,8 +63,80 @@ function dayMapPadding({ y: height }: Point): MapPadding {
   };
 }
 
+function JournalMapPin({
+  map,
+  group,
+  mode,
+  selected,
+  onSelect,
+}: {
+  map: LeafletMap;
+  group: ReturnType<typeof groupPins>[number] | ReturnType<typeof dayMapPlaces>['groups'][number];
+  mode: MapMode;
+  selected: boolean;
+  onSelect(): void;
+}) {
+  const { latitude, longitude } = group.position;
+  const route = 'numbers' in group ? group : undefined;
+  const hotel = route && !route.numbers.length;
+  const anchor = route ? 21 : 43;
+  const label = route
+    ? route.labels.join(' · ')
+    : `${[...new Set(group.points.map((point) => point.label))].join(', ')}: ${formatEntryCount(group.entry_ids.length)}`;
+  return (
+    <MapMarker
+      map={map}
+      position={group.position}
+      anchor_y={anchor}
+      height={48}
+      z_index={selected ? 1000 : 0}
+    >
+      <button
+        type="button"
+        className={`journal-map-pin ${mode}${hotel ? ' stay' : ''}${selected ? ' selected' : ''}`}
+        title={label}
+        aria-label={label}
+        aria-pressed={selected}
+        data-latitude={latitude}
+        data-longitude={longitude}
+        data-stop-numbers={route?.numbers.length ? route.numbers.join(',') : undefined}
+        data-visit-count={route ? undefined : group.entry_ids.length}
+        onFocus={(event) => {
+          if (event.currentTarget.matches(':focus-visible'))
+            map.panInside(visiblePosition(group.position, map.getCenter().lng), {
+              ...dayMapPadding(map.getSize()),
+              animate: false,
+            });
+        }}
+        onClick={(event) => {
+          event.stopPropagation();
+          onSelect();
+        }}
+      >
+        <span className="map-pin-bubble">
+          <span>
+            {hotel ? (
+              <Icon name="bed" size={18} />
+            ) : route ? (
+              route.numbers[0]
+            ) : (
+              group.entry_ids.length
+            )}
+          </span>
+          {route && group.points.length > 1 && (
+            <small className="map-pin-extra">
+              {route.has_stay && !hotel && <Icon name="bed" size={12} />}+{group.points.length - 1}
+            </small>
+          )}
+        </span>
+      </button>
+    </MapMarker>
+  );
+}
+
 export default function MapView({
   stops,
+  continuing_stays,
   visits,
   places,
   platform,
@@ -73,6 +147,7 @@ export default function MapView({
   active,
 }: {
   stops: PlannedStop[];
+  continuing_stays: ContinuingStay[];
   visits: CheckIn[];
   places: Place[];
   platform: TravelPlatform;
@@ -84,15 +159,15 @@ export default function MapView({
 }) {
   const { container, map, zoom } = useLeafletMap();
   const panel = useRef<HTMLElement>(null);
-  const markers = useRef(new Map<string, Marker>());
   const [mode, setMode] = useState<MapMode>('stops');
   const [selected_key, setSelectedKey] = useState<string | null>(null);
   const [unlocated_open, setUnlocatedOpen] = useState(false);
-  const data = useMemo(
-    () => (mode === 'stops' ? mapStops(stops) : mapPoints(visits, places, mode)),
-    [stops, visits, places, mode],
-  );
-  const groups = useMemo(() => groupPins(data.points), [data.points]);
+  const data = useMemo(() => {
+    if (mode === 'stops') return dayMapPlaces(stops, continuing_stays);
+    const data = mapPoints(visits, places, mode);
+    return { ...data, groups: groupPins(data.points) };
+  }, [stops, continuing_stays, visits, places, mode]);
+  const { groups } = data;
   const numbers = useMemo(() => new Map(stops.map((stop, index) => [stop.id, index + 1])), [stops]);
   const fit_key = `${mode}:${groups.map((group) => group.key).join(';')}`;
   const selected = groups.find((group) => group.key === selected_key);
@@ -107,17 +182,23 @@ export default function MapView({
     .sort((a, b) => b.visited_at.localeCompare(a.visited_at));
   const places_by_id = new Map(places.map((place) => [place.id, place]));
   const selected_stops = mode === 'stops' ? stops.filter((stop) => visible_ids.has(stop.id)) : [];
-  const total = mode === 'stops' ? stops.length : visits.length;
-  const selection_count = selected_stops.length + selected_visits.length;
-  const displayCount = (count: number) =>
-    mode === 'stops' ? `${count} ${count === 1 ? 'stop' : 'stops'}` : formatEntryCount(count);
+  const selected_stays =
+    mode === 'stops' ? continuing_stays.filter(({ stop }) => visible_ids.has(stop.id)) : [];
+  const total = mode === 'stops' ? stops.length + continuing_stays.length : visits.length;
+  const selection_count = selected_stops.length + selected_stays.length + selected_visits.length;
+  function displayCount(count: number, route_stops: number, stays: number) {
+    if (mode !== 'stops') return formatEntryCount(count);
+    if (!stays) return `${count} ${count === 1 ? 'stop' : 'stops'}`;
+    if (!route_stops) return `${count} ${count === 1 ? 'hotel stay' : 'hotel stays'}`;
+    return `${count} places`;
+  }
   const labels = map_modes[mode];
   const selected_names = selected ? [...new Set(selected.points.map((point) => point.label))] : [];
 
   useEffect(() => {
     setSelectedKey(null);
     setUnlocatedOpen(false);
-  }, [stops, visits]);
+  }, [stops, continuing_stays, visits]);
 
   const fitPins = useMapFit(map, active, fit_key, data.points, dayMapPadding);
   const { tile_failures, retryTiles } = useMapTiles(map, platform.native, active);
@@ -125,79 +206,6 @@ export default function MapView({
   useDayRouteLine(map, stops, active && mode === 'stops');
 
   useEffect(() => {
-    if (!map) return;
-    const pins = layerGroup().addTo(map);
-    const next_markers = new Map<string, Marker>();
-    for (const group of groups) {
-      const content = document.createElement('span');
-      content.className = 'map-pin-bubble';
-      const count = document.createElement('span');
-      const planned = mode === 'stops';
-      count.textContent = String(
-        planned ? numbers.get(group.entry_ids[0]) : group.entry_ids.length,
-      );
-      content.append(count);
-      if (planned && group.entry_ids.length > 1) {
-        const extra = document.createElement('small');
-        extra.className = 'map-pin-extra';
-        extra.textContent = `+${group.entry_ids.length - 1}`;
-        content.append(extra);
-      }
-      const names = [...new Set(group.points.map((point) => point.label))].join(', ');
-      const label = planned
-        ? group.points.map((point) => `Stop ${numbers.get(point.id)}, ${point.label}`).join(' · ')
-        : `${names}: ${formatEntryCount(group.entry_ids.length)}`;
-      const pin = marker(visiblePosition(group.position, map.getCenter().lng), {
-        icon: divIcon({
-          className: `journal-map-pin ${mode}`,
-          html: content,
-          iconSize: [44, 48],
-          iconAnchor: planned ? [22, 21] : [22, 43],
-        }),
-        title: label,
-        keyboard: true,
-        riseOnHover: true,
-      }).addTo(pins);
-      const element = pin.getElement();
-      element?.setAttribute('aria-label', label);
-      element?.setAttribute('data-latitude', String(group.position.latitude));
-      element?.setAttribute('data-longitude', String(group.position.longitude));
-      if (planned) {
-        element?.setAttribute(
-          'data-stop-numbers',
-          group.entry_ids.map((id) => numbers.get(id)).join(','),
-        );
-      } else {
-        element?.setAttribute('data-visit-count', String(group.entry_ids.length));
-      }
-      pin.on('click', () => {
-        setSelectedKey(group.key);
-        setUnlocatedOpen(false);
-      });
-      next_markers.set(group.key, pin);
-    }
-    markers.current = next_markers;
-    const wrapPins = () => {
-      for (const group of groups)
-        next_markers
-          .get(group.key)
-          ?.setLatLng(visiblePosition(group.position, map.getCenter().lng));
-    };
-    map.on('moveend', wrapPins);
-    return () => {
-      map.off('moveend', wrapPins);
-      pins.remove();
-      next_markers.clear();
-    };
-  }, [map, groups, mode, numbers]);
-
-  useEffect(() => {
-    for (const [key, pin] of markers.current) {
-      pin.getElement()?.classList.toggle('selected', key === selected_key && !unlocated_open);
-      pin
-        .getElement()
-        ?.setAttribute('aria-pressed', String(key === selected_key && !unlocated_open));
-    }
     if (!map || !active || !selected || unlocated_open) return;
     const frame = requestAnimationFrame(() => {
       const panel_height = Math.min(panel.current?.clientHeight ?? 160, map.getSize().y * 0.45);
@@ -225,6 +233,20 @@ export default function MapView({
           role="region"
           aria-label={labels.region}
         />
+        {map &&
+          groups.map((group) => (
+            <JournalMapPin
+              key={group.key}
+              map={map}
+              group={group}
+              mode={mode}
+              selected={selected_key === group.key && !unlocated_open}
+              onSelect={() => {
+                setSelectedKey(group.key);
+                setUnlocatedOpen(false);
+              }}
+            />
+          ))}
         <div className="map-top-tools">
           <div className="map-mode-switch" role="group" aria-label="Map positions">
             {(['stops', 'visits', 'places'] as const).map((option) => (
@@ -251,9 +273,12 @@ export default function MapView({
         <div className="map-caption">
           <span className={`map-legend-dot ${mode}`} />
           <span>
-            {labels.description}
+            {mode === 'stops' && !stops.length && continuing_stays.length
+              ? 'Hotel stays'
+              : labels.description}
             <small>
-              {total - data.unlocated_ids.length} of {displayCount(total)} on the map
+              {total - data.unlocated_ids.length} of{' '}
+              {displayCount(total, stops.length, continuing_stays.length)} on the map
             </small>
           </span>
         </div>
@@ -275,14 +300,6 @@ export default function MapView({
             <span aria-hidden="true">−</span>
           </button>
         </div>
-        {tile_failures > 0 && data.points.length > 0 && !selected && !unlocated_open && (
-          <div className="map-tile-status" role="status">
-            <span>Map background unavailable. Your pins still work.</span>
-            <button type="button" onClick={retryTiles}>
-              Retry
-            </button>
-          </div>
-        )}
         {data.points.length === 0 && !unlocated_open && (
           <div className="map-empty-message">
             <Icon name="pin" size={26} />
@@ -309,7 +326,10 @@ export default function MapView({
           >
             <Icon name="pin" size={16} />
             <span>
-              {data.unlocated_ids.length} {labels.missing}
+              {data.unlocated_ids.length}{' '}
+              {mode === 'stops' && continuing_stays.length
+                ? 'without map coordinates'
+                : labels.missing}
             </span>
             <Icon name="arrow" size={15} />
           </button>
@@ -323,7 +343,13 @@ export default function MapView({
             <header>
               <div>
                 <span className="map-card-kicker">
-                  {unlocated_open ? 'NOT ON THIS MAP' : displayCount(selection_count).toUpperCase()}
+                  {unlocated_open
+                    ? 'NOT ON THIS MAP'
+                    : displayCount(
+                        selection_count,
+                        selected_stops.length,
+                        selected_stays.length,
+                      ).toUpperCase()}
                 </span>
                 <h2>
                   {unlocated_open
@@ -331,15 +357,22 @@ export default function MapView({
                     : selected_names.length === 1
                       ? selected_names[0]
                       : mode === 'stops'
-                        ? 'Stops at this position'
+                        ? selected_stays.length
+                          ? 'Places at this position'
+                          : 'Stops at this position'
                         : 'Moments at this position'}
                 </h2>
                 {selected && (
                   <p>
-                    {formatCoordinates(selected.position)} <span>· {labels.position_label}</span>
+                    {formatCoordinates(selected.position)}{' '}
+                    {(!selected_stops.length || !selected_stays.length) && (
+                      <span>· {selected_stays.length ? 'hotel stay' : labels.position_label}</span>
+                    )}
                   </p>
                 )}
-                {tile_failures > 0 && <p role="status">Map background unavailable.</p>}
+                {tile_failures > 0 && !data.points.length && (
+                  <p role="status">Map background unavailable.</p>
+                )}
               </div>
               <button
                 type="button"
@@ -358,6 +391,9 @@ export default function MapView({
                   number={numbers.get(stop.id)!}
                   onOpen={onOpenStop}
                 />
+              ))}
+              {selected_stays.map((stay) => (
+                <MapStayButton key={stay.stop.id} stay={stay} onOpen={onOpenStop} />
               ))}
               {selected_visits.map((visit) => {
                 const place =
@@ -397,10 +433,19 @@ export default function MapView({
           </section>
         )}
       </section>
-      {mode === 'stops' && stops.length > 0 && (
+      {tile_failures > 0 && data.points.length > 0 && (
+        <div className="map-tile-status" role="status">
+          <span>Map background unavailable. Your pins still work.</span>
+          <button type="button" onClick={retryTiles}>
+            Retry
+          </button>
+        </div>
+      )}
+      {mode === 'stops' && (stops.length > 0 || continuing_stays.length > 0) && (
         <MapStopList
-          key={stops[0].day}
+          key={stops[0]?.day ?? continuing_stays[0]?.stop.id}
           stops={stops}
+          continuing_stays={continuing_stays}
           onOpenStop={onOpenStop}
           onMoveStop={onMoveStop}
           onOptimize={onOptimize}

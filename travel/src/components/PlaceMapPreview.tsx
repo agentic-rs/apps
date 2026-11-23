@@ -1,5 +1,5 @@
-import { useEffect, useMemo } from 'react';
-import { divIcon, layerGroup, marker, type Marker } from 'leaflet';
+import { useMemo } from 'react';
+import type { ContinuingStay } from '../lib/hotel-stays';
 import { formatDistance } from '../lib/distance';
 import {
   useDayRouteLine,
@@ -11,6 +11,7 @@ import {
 import { normalizeLongitude, previewDayStops, visiblePosition } from '../lib/map';
 import type { Coordinates, PlannedStop } from '../lib/types';
 import { Icon } from './Icon';
+import { DayPlacePins, openPlacePopup, PlaceMapButton } from './PlaceMapPins';
 import '../place-map-preview.css';
 
 const previewPadding = (): MapPadding => ({
@@ -22,6 +23,7 @@ export default function PlaceMapPreview({
   title,
   position,
   stops,
+  stays,
   insertion_index,
   native,
   context,
@@ -30,15 +32,16 @@ export default function PlaceMapPreview({
   title: string;
   position: Coordinates;
   stops: PlannedStop[];
+  stays: ContinuingStay[];
   insertion_index: number;
   native: boolean;
   context?: string;
   editing_id?: string;
 }) {
   const { container, map, zoom } = useLeafletMap(0);
-  const { groups, numbers, closest, route, candidate_number } = useMemo(
-    () => previewDayStops(position, stops, insertion_index, editing_id),
-    [position, stops, insertion_index, editing_id],
+  const { groups, closest, route, candidate_number } = useMemo(
+    () => previewDayStops(position, stops, insertion_index, editing_id, stays),
+    [position, stops, insertion_index, editing_id, stays],
   );
   const points = useMemo(() => [{ position }, ...groups], [position, groups]);
   const candidate_key = `${position.latitude}/${normalizeLongitude(position.longitude)}`;
@@ -48,86 +51,6 @@ export default function PlaceMapPreview({
   useDayRouteLine(map, route, true);
   const name = title.trim() || 'Selected place';
   const order = `Stop ${candidate_number} of ${route.length}`;
-
-  useEffect(() => {
-    if (!map) return;
-    const pins = layerGroup().addTo(map);
-    const center_longitude = map.getCenter().lng;
-    const anchored: { pin: Marker; position: Coordinates }[] = [];
-    function addPin(
-      location: Coordinates,
-      labels: string[],
-      content: HTMLElement,
-      class_name: string,
-      anchor_y: number,
-      z_index: number,
-    ) {
-      const label = labels.join(' · ');
-      const pin = marker(visiblePosition(location, center_longitude), {
-        icon: divIcon({
-          html: content,
-          className: `place-preview-pin ${class_name}`,
-          iconSize: [44, 44],
-          iconAnchor: [22, anchor_y],
-          popupAnchor: [0, -anchor_y],
-        }),
-        title: label,
-        zIndexOffset: z_index,
-      }).addTo(pins);
-      const popup = document.createElement('div');
-      for (const text of labels) {
-        const line = document.createElement('div');
-        line.textContent = text;
-        popup.append(line);
-      }
-      pin.bindPopup(popup, { maxWidth: 220 });
-      anchored.push({ pin, position: location });
-      const element = pin.getElement()!;
-      element.setAttribute('aria-label', label);
-      return element;
-    }
-
-    for (const group of groups) {
-      const sequence = group.points.map((point) => numbers.get(point.id)!);
-      const labels = group.points.map((point, index) => `Stop ${sequence[index]}, ${point.label}`);
-      const badge = document.createElement('span');
-      badge.className = 'place-stop-badge';
-      badge.textContent = String(sequence[0]);
-      if (sequence.length > 1) {
-        const extra = document.createElement('small');
-        extra.textContent = `+${sequence.length - 1}`;
-        badge.append(extra);
-      }
-      // At a shared coordinate the numbered marker sits directly below the candidate's tip.
-      const element = addPin(
-        group.position,
-        labels,
-        badge,
-        'day-stop',
-        group.key === candidate_key ? 0 : 22,
-        0,
-      );
-      element.dataset.stopNumbers = sequence.join(',');
-    }
-    const tip = document.createElement('span');
-    tip.className = 'place-candidate-tip';
-    const numeral = document.createElement('span');
-    numeral.textContent = String(candidate_number);
-    tip.append(numeral);
-    const candidate = addPin(position, [`Selected place, ${name}`], tip, 'candidate', 44, 1000);
-    candidate.dataset.candidatePin = '';
-    candidate.setAttribute('aria-description', order);
-
-    const wrapPins = () => {
-      for (const entry of anchored)
-        entry.pin.setLatLng(visiblePosition(entry.position, map.getCenter().lng));
-    };
-    map.on('moveend', wrapPins);
-    return () => {
-      map.off('moveend', wrapPins);
-      pins.remove();
-    };
-  }, [map, groups, numbers, candidate_key, position, name, candidate_number, order]);
 
   return (
     <section className="place-map-preview">
@@ -139,16 +62,17 @@ export default function PlaceMapPreview({
         </div>
         {closest ? (
           <p>
-            Closest stop{' '}
+            {closest.number === undefined ? 'Closest hotel' : 'Closest stop'}{' '}
             <strong>
-              {closest.number} · {closest.title}
+              {closest.number !== undefined && `${closest.number} · `}
+              {closest.title}
             </strong>
             <span>{formatDistance(closest.km)} straight-line distance</span>
           </p>
         ) : (
           <p>
-            {route.length > 1
-              ? 'The other stops on this day have no map coordinates.'
+            {route.length > 1 || stays.some(({ stop }) => stop.id !== editing_id)
+              ? 'The other places on this day have no map coordinates.'
               : 'No other stops on this day.'}
           </p>
         )}
@@ -159,6 +83,23 @@ export default function PlaceMapPreview({
         role="region"
         aria-label="Map of selected place and day stops"
       />
+      {map && (
+        <>
+          <DayPlacePins map={map} groups={groups} shared_locations={new Set([candidate_key])} />
+          <PlaceMapButton
+            map={map}
+            position={position}
+            label={`Selected place, ${name}`}
+            description={order}
+            kind="candidate"
+            onClick={() => openPlacePopup(map, position, [`Selected place, ${name}`])}
+          >
+            <span className="place-candidate-tip">
+              <span>{candidate_number}</span>
+            </span>
+          </PlaceMapButton>
+        </>
+      )}
       {tile_failures > 0 && (
         <div className="place-map-status" role="status">
           Map background unavailable.

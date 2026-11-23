@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { confirmsInput } from '../lib/keyboard';
 import { cityIndicesOnDay } from '../lib/city-days';
+import type { ContinuingStay } from '../lib/hotel-stays';
 import { isCalendarDate, itineraryDayLabel } from '../lib/dates';
 import { text_limits } from '../lib/model';
 import {
@@ -61,7 +62,8 @@ export function StopPlacePicker({
   initial_category = 'sight',
   initial_city,
   initial_city_id,
-  day_stops = [],
+  route,
+  stays,
   saved_message = '',
   onCategoryChange,
   onEditPlanned,
@@ -77,7 +79,8 @@ export function StopPlacePicker({
   initial_category?: StopSearchRequest['category'];
   initial_city?: string;
   initial_city_id?: string;
-  day_stops?: PlannedStop[];
+  route: PlannedStop[];
+  stays: ContinuingStay[];
   saved_message?: string;
   onCategoryChange?(category: StopSearchRequest['category']): void;
   onEditPlanned?(stop: PlannedStop): void;
@@ -92,6 +95,14 @@ export function StopPlacePicker({
   ): void;
 }) {
   const cities = trip.cities ?? [];
+  // Only occupied nights mark a result as already planned. The checkout hotel stays on the map.
+  const day_stops = useMemo(
+    () => [
+      ...route,
+      ...stays.filter(({ stop }) => stop.checkout_date !== day).map(({ stop }) => stop),
+    ],
+    [route, stays, day],
+  );
   const day_indices = useMemo(() => cityIndicesOnDay(trip, day), [trip, day]);
   const options = useMemo(
     () => (day_indices.length ? day_indices : (trip.cities ?? []).map((_, index) => index)),
@@ -625,13 +636,14 @@ export function StopPlacePicker({
           active={active}
           native={native}
           heading={heading}
-          day={day}
           day_label={
             trip.start_date
               ? itineraryDayLabel(day, day, trip)
               : date_format.format(new Date(day + 'T00:00:00Z'))
           }
           day_stops={day_stops}
+          route={route}
+          stays={stays}
           cities={city_choices}
           places={places ?? []}
           search_status={loading ? 'Finding places…' : emptyResultsMessage()}

@@ -1,7 +1,8 @@
+import { useLayoutEffect, useRef } from 'react';
 import { daysBetween, formatVisitDate, formatVisitTime, toVisitInput } from '../lib/dates';
 import { formatEntryCount, visitTitle } from '../lib/model';
 import { distanceKm, formatDistance } from '../lib/distance';
-import type { continuingStays } from '../lib/hotel-stays';
+import type { ContinuingStay } from '../lib/hotel-stays';
 import { stop_kind_labels } from '../lib/types';
 import type { CheckIn, PhotoAsset, Place, PlannedStop, TravelPlatform, Trip } from '../lib/types';
 import { Icon } from './Icon';
@@ -22,7 +23,9 @@ interface ItineraryDayProps {
   day_cities: string;
   trip: Trip;
   stops: PlannedStop[];
-  continuing_stays: ReturnType<typeof continuingStays>;
+  continuing_stays: ContinuingStay[];
+  reveal_stop_id: string;
+  onReveal(): void;
   visits: CheckIn[];
   trip_visits: CheckIn[];
   places: Place[];
@@ -43,6 +46,8 @@ export function ItineraryDay({
   trip,
   stops,
   continuing_stays,
+  reveal_stop_id,
+  onReveal,
   visits,
   trip_visits,
   places,
@@ -57,6 +62,32 @@ export function ItineraryDay({
   onPhoto,
 }: ItineraryDayProps) {
   const { moving, move_error, reorder } = useStopOrder(onMoveStop);
+  const saved_button = useRef<HTMLButtonElement>(null);
+  useLayoutEffect(() => {
+    if (!reveal_stop_id) return;
+    // WebKit restores the dialog opener as it closes. Move focus once the itinerary is active.
+    const frame = requestAnimationFrame(() => {
+      const button = saved_button.current;
+      if (button) {
+        button.focus({ preventScroll: true });
+        const card = button.closest('.itinerary-stop-body') ?? button;
+        // A long journal can make the card taller than the viewport. Always keep its title in reach.
+        card.scrollIntoView({ block: 'nearest' });
+        button.scrollIntoView({ block: 'nearest' });
+        if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+          card.animate(
+            [
+              { backgroundColor: 'var(--apell-primary-soft)' },
+              { backgroundColor: getComputedStyle(card).backgroundColor },
+            ],
+            { duration: 900, easing: 'ease-out' },
+          );
+        }
+      }
+      onReveal();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [reveal_stop_id, onReveal]);
   const day_label = day_heading.format(new Date(day + 'T00:00:00Z'));
   const by_place = new Map(places.map((place) => [place.id, place]));
   const by_stop = new Map(stops.map((stop) => [stop.id, [] as CheckIn[]]));
@@ -154,6 +185,7 @@ export function ItineraryDay({
           type="button"
           className="ongoing-stay"
           key={stop.id}
+          ref={stop.id === reveal_stop_id ? saved_button : undefined}
           onClick={() => onEditStop(stop)}
         >
           <Icon name="bed" size={17} />
@@ -196,7 +228,9 @@ export function ItineraryDay({
                     <button
                       type="button"
                       className="itinerary-stop-title"
+                      ref={stop.id === reveal_stop_id ? saved_button : undefined}
                       aria-label={`Edit ${stop.title}`}
+                      aria-description={`Stop ${index + 1} of ${stops.length} · ${stop_kind_labels[stop.kind]}`}
                       onClick={() => onEditStop(stop)}
                     >
                       <span>{stop.title}</span>

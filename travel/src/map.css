@@ -155,33 +155,35 @@
   opacity: 0.35;
 }
 .map-tile-status {
-  position: absolute;
-  z-index: 450;
-  left: 18px;
-  top: 132px;
-  max-width: calc(100% - 92px);
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   background: var(--apell-warning-soft);
-  border: 1px solid var(--apell-warning-soft);
-  border-radius: 8px;
-  padding: 8px 10px;
-  font-size: 10px;
+  padding: 0 14px;
+  font-size: 0.8rem;
   line-height: 1.4;
   color: var(--apell-warning);
 }
 .map-tile-status button {
   flex: 0 0 auto;
-  padding: 2px 0;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 4px;
   border: 0;
   background: transparent;
   color: var(--apell-warning);
-  font-size: 11px;
+  font: inherit;
   font-weight: 650;
   text-decoration: underline;
 }
 .journal-map-pin {
+  display: block;
+  position: relative;
+  width: 44px;
+  height: 48px;
+  padding: 0;
+  pointer-events: auto;
   background: transparent;
   border: 0;
 }
@@ -217,7 +219,29 @@
 .journal-map-pin.stops .map-pin-bubble > span {
   transform: none;
 }
+.journal-map-pin.stay .map-pin-bubble,
+.map-stay-symbol {
+  color: var(--apell-accent-ink);
+  background: var(--apell-accent);
+  border-radius: 9px;
+}
+.map-stay-symbol {
+  display: grid;
+  place-items: center;
+  width: 27px;
+  height: 27px;
+  flex: none;
+}
+.journal-map-pin.stay .map-pin-bubble > span {
+  display: grid;
+  place-items: center;
+}
+.map-hotel-list:has(+ .map-stop-list) {
+  border-bottom: 1px solid var(--apell-line);
+}
 .map-pin-extra {
+  display: flex;
+  align-items: center;
   position: absolute;
   top: -6px;
   right: -10px;
@@ -494,10 +518,6 @@
 @container (max-height: 360px) {
   .map-caption {
     display: none;
-  }
-  .map-tile-status {
-    top: 70px;
-    max-width: calc(100% - 95px);
   }
   .map-empty-message {
     top: 58%;

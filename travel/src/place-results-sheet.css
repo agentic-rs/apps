@@ -1,4 +1,5 @@
 .result-map-sheet {
+  --result-canvas-min: 170px;
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -87,6 +88,15 @@
 .result-map-empty {
   padding: 8px 16px;
 }
+.result-map-loading {
+  display: grid;
+  place-items: center;
+  /* Reserve the same canvas and control row while the map module loads. */
+  flex: 1 0 calc(var(--result-canvas-min) + 49px);
+  margin: 0;
+  color: var(--apell-muted);
+  background: var(--apell-subtle);
+}
 
 @container (max-width: 20rem) {
   .result-map-card-heading {
@@ -109,6 +119,7 @@
 
 @media (orientation: landscape) and (min-width: 500px) and (max-height: 500px) {
   .result-map-sheet {
+    --result-canvas-min: 110px;
     display: grid;
     grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr);

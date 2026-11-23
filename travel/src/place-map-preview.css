@@ -97,16 +97,6 @@
 .place-map-canvas .leaflet-popup-content > div > div + div {
   margin-top: 0.4rem;
 }
-.place-preview-pin {
-  display: grid;
-  place-items: center;
-  background: transparent;
-  border: 0;
-}
-.place-preview-pin:focus-visible {
-  border-radius: 8px;
-  outline: 3px solid var(--apell-focus);
-}
 .place-stop-badge,
 .place-candidate-tip {
   display: grid;
@@ -127,6 +117,8 @@
     sans-serif;
 }
 .place-stop-badge small {
+  display: flex;
+  align-items: center;
   position: absolute;
   bottom: -4px;
   left: 75%;
@@ -135,6 +127,11 @@
   background: var(--apell-surface);
   color: var(--apell-text);
   font-size: 10px;
+}
+.place-stop-badge.stay {
+  border-radius: 9px;
+  background: var(--apell-accent);
+  color: var(--apell-accent-ink);
 }
 .place-candidate-tip {
   width: 34px;
@@ -192,4 +189,17 @@
 .place-map-status {
   color: var(--apell-muted);
   font-size: 0.85rem;
+}
+
+.browse-place-pin,
+.browse-route-pin {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  pointer-events: auto;
 }

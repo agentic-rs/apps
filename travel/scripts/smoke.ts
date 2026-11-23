@@ -710,6 +710,14 @@ try {
     failed_tile_requests > 0,
     'The outage scenario must request uncached tiles at a new zoom.',
   );
+  const offline_status = await page.locator('.map-tile-status').boundingBox();
+  const canvas = await page
+    .getByRole('region', { name: 'Map of named place reference locations' })
+    .boundingBox();
+  assert(
+    offline_status && canvas && offline_status.y >= canvas.y + canvas.height - 1,
+    'The offline status and Retry control must leave the map available for tapping pins.',
+  );
   await named_pin.waitFor();
   await page.locator('.journal-map-pin').click();
   await page
@@ -1154,6 +1162,72 @@ try {
   assert.deepEqual(extended_trip.city_arrival_dates, ['', '2031-03-12', '2031-03-16']);
   await chooseDay('2031-03-16');
   assert.equal(await day_title.innerText(), 'London → Rome');
+
+  await chooseDay('2031-03-11');
+  await button('Add hotel').click();
+  const hotel_editor = page.getByRole('dialog');
+  await hotel_editor.getByRole('button', { name: 'Enter manually' }).click();
+  await hotel_editor.getByLabel('Stop name').fill('Station hotel');
+  await hotel_editor.getByLabel('Check-out date').fill('2031-03-13');
+  await hotel_editor.getByText('Map coordinates', { exact: false }).click();
+  await hotel_editor.getByLabel('Stop latitude').fill('48.88');
+  await hotel_editor.getByLabel('Stop longitude').fill('2.35');
+  await hotel_editor.getByRole('button', { name: 'Add to Day 2', exact: true }).click();
+  await waitClosed();
+  await goTo('Map');
+  const route_map = page.getByRole('region', { name: 'Map of planned stops in itinerary order' });
+  await route_map.getByRole('button', { name: 'Stop 1, Station hotel', exact: true }).waitFor();
+
+  await goTo('Itinerary');
+  await chooseDay('2031-03-12');
+  assert.equal(await day_title.innerText(), 'Paris → London');
+  await addStop('Station hall', '48.88', '2.35');
+  const before_stay_edit = await readJournal();
+  const saved_stay = before_stay_edit.stops.find((stop) => stop.title === 'Station hotel')!;
+  await goTo('Map');
+  const overnight_pin = route_map.getByRole('button', {
+    name: 'Stop 1, Station hall · Staying at Station hotel',
+    exact: true,
+  });
+  await overnight_pin.click();
+  assert.equal(await overnight_pin.getAttribute('data-stop-numbers'), '1');
+  const pin_card = page.getByRole('region', { name: 'Stops at selected map pin' });
+  await pin_card.getByRole('button', { name: /Station hall/ }).waitFor();
+  await pin_card.getByRole('button', { name: 'Staying at Station hotel', exact: true }).click();
+  assert.equal(await hotel_editor.getByLabel('Check-in date').inputValue(), '2031-03-11');
+  assert.equal(await hotel_editor.getByLabel('Check-out date').inputValue(), '2031-03-13');
+  await hotel_editor.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await waitClosed();
+  assert.equal(await page.getByLabel('Choose itinerary date').inputValue(), '2031-03-12');
+  assert.equal(await optimizer.count(), 0, 'An ongoing stay is not a second numbered stop.');
+
+  await chooseDay('2031-03-13');
+  const checkout_label = 'Check out of Station hotel';
+  const checkout_pin = route_map.getByRole('button', { name: checkout_label, exact: true });
+  await checkout_pin.waitFor();
+  assert.equal(await checkout_pin.getAttribute('data-stop-numbers'), null);
+  assert.equal(await page.getByText('No stops on this day', { exact: true }).count(), 0);
+  assert.equal(await page.locator('.map-route-line').count(), 0);
+  const hotel_list_toggle = button('Hotel stays');
+  if ((await hotel_list_toggle.getAttribute('aria-expanded')) === 'false')
+    await hotel_list_toggle.click();
+  await page
+    .getByRole('region', { name: 'Day route controls' })
+    .getByRole('button', { name: checkout_label, exact: true })
+    .click();
+  await hotel_editor.getByLabel('Notes').fill('Leave the bags at reception.');
+  await hotel_editor.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await waitClosed();
+  assert.equal(await page.getByLabel('Choose itinerary date').inputValue(), '2031-03-13');
+  assert.deepEqual(
+    (await readJournal()).stops,
+    before_stay_edit.stops.map((stop) =>
+      stop.id === saved_stay.id ? { ...stop, notes: 'Leave the bags at reception.' } : stop,
+    ),
+  );
+  await chooseDay('2031-03-14');
+  await page.getByText('No stops on this day', { exact: true }).waitFor();
+  assert.equal(await route_map.getByRole('button', { name: /Station hotel/ }).count(), 0);
   await button('Trips').click();
   await button('New trip').click();
   await chooseCity(first_city, 'Springfield', 'Springfield, Illinois, United States');

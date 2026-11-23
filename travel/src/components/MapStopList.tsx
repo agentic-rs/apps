@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from 'react';
+import type { ContinuingStay } from '../lib/hotel-stays';
 import { stop_kind_labels, type PlannedStop } from '../lib/types';
 import { Icon } from './Icon';
 import { StopOrderButtons, useStopOrder, type MoveStop } from './StopOrderButtons';
@@ -37,11 +38,13 @@ export function MapStopButton({
 
 export function MapStopList({
   stops,
+  continuing_stays,
   onOpenStop,
   onMoveStop,
   onOptimize,
 }: {
   stops: PlannedStop[];
+  continuing_stays: ContinuingStay[];
   onOpenStop(id: string): void;
   onMoveStop: MoveStop;
   onOptimize(): void;
@@ -67,9 +70,9 @@ export function MapStopList({
           onClick={() => setPreference(!expanded)}
         >
           <Icon name="timeline" size={17} />
-          Stop list
+          {stops.length ? 'Stop list' : 'Hotel stays'}
           <span className="map-stop-count" aria-hidden="true">
-            {stops.length}
+            {stops.length || continuing_stays.length}
           </span>
           <Icon
             name="next"
@@ -90,26 +93,67 @@ export function MapStopList({
             {move_error}
           </p>
         )}
-        <ol className="map-stop-list" aria-label="Day route stops">
-          {stops.map((stop, index) => (
-            <li key={stop.id}>
-              <MapStopButton
-                stop={stop}
-                number={index + 1}
-                label={`Edit ${stop.title}`}
-                onOpen={onOpenStop}
-              />
-              <StopOrderButtons
-                stop={stop}
-                count={stops.length}
-                index={index}
-                moving={moving}
-                onMove={reorder}
-              />
-            </li>
-          ))}
-        </ol>
+        {continuing_stays.length > 0 && (
+          <ul className="map-stop-list map-hotel-list" aria-label="Hotel stays">
+            {continuing_stays.map((stay) => (
+              <li key={stay.stop.id}>
+                <MapStayButton stay={stay} onOpen={onOpenStop} />
+              </li>
+            ))}
+          </ul>
+        )}
+        {stops.length > 0 && (
+          <ol className="map-stop-list" aria-label="Day route stops">
+            {stops.map((stop, index) => (
+              <li key={stop.id}>
+                <MapStopButton
+                  stop={stop}
+                  number={index + 1}
+                  label={`Edit ${stop.title}`}
+                  onOpen={onOpenStop}
+                />
+                <StopOrderButtons
+                  stop={stop}
+                  count={stops.length}
+                  index={index}
+                  moving={moving}
+                  onMove={reorder}
+                />
+              </li>
+            ))}
+          </ol>
+        )}
       </div>
     </section>
+  );
+}
+
+export function MapStayButton({
+  stay,
+  onOpen,
+}: {
+  stay: ContinuingStay;
+  onOpen(id: string): void;
+}) {
+  return (
+    <button
+      type="button"
+      className="map-stop-row"
+      aria-label={stay.label}
+      onClick={() => onOpen(stay.stop.id)}
+    >
+      <span className="map-stay-symbol">
+        <Icon name="bed" size={18} />
+      </span>
+      <span className="map-stop-copy">
+        <strong>{stay.label}</strong>
+        {(!stay.stop.position || stay.stop.city) && (
+          <small>
+            {[stay.stop.city, !stay.stop.position && 'No pin'].filter(Boolean).join(' · ')}
+          </small>
+        )}
+      </span>
+      <Icon name="next" size={15} />
+    </button>
   );
 }
