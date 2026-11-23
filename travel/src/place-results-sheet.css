@@ -1,0 +1,135 @@
+.result-map-sheet {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.result-map-city-bar,
+.result-map-card {
+  flex: none;
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  background: var(--apell-surface);
+}
+.result-map-city-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px 12px;
+  flex-wrap: wrap;
+  padding: 5px 16px;
+}
+.result-map-city-bar .stop-picker-cities {
+  margin: 0;
+}
+.result-map-day {
+  margin-inline-start: auto;
+  color: var(--apell-muted);
+  font-weight: 550;
+  font-size: 0.85rem;
+}
+.result-map-card {
+  width: min(100%, 640px);
+  align-self: center;
+  padding: 12px 16px calc(12px + var(--safe-area-bottom));
+  overflow-wrap: anywhere;
+  container-type: inline-size;
+}
+.result-map-card-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+.result-map-card h3 {
+  margin: 2px 0 0;
+  font-size: 1.15rem;
+  line-height: 1.2;
+}
+.result-map-count,
+.result-map-address {
+  color: var(--apell-muted);
+  font-size: 0.84rem;
+}
+.result-map-count {
+  font-variant-numeric: tabular-nums;
+}
+.result-map-address {
+  margin: 6px 0;
+  line-height: 1.35;
+}
+.result-map-pager {
+  display: flex;
+  flex: none;
+  gap: 2px;
+}
+.result-map-pager button {
+  min-width: 44px;
+  min-height: 44px;
+}
+.result-map-place-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.result-map-place-actions button {
+  flex: 1;
+  min-height: 44px;
+  white-space: normal;
+  justify-content: center;
+}
+.result-map-card .stop-picker-saved {
+  margin: 8px 0 0;
+}
+.result-map-empty {
+  padding: 8px 16px;
+}
+
+@container (max-width: 20rem) {
+  .result-map-card-heading {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .result-map-card-heading > div {
+    grid-area: 1 / 1;
+  }
+  .result-map-count {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    margin-inline-end: 100px;
+  }
+  .result-map-pager {
+    place-self: start end;
+  }
+}
+
+@media (orientation: landscape) and (min-width: 500px) and (max-height: 500px) {
+  .result-map-sheet {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    overflow: hidden;
+  }
+  .result-map-city-bar,
+  .result-map-empty {
+    grid-column: 1 / -1;
+  }
+  .result-map-city-bar {
+    max-height: 30dvh;
+    overflow-y: auto;
+  }
+  .result-map-sheet > .browse-map,
+  .result-map-card {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .result-map-card {
+    align-self: stretch;
+    border-inline-start: 1px solid var(--apell-line);
+  }
+}

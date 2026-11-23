@@ -15,6 +15,8 @@ Tap **＋** beside a nearby sight to add it at the end of the selected day. Its 
 
 Open **Overview** to see the cities and planned stops for each day. Tap a day to open it. **Add day** extends the itinerary by one calendar day and opens that day.
 
+In a sight or hotel search, tap **Map** beside the results heading. Tap a pin or use the arrows to compare places, including those that share coordinates. Each new place shows the straight-line distance to the closest located stop on that day. On a transfer day, tap either city to see its results. **Day route** fits the results and the numbered itinerary stops together. **Review place** opens the stop or hotel review. Back returns to the selected place on the map, then to the list.
+
 From a stop’s review, **View on map** previews the day in the proposed order. The highlighted pin carries the stop’s proposed number. Dashed lines connect consecutive stops with coordinates. The closest stop and straight-line distance help you compare locations before saving. Use **Back** to return to the same route position, dates and notes. The map action is available for directory results and manually entered coordinates.
 
 When a search result says **On this day**, tap it to edit the saved visit or stay, or choose **Add another visit** or **Add another stay**. Typing also searches the day's saved stops in the selected city. If the directory uses a different pin for a sight, you can reopen your original stop under **On this day**. Saved stops remain searchable offline. Hotel stays appear on each night from check-in through the night before check-out.

@@ -117,6 +117,16 @@ export function groupPins(points: MapPoint[]): PinGroup[] {
   return [...groups.values()];
 }
 
+export function nearestDayStop(position: Coordinates, stops: readonly PlannedStop[]) {
+  let closest: { title: string; number: number; km: number } | undefined;
+  for (const [i, stop] of stops.entries()) {
+    if (!stop.position) continue;
+    const km = distanceKm(position, stop.position);
+    if (!closest || km < closest.km) closest = { title: stop.title, number: i + 1, km };
+  }
+  return closest;
+}
+
 /** Number every stop in the proposed route, including places without coordinates. */
 export function previewDayStops(
   position: Coordinates,
@@ -131,13 +141,8 @@ export function previewDayStops(
   route.splice(slot, 0, { position });
   const { points } = mapStops(others);
   const groups = groupPins(points);
-  let closest: { title: string; number: number; km: number } | undefined;
-  for (const point of points) {
-    const km = distanceKm(position, point.position);
-    if (!closest || km < closest.km) {
-      closest = { title: point.label, number: numbers.get(point.id)!, km };
-    }
-  }
+  const closest = nearestDayStop(position, others);
+  if (closest && closest.number > slot) closest.number++;
   return { groups, numbers, closest, route, candidate_number: slot + 1 };
 }
 

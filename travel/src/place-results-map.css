@@ -1,0 +1,95 @@
+.browse-map {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+  min-width: 0;
+}
+.browse-map .browse-map-canvas {
+  flex: 1 0 170px;
+  min-height: 170px;
+}
+@media (orientation: landscape) and (min-width: 500px) and (max-height: 500px) {
+  .browse-map .browse-map-canvas {
+    flex-basis: 110px;
+    min-height: 110px;
+  }
+}
+.browse-map-marker,
+.browse-map-marker > span {
+  display: block;
+  border: 0;
+  background: transparent;
+}
+.browse-place-pin,
+.browse-route-pin {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  pointer-events: auto;
+}
+.browse-pin-badge {
+  display: grid;
+  place-items: center;
+  width: 29px;
+  height: 29px;
+  border-radius: 50% 50% 50% 4px;
+  border: 2px solid var(--apell-accent-line);
+  background: var(--apell-surface);
+  color: var(--apell-accent-line);
+  transform: rotate(-45deg);
+  box-shadow: 0 1px 4px var(--apell-shadow);
+}
+.browse-pin-badge svg {
+  transform: rotate(45deg);
+}
+.browse-place-pin[aria-pressed='true'] .browse-pin-badge {
+  width: 34px;
+  height: 34px;
+  color: var(--apell-accent-ink);
+  border-color: var(--apell-surface);
+  background: var(--apell-accent);
+  box-shadow:
+    0 0 0 2px var(--apell-accent-line),
+    0 2px 6px var(--apell-shadow);
+}
+.browse-map-tools {
+  display: flex;
+  flex: none;
+  align-items: stretch;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 2px 12px;
+  background: var(--apell-surface);
+  border-bottom: 1px solid var(--apell-line);
+}
+.browse-map-tools button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--apell-primary);
+  background: transparent;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+.browse-map-tools button:nth-last-child(2) {
+  margin-inline-start: auto;
+}
+.browse-map-tools button:active {
+  background: var(--apell-primary-soft);
+}
+.browse-map-tools button > span {
+  font:
+    400 24px/1 system-ui,
+    sans-serif;
+}

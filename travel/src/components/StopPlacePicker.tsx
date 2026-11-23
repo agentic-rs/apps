@@ -19,6 +19,7 @@ import {
 import type { PlannedStop, StopKind, Trip } from '../lib/types';
 import { Icon } from './Icon';
 import { PlannedSearchResult, StopPlaceResult } from './StopPlaceResult';
+import { PlaceResultsSheet } from './PlaceResultsSheet';
 import '../stop-place-picker.css';
 
 const categories = [
@@ -53,6 +54,8 @@ function searchKey(
 
 export function StopPlacePicker({
   trip,
+  active,
+  native,
   day,
   lookup,
   initial_category = 'sight',
@@ -67,6 +70,8 @@ export function StopPlacePicker({
   onManual,
 }: {
   trip: Trip;
+  active: boolean;
+  native: boolean;
   day: string;
   lookup: StopLookup;
   initial_category?: StopSearchRequest['category'];
@@ -119,6 +124,10 @@ export function StopPlacePicker({
   const [retry, setRetry] = useState(0);
   const [state, setState] = useState<SearchState>();
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [map_open, setMapOpen] = useState(false);
+  const map_button = useRef<HTMLButtonElement>(null);
+  const results_heading = useRef<HTMLHeadingElement>(null);
+  const return_to_map_button = useRef(false);
   const [adding_id, setAddingId] = useState<string | null>(null);
   const [save_error, setSaveError] = useState<{ id: string; message: string }>();
   const saving = useRef(false);
@@ -211,8 +220,15 @@ export function StopPlacePicker({
   const category_label = categories.find(([key]) => key === category)![1];
   const scoped_label = city_index === undefined ? city : cityLabel(city_index);
   const heading = scoped_city ? `${category_label} near ${scoped_label}` : category_label;
+  const quick_sights = Boolean(
+    onQuickAdd && can_browse && !submitted_query && category === 'sight',
+  );
 
   useLayoutEffect(() => {
+    if (!map_open && return_to_map_button.current) {
+      (map_button.current ?? results_heading.current)?.focus({ preventScroll: true });
+      return_to_map_button.current = false;
+    }
     if (!adding_id && return_focus.current) {
       return_focus.current.focus({ preventScroll: true });
       return_focus.current = null;
@@ -307,6 +323,40 @@ export function StopPlacePicker({
     }
   }
 
+  function chooseResult(place: StopSearchResult, origin: HTMLElement) {
+    setSaveError(undefined);
+    setExpanded(null);
+    onPick(place, origin, scoped_city, scoped_id);
+  }
+
+  const city_choices = (
+    <div className="stop-picker-cities" role="group" aria-label="Search city">
+      {options.length === 0 || (options.length === 1 && city_index !== undefined) ? (
+        <span className="stop-picker-single-city">
+          <Icon name="pin" size={18} /> {city}
+        </span>
+      ) : (
+        options.map((index, order) => (
+          <Fragment key={index}>
+            {order > 0 && day_indices.length > 0 && <Icon name="arrow" size={16} />}
+            <button
+              type="button"
+              aria-label={`Search in ${cityLabel(index)}`}
+              aria-pressed={city_index === index}
+              onClick={() => {
+                setExpanded(null);
+                setSaveError(undefined);
+                setChosenCity(index);
+              }}
+            >
+              <Icon name={city_index === index ? 'check' : 'pin'} size={16} /> {cityLabel(index)}
+            </button>
+          </Fragment>
+        ))
+      )}
+    </div>
+  );
+
   return (
     <fieldset className="stop-picker" aria-label="Place picker" disabled={adding_id !== null}>
       <div className="stop-picker-scroll">
@@ -325,32 +375,7 @@ export function StopPlacePicker({
           )}
           {!airports &&
             (options.length ? (
-              <div className="stop-picker-cities" role="group" aria-label="Search city">
-                {options.length === 1 && city_index !== undefined ? (
-                  <span className="stop-picker-single-city">
-                    <Icon name="pin" size={18} />
-                    {city}
-                  </span>
-                ) : (
-                  options.map((index, order) => (
-                    <Fragment key={index}>
-                      {order > 0 && day_indices.length > 0 && <Icon name="arrow" size={16} />}
-                      <button
-                        type="button"
-                        aria-label={`Search in ${cityLabel(index)}`}
-                        aria-pressed={city_index === index}
-                        onClick={() => {
-                          setExpanded(null);
-                          setChosenCity(index);
-                        }}
-                      >
-                        <Icon name={city_index === index ? 'check' : 'pin'} size={16} />
-                        {cityLabel(index)}
-                      </button>
-                    </Fragment>
-                  ))
-                )}
-              </div>
+              city_choices
             ) : (
               <label className="stop-picker-city-input">
                 Search city
@@ -434,7 +459,26 @@ export function StopPlacePicker({
           </div>
         </div>
         <section className="stop-picker-content" aria-label="Place suggestions">
-          <h3>{heading}</h3>
+          <div className="stop-results-heading">
+            <h3 ref={results_heading} tabIndex={-1}>
+              {heading}
+            </h3>
+            {is_browsable && Boolean(places?.length) && (
+              <button
+                ref={map_button}
+                className="stop-results-map-action"
+                type="button"
+                aria-label="Map of results"
+                aria-haspopup="dialog"
+                onClick={() => {
+                  setExpanded(null);
+                  setMapOpen(true);
+                }}
+              >
+                <Icon name="map" size={18} /> Map
+              </button>
+            )}
+          </div>
           {onEditPlanned && planned.length > 0 && (
             <>
               <h4 className="stop-picker-section-title">On this day</h4>
@@ -494,19 +538,11 @@ export function StopPlacePicker({
                   adding={adding_id === place.id}
                   error={save_error?.id === place.id ? save_error.message : undefined}
                   onQuickAdd={
-                    onQuickAdd &&
-                    can_browse &&
-                    !submitted_query &&
-                    category === 'sight' &&
-                    place.kind === 'sight'
+                    quick_sights && place.kind === 'sight'
                       ? (row, button) => void addSight(place, row, button)
                       : undefined
                   }
-                  onPick={(origin) => {
-                    setSaveError(undefined);
-                    setExpanded(null);
-                    onPick(place, origin, scoped_city, scoped_id);
-                  }}
+                  onPick={(origin) => chooseResult(place, origin)}
                 />
               ))}
             </ul>
@@ -584,6 +620,35 @@ export function StopPlacePicker({
           <Icon name="edit" size={17} /> Enter manually
         </button>
       </footer>
+      {map_open && (
+        <PlaceResultsSheet
+          active={active}
+          native={native}
+          heading={heading}
+          day={day}
+          day_label={
+            trip.start_date
+              ? itineraryDayLabel(day, day, trip)
+              : date_format.format(new Date(day + 'T00:00:00Z'))
+          }
+          day_stops={day_stops}
+          cities={city_choices}
+          places={places ?? []}
+          search_status={loading ? 'Finding places…' : emptyResultsMessage()}
+          search_error={error}
+          onRetry={tryAgain}
+          saving={adding_id !== null}
+          saved_message={saved_message}
+          save_error={save_error}
+          onPick={chooseResult}
+          onQuickAdd={quick_sights ? addSight : undefined}
+          onEditPlanned={onEditPlanned}
+          onClose={() => {
+            return_to_map_button.current = true;
+            setMapOpen(false);
+          }}
+        />
+      )}
     </fieldset>
   );
 }

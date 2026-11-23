@@ -142,6 +142,7 @@ export function StopForm(props: StopFormProps) {
     <>
       <StopEditor
         {...props}
+        covered={Boolean(planned)}
         onFinish={props.onCancel}
         onEditPlanned={props.stop ? undefined : setPlanned}
       />
@@ -171,9 +172,15 @@ function StopEditor({
   onFinish,
   onDelete,
   onEditPlanned,
+  covered = false,
   native,
-}: StopFormProps & { onFinish(): void; onEditPlanned?(stop: PlannedStop): void }) {
+}: StopFormProps & {
+  covered?: boolean;
+  onFinish(): void;
+  onEditPlanned?(stop: PlannedStop): void;
+}) {
   const [draft, setDraft] = useState(() => stopDraft(day, stop));
+  const inspected = useRef<typeof draft | null>(null);
   const {
     id: draft_id,
     directory_ref,
@@ -267,6 +274,23 @@ function StopEditor({
     return value === 'stay' && kind !== 'stay' ? checkoutAfter(stop_day, 1) : checkout;
   }
 
+  function onlyInspectedPlace() {
+    const choice = inspected.current;
+    if (!choice) return false;
+    const fields = Object.keys(draft) as (keyof typeof draft)[];
+    return fields.every((field) => draft[field] === choice[field]);
+  }
+
+  function backToResults() {
+    // Inspecting a directory result should leave the other places available to add.
+    // Keep a draft that has been edited or needs a save retry.
+    if (!error && onlyInspectedPlace()) {
+      setDraft(stopDraft(day));
+      inspected.current = null;
+    }
+    setPicking('initial');
+  }
+
   function changeDay(value: string) {
     if (value === stop_day) return;
     updateDraft({
@@ -286,7 +310,18 @@ function StopEditor({
     city_id?: string,
   ) {
     last_pick.current = origin;
-    updateDraft({
+    if (
+      picking === 'initial' &&
+      directory_ref?.provider === place.source &&
+      directory_ref.id === place.id &&
+      city === draft.city &&
+      city_id === draft.city_id
+    ) {
+      setPicking(null);
+      return;
+    }
+    const choice = {
+      ...draft,
       title: place.title,
       city,
       city_id,
@@ -295,7 +330,10 @@ function StopEditor({
       latitude: String(place.position.latitude),
       longitude: String(place.position.longitude),
       directory_ref: directoryReference(place),
-    });
+    };
+    inspected.current =
+      !stop && ((!dirty && !source_changed) || onlyInspectedPlace()) ? choice : null;
+    setDraft(choice);
     setPicking(null);
     setError('');
   }
@@ -308,6 +346,7 @@ function StopEditor({
     city_id?: string,
   ) {
     last_pick.current = origin;
+    inspected.current = null;
     updateDraft({
       title: picking === 'change' && !name ? title : name,
       city,
@@ -340,6 +379,7 @@ function StopEditor({
       : date_format.format(new Date(saved.day + 'T00:00:00Z'));
     setSavedMessage(`${saved.title} added to ${destination}.`);
     setDraft(stopDraft(saved.day));
+    inspected.current = null;
     setPickerDay(saved.day);
     setPicking('initial');
   }
@@ -423,13 +463,15 @@ function StopEditor({
               : undefined
         }
         onDismiss={dismiss}
-        onBack={!stop && !picking && !discard ? () => setPicking('initial') : dismiss}
+        onBack={!stop && !picking && !discard ? backToResults : dismiss}
       >
         {picker_day !== null && (
           <div ref={picker_pane} tabIndex={-1} className="stop-picker-pane" hidden={!picking}>
             <StopPlacePicker
               key={picker_day}
               trip={trip}
+              native={native}
+              active={Boolean(picking) && !covered}
               day={picker_day}
               initial_city={city}
               initial_city_id={city_id}

@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef } from 'react';
+import { useId, useLayoutEffect, useRef, type Ref } from 'react';
 import { useBackLayer } from '../lib/back-navigation';
 import { formatDistance } from '../lib/distance';
 import { matchesPlannedPlace } from '../lib/planned-stop-search';
@@ -26,6 +26,48 @@ function savedSchedule(stop: PlannedStop): string {
   return [end ? calendar_date.formatRange(start, end) : calendar_date.format(start), stop.time]
     .filter(Boolean)
     .join(' · ');
+}
+
+export function SavedPlaceActions({
+  place,
+  stops,
+  onEdit,
+  onAnother,
+  first_ref,
+}: {
+  place: StopSearchResult;
+  stops: PlannedStop[];
+  onEdit(stop: PlannedStop): void;
+  onAnother(): void;
+  first_ref?: Ref<HTMLButtonElement>;
+}) {
+  return (
+    <>
+      {stops.map((stop, index) => (
+        <button
+          ref={index === 0 ? first_ref : undefined}
+          key={stop.id}
+          type="button"
+          onClick={() => onEdit(stop)}
+        >
+          <Icon name="edit" size={17} />
+          <span>
+            <strong>
+              Edit planned {stop.kind === 'stay' ? 'stay' : 'visit'}
+              {stops.length > 1 && ` ${index + 1}`}
+            </strong>
+            <small>
+              {stop.title !== place.title && `${stop.title} · `}
+              {savedSchedule(stop)}
+            </small>
+          </span>
+        </button>
+      ))}
+      <button type="button" onClick={onAnother}>
+        <Icon name="plus" size={17} /> Add another {place.kind === 'stay' ? 'stay' : 'visit'}
+      </button>
+    </>
+  );
 }
 
 export function PlannedSearchResult({
@@ -150,35 +192,16 @@ export function StopPlaceResult({
           role="group"
           aria-label={`Planned stops at ${place.title}`}
         >
-          {planned.map((stop, index) => (
-            <button
-              ref={index === 0 ? edit : undefined}
-              key={stop.id}
-              type="button"
-              onClick={() => onEditPlanned(stop)}
-            >
-              <Icon name="edit" size={17} />
-              <span>
-                <strong>
-                  Edit planned {stop.kind === 'stay' ? 'stay' : 'visit'}
-                  {planned.length > 1 && ` ${index + 1}`}
-                </strong>
-                <small>
-                  {stop.title !== place.title && `${stop.title} · `}
-                  {savedSchedule(stop)}
-                </small>
-              </span>
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={() => {
+          <SavedPlaceActions
+            place={place}
+            stops={planned}
+            onEdit={onEditPlanned}
+            first_ref={edit}
+            onAnother={() => {
               collapse();
               if (row.current) onPick(row.current);
             }}
-          >
-            <Icon name="plus" size={17} /> Add another {place.kind === 'stay' ? 'stay' : 'visit'}
-          </button>
+          />
         </div>
       )}
     </li>

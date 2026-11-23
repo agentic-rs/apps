@@ -137,6 +137,26 @@
   letter-spacing: -0.025em;
   overflow-wrap: anywhere;
 }
+.stop-results-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  overflow-wrap: anywhere;
+}
+.stop-results-map-action {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 44px;
+  border: 0;
+  padding-inline: 8px;
+  border-radius: 10px;
+  color: var(--apell-primary);
+  background: var(--apell-primary-soft);
+  font-weight: 600;
+}
 .stop-picker-section-title {
   margin: 16px 0 0;
   color: var(--apell-muted);

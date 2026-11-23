@@ -12,6 +12,7 @@ export function Dialog({
   dismiss_disabled = false,
   back_label,
   dismiss_label,
+  active = true,
 }: {
   title: string;
   children: ReactNode;
@@ -22,18 +23,20 @@ export function Dialog({
   dismiss_disabled?: boolean;
   back_label?: string;
   dismiss_label?: string;
+  active?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const outside_press = useRef(false);
   const id = useId();
-  useBackLayer(true, () => {
+  useBackLayer(active, () => {
     if (!dismiss_disabled) onBack();
   });
   useLayoutEffect(() => {
+    if (!active) return;
     const dialog = ref.current!;
     dialog.showModal();
     return () => dialog.close();
-  }, []);
+  }, [active]);
   function outside(client_x: number, client_y: number) {
     const bounds = ref.current!.getBoundingClientRect();
     return (
@@ -66,6 +69,7 @@ export function Dialog({
       }}
       onCancel={(event) => {
         event.preventDefault();
+        event.stopPropagation();
         dismissBackLayer();
       }}
     >

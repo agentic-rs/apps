@@ -1542,7 +1542,85 @@ try {
       .map((stop) => stop.title);
   const planned_list = frame.getByRole('list', { name: 'Planned stops', exact: true });
   await add_stop.click();
-  await nara.click();
+  await kyoto_museum.waitFor();
+  const open_results_map = frame.getByRole('button', { name: 'Map of results', exact: true });
+  const sight_map = frame.getByRole('dialog', { name: 'Sights near Kyoto', exact: true });
+  const result_pins = sight_map.getByRole('region', { name: 'Map of place results', exact: true });
+  const results = dialog.getByRole('list', { name: 'Place results', exact: true });
+  const sight_names = await results.locator('strong').allTextContents();
+  assert.deepEqual([...sight_names].sort(), ['Kyoto history museum', 'Kyoto test museum']);
+  const browse_requests = place_requests.length;
+  const browse_writes = journal_writes;
+  await open_results_map.click();
+  const pin_for = (name: string) =>
+    result_pins.getByRole('button', { name: `Show ${name} on map`, exact: true });
+  // These two venues share one coordinate. Both must remain individually selectable.
+  await pin_for(sight_names[0]).waitFor();
+  assert.equal(await pin_for(sight_names[0]).getAttribute('aria-pressed'), 'true');
+  const nara_route_pin = result_pins.getByRole('button', {
+    name: 'Stop 2, Nara Park',
+    exact: true,
+  });
+  const route_pin_in_view = () =>
+    nara_route_pin.evaluate((pin) => {
+      const view = pin.closest('[role="region"]')!.getBoundingClientRect();
+      const target = pin.getBoundingClientRect();
+      return (
+        target.left >= view.left &&
+        target.right <= view.right &&
+        target.top >= view.top &&
+        target.bottom <= view.bottom
+      );
+    });
+  assert.equal(await route_pin_in_view(), false, 'Kyoto results open at city scale.');
+  await sight_map.getByRole('button', { name: 'Fit results and day route', exact: true }).click();
+  assert.equal(await route_pin_in_view(), true, 'The full day includes the other transfer city.');
+  await sight_map.getByRole('button', { name: 'Fit search results', exact: true }).click();
+  assert.equal(await route_pin_in_view(), false);
+  assert.equal(await sight_map.getByRole('button', { name: 'Previous place' }).isDisabled(), true);
+  await sight_map.getByRole('button', { name: 'Next place' }).click();
+  assert.equal(await pin_for(sight_names[1]).getAttribute('aria-pressed'), 'true');
+  assert.equal(await sight_map.getByRole('button', { name: 'Next place' }).isDisabled(), true);
+  await sight_map.getByText(sight_names[1], { exact: true }).waitFor();
+  await sight_map.getByRole('button', { name: 'Review place' }).click();
+  assert.equal(await dialog.getByLabel('Stop name').inputValue(), sight_names[1]);
+  await dialog.getByText('Day 2 · Kyoto', { exact: true }).waitFor();
+  assert.equal(await shellBack(), true);
+  await sight_map.getByText(sight_names[1], { exact: true }).waitFor();
+  assert.equal(await pin_for(sight_names[1]).getAttribute('aria-pressed'), 'true');
+  const reviewed_quick_add = `Add ${sight_names[1]} to day`;
+  await sight_map.getByRole('button', { name: reviewed_quick_add, exact: true }).waitFor();
+  await sight_map.getByRole('button', { name: 'Back to place list' }).click();
+  await kyoto_museum.waitFor();
+  await results.getByRole('button', { name: reviewed_quick_add, exact: true }).waitFor();
+  assert.equal(await kyoto.getAttribute('aria-pressed'), 'true');
+  assert.equal(place_requests.length, browse_requests);
+  assert.equal(journal_writes, browse_writes);
+  await open_results_map.click();
+  await sight_map.getByRole('button', { name: 'Search in Nara', exact: true }).click();
+  const nara_map = frame.getByRole('dialog', { name: 'Sights near Nara', exact: true });
+  assert.equal(
+    await nara_map.getByRole('button', { name: 'Search in Nara' }).getAttribute('aria-pressed'),
+    'true',
+  );
+  const nara_pins = nara_map.getByRole('region', { name: 'Map of place results', exact: true });
+  assert.equal(await nara_pins.getByRole('button', { name: /^Show Kyoto / }).count(), 0);
+  await nara_pins.getByRole('button', { name: 'Stop 2, Nara Park', exact: true }).waitFor();
+  const national_pin = nara_pins.getByRole('button', { name: `Show ${museum_name} on map` });
+  await national_pin.click();
+  await nara_map.getByText(museum_name, { exact: true }).waitFor();
+  await nara_map
+    .getByRole('group', { name: 'Selected place' })
+    .getByText(/565 m straight line to stop 2 · Nara Park/)
+    .waitFor();
+  assert.equal(await national_pin.getAttribute('aria-pressed'), 'true');
+  await page
+    .locator('#applet')
+    .screenshot({ path: resolve(qa_directory, 'native-sight-results-map.png') });
+  assert.equal(await shellBack(), true);
+  await nara_museum.waitFor();
+  assert.equal(await nara.getAttribute('aria-pressed'), 'true');
+  assert.deepEqual(journal(), before_insert);
   await place_search.fill(museum_name);
   await search.click();
   await dialog.getByRole('button', { name: /^Nara National Museum/ }).click();
@@ -1725,7 +1803,7 @@ try {
     name: 'Add Kyoto test museum to day',
     exact: true,
   });
-  const quick_history = dialog.getByRole('button', {
+  const quick_history = sight_map.getByRole('button', {
     name: 'Add Kyoto history museum to day',
     exact: true,
   });
@@ -1759,7 +1837,11 @@ try {
   await page
     .locator('#applet')
     .screenshot({ path: resolve(qa_directory, 'native-transfer-quick-add.png') });
+  await open_results_map.click();
+  await pin_for('Kyoto history museum').press('Enter');
   await quick_history.click();
+  await sight_map.getByRole('group', { name: 'Selected place' }).getByText('On this day').waitFor();
+  await sight_map.getByRole('button', { name: 'Back to place list' }).click();
   await dialog
     .getByRole('button', { name: /^Kyoto history museum/ })
     .getByText('On this day')
@@ -1779,6 +1861,13 @@ try {
   );
   assert(new_sights.every((stop) => stop.directory_ref && stop.position));
   assert.deepEqual({ ...saved_quickly, stops: saved_quickly.stops.slice(0, -2) }, second_save);
+  await open_results_map.click();
+  await sight_map.getByRole('button', { name: /^Edit planned visit/ }).click();
+  assert.equal(await dialog.getByLabel('Stop name').inputValue(), sight_names[0]);
+  assert.equal(await shellBack(), true);
+  await sight_map.getByText(sight_names[0], { exact: true }).waitFor();
+  assert.deepEqual(journal(), saved_quickly, 'Inspecting the mapped visit preserves the day.');
+  assert.equal(await shellBack(), true);
   await dialog.getByRole('button', { name: 'Done', exact: true }).click();
   await dialog.waitFor({ state: 'hidden' });
   await planned_list
@@ -1788,7 +1877,22 @@ try {
   await add_hotel.click();
   await place_search.fill('test inn');
   await search.click();
-  await nara_inn.click();
+  await nara_inn.waitFor();
+  const hotel_map = frame.getByRole('dialog', { name: 'Hotels near Nara', exact: true });
+  await open_results_map.click();
+  await hotel_map.getByText('Nara test inn', { exact: true }).waitFor();
+  const review_hotel = hotel_map.getByRole('button', { name: 'Review place', exact: true });
+  await review_hotel.click();
+  const reviewed_hotel_name = 'Nara inn by the station';
+  await dialog.getByLabel('Stop name').fill(reviewed_hotel_name);
+  await dialog.getByLabel('Notes').fill('Ask about breakfast.');
+  assert.equal(await shellBack(), true);
+  await hotel_map.getByText('Nara test inn', { exact: true }).waitFor();
+  await review_hotel.click();
+  assert.equal(await dialog.getByLabel('Stop name').inputValue(), reviewed_hotel_name);
+  assert.equal(await dialog.getByLabel('Notes').inputValue(), 'Ask about breakfast.');
+  assert.equal(await check_in.inputValue(), day_two);
+  assert.equal(await check_out.inputValue(), day_three);
   await check_in.fill(day_three);
   await add_another.click();
   await dialog.getByRole('heading', { name: 'Hotels near Osaka', exact: true }).waitFor();
@@ -1798,7 +1902,9 @@ try {
   assert.equal(await hotels.getAttribute('aria-pressed'), 'true');
   await dialog.getByText('Day 3', { exact: true }).waitFor();
   assert.deepEqual(
-    await dialog.getByRole('group', { name: 'Search city' }).getByRole('button').allTextContents(),
+    (
+      await dialog.getByRole('group', { name: 'Search city' }).getByRole('button').allInnerTexts()
+    ).map((name) => name.trim()),
     ['Nara', 'Osaka'],
   );
   assert.equal(await place_search.inputValue(), '');
@@ -1806,8 +1912,10 @@ try {
   assert.equal(await place_search.inputValue(), '', 'The previous day’s Nara search is cleared.');
   await dialog.getByRole('button', { name: 'Done', exact: true }).click();
   await dialog.waitFor({ state: 'hidden' });
-  await planned_list.getByRole('button', { name: 'Edit Nara test inn', exact: true }).waitFor();
-  const rescheduled_stay = journal().stops.find((stop) => stop.title === 'Nara test inn');
+  await planned_list
+    .getByRole('button', { name: `Edit ${reviewed_hotel_name}`, exact: true })
+    .waitFor();
+  const rescheduled_stay = journal().stops.find((stop) => stop.title === reviewed_hotel_name);
   assert.equal(rescheduled_stay?.day, day_three);
   assert.equal(rescheduled_stay.checkout_date, '2030-05-23');
   assert.equal(rescheduled_stay.city, 'Nara');
@@ -1860,6 +1968,7 @@ try {
           'day-position selection, failed-save retry, matching route and map order, cross-day move with original check-in links',
           'consecutive sights and hotel browsing in the same city search, clean drafts and exactly-once retry',
           'directly adding two nearby sights, duplicate-tap protection, failed write and retry from the result',
+          'city-scoped sight and hotel result maps, coincident venues, pin selection and return to reviewed drafts',
           'rescheduling a new hotel, then continuing at the arrival city on the new day',
         ],
       },
