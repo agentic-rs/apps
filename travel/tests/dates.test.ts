@@ -81,12 +81,17 @@ describe('calendar validation', () => {
   });
 
   test('formats optional trip dates without adding device timezone shifts', () => {
+    // ICU versions differ in the spacing around the range separator.
+    const normalizeRange = (label: string) => label.replace(/\s*–\s*/g, ' – ');
+
     expect(formatTripDates('', '')).toBe('Dates open');
     expect(formatTripDates('2026-05-12', '')).toBe('12 May 2026');
     expect(formatTripDates('', '2026-05-14')).toBe('Until 14 May 2026');
-    expect(formatTripDates('2026-05-12', '2026-05-14')).toBe('12 – 14 May 2026');
-    expect(formatTripDates('2026-05-12', '2026-06-02')).toBe('12 May – 2 Jun 2026');
-    expect(formatTripDates('2026-05-12', '2027-01-01')).toBe('12 May 2026 – 1 Jan 2027');
+    expect(normalizeRange(formatTripDates('2026-05-12', '2026-05-14'))).toBe('12 – 14 May 2026');
+    expect(normalizeRange(formatTripDates('2026-05-12', '2026-06-02'))).toBe('12 May – 2 Jun 2026');
+    expect(normalizeRange(formatTripDates('2026-05-12', '2027-01-01'))).toBe(
+      '12 May 2026 – 1 Jan 2027',
+    );
     expect(formatTripDates('2026-05-12', '2026-05-12')).toBe('12 May 2026');
   });
 });
