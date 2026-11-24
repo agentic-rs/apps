@@ -14,6 +14,7 @@ import { isCalendarDate, itineraryDayLabel } from '../lib/dates';
 import { text_limits } from '../lib/model';
 import {
   matchesPlannedPlace,
+  plannedStopCityIndex,
   searchCityForAnchor,
   searchCityLabel,
   searchPlannedStops,
@@ -177,16 +178,12 @@ export function StopPlacePicker({
   );
   const [chosen_city, setChosenCity] = useState<number | undefined>(() => {
     // Saved stops retain their trip visit even if today's scheduled cities are different.
-    if (initial_search_stop || editing_stop) return undefined;
-    if (initial_city_id) {
-      const match = options.find((index) => trip.city_locations?.[index]?.id === initial_city_id);
-      if (match !== undefined) return match;
-    }
-    const names = options.filter(
-      (index) =>
-        cities[index] === initial_city && (!initial_city_id || !trip.city_locations?.[index]?.id),
+    if (initial_search_stop || editing_stop || !(initial_city || initial_city_id)) return;
+    return plannedStopCityIndex(
+      { day, city: initial_city, city_id: initial_city_id, position: null },
+      route_cities,
+      day,
     );
-    return names.length === 1 ? names[0] : undefined;
   });
   const [custom_city, setCustomCity] = useState(!cities.length ? (initial_city ?? '') : '');
   const [searches, setSearches] = useState<Record<string, SearchInput>>({});
@@ -332,7 +329,7 @@ export function StopPlacePicker({
   const schedule_stay =
     category === 'stay' && scoped_city && onScheduleStay
       ? (place: StopSearchResult, origin: HTMLElement) => {
-          if (map_open) rememberSelection(place.id);
+          rememberSelection(place.id);
           onScheduleStay(place, origin, { name: scoped_city, id: scoped_id, label: scoped_label });
         }
       : undefined;
@@ -365,7 +362,7 @@ export function StopPlacePicker({
 
   async function addSight(place: StopSearchResult, row: HTMLElement, button: HTMLElement) {
     if (!onQuickAdd || saving.current) return;
-    if (map_open) rememberSelection(place.id);
+    rememberSelection(place.id);
     saving.current = true;
     setAddingId(place.id);
     setSaveError(undefined);
@@ -451,7 +448,7 @@ export function StopPlacePicker({
   }
 
   function chooseResult(place: StopSearchResult, origin: HTMLElement) {
-    if (map_open) rememberSelection(place.id);
+    rememberSelection(place.id);
     setSaveError(undefined);
     setExpanded(null);
     onPick(place, origin, scoped_city, scoped_id, area);
@@ -739,7 +736,10 @@ export function StopPlacePicker({
                     key={place.id}
                     result={result}
                     expanded={expanded === place.id}
-                    onExpand={(open) => setExpanded(open ? place.id : null)}
+                    onExpand={(open) => {
+                      if (open) rememberSelection(place.id);
+                      setExpanded(open ? place.id : null);
+                    }}
                     onEditPlanned={onEditPlanned}
                     adding={adding_id === place.id}
                     error={save_error?.id === place.id ? save_error.message : undefined}

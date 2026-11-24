@@ -656,6 +656,7 @@ export function App() {
           trip={trip}
           day={day}
           first={first}
+          last={last}
           stop={editor.stop}
           initial_category={editor.initial_category}
           initial_search_stop={editor.initial_search_stop}

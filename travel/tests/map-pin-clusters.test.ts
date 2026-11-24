@@ -76,3 +76,17 @@ test('pins across the date line cluster only when their displayed world copies o
   expect(inView(0, 20)).toHaveLength(2);
   expect(inView(180, 50)).toHaveLength(2);
 });
+
+test('different pin anchors cluster only when their actual 44px-high touch targets overlap', () => {
+  const result = { ...pin('result', 0), anchor_y: 42 };
+  const route = (y: number) => ({
+    ...pin('route', 0),
+    position: { latitude: y, longitude: 0 },
+    anchor_y: 22,
+  });
+  expect(clusterMapPins([result, route(0)], project, 44)).toHaveLength(1);
+  expect(clusterMapPins([result, route(23)], project, 44)).toHaveLength(1);
+  expect(clusterMapPins([result, route(24)], project, 44)).toHaveLength(2);
+  expect(clusterMapPins([result, route(-63)], project, 44)).toHaveLength(1);
+  expect(clusterMapPins([result, route(-64)], project, 44)).toHaveLength(2);
+});

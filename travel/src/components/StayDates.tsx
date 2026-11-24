@@ -39,6 +39,7 @@ export function StayDates({
   editing_id,
   adding_stay,
   first,
+  last,
   check_in,
   check_out,
   onApply,
@@ -51,6 +52,7 @@ export function StayDates({
   editing_id?: string;
   adding_stay: boolean;
   first: string;
+  last: string;
   check_in: string;
   check_out: string;
   onApply(check_in: string, check_out: string): void | Promise<void>;
@@ -80,12 +82,12 @@ export function StayDates({
   const return_to_days = useRef(false);
   const earliest = [first, trip.start_date, dates.check_in].filter(isCalendarDate).sort()[0];
   const min_checkout = checkoutAfter(dates.check_in, 1);
-  const last = [
+  const latest = [
     trip.end_date ? checkoutAfter(trip.end_date, 1) || trip.end_date : '9999-12-31',
+    last,
     dates.check_in,
     min_checkout,
     dates.check_out,
-    first,
   ]
     .filter(isCalendarDate)
     .sort()
@@ -93,7 +95,7 @@ export function StayDates({
   const active_date = dates[field];
   const focus = page_day || active_date || min_checkout || dates.check_in;
   const first_choice = field === 'check_out' ? min_checkout : earliest;
-  const page = first_choice ? stayDayPage(first_choice, last, focus) : undefined;
+  const page = first_choice ? stayDayPage(first_choice, latest, focus) : undefined;
   const nights = dates.check_out ? daysBetween(dates.check_in, dates.check_out) : 0;
   const overlaps = useMemo(
     () => staysInRange(trip_stops, dates.check_in, dates.check_out, editing_id),
@@ -234,6 +236,11 @@ export function StayDates({
                     const formatted = value
                       ? full_date.format(new Date(value + 'T00:00:00Z'))
                       : 'Not set';
+                    const route =
+                      value && (trip.cities?.length ?? 0) > 1
+                        ? citiesOnDay(trip, value).join(' → ')
+                        : '';
+                    const itinerary = [value && dayLabel(value), route].filter(Boolean).join(' · ');
                     return (
                       <button
                         key={item}
@@ -241,12 +248,12 @@ export function StayDates({
                         ref={item === 'check_out' ? departure : undefined}
                         aria-label={fields[item]}
                         aria-pressed={field === item}
-                        aria-description={value ? `${formatted} · ${dayLabel(value)}` : formatted}
+                        aria-description={[formatted, itinerary].filter(Boolean).join(' · ')}
                         onClick={() => selectField(item)}
                       >
                         <span>{fields[item]}</span>
                         <strong>{formatted}</strong>
-                        {value && <small>{dayLabel(value)}</small>}
+                        {itinerary && <small>{itinerary}</small>}
                       </button>
                     );
                   })}

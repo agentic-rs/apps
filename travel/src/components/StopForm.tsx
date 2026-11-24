@@ -41,6 +41,7 @@ interface StopFormProps {
   trip_stops: PlannedStop[];
   day: string;
   first: string;
+  last: string;
   initial_category?: StopSearchCategory;
   initial_search_stop?: PlannedStop;
   stop?: PlannedStop;
@@ -195,6 +196,7 @@ function StopEditor({
   trip_stops,
   day,
   first,
+  last,
   stop,
   initial_category,
   initial_search_stop,
@@ -214,7 +216,6 @@ function StopEditor({
   onEditPlanned?(stop: PlannedStop): void;
 }) {
   const [draft, setDraft] = useState(() => stopDraft(day, stop));
-  const entry_day = useRef(day);
   const blank_day = useRef(day);
   const inspected = useRef<{ draft: typeof draft; area?: DaySearchArea } | null>(null);
   const {
@@ -236,7 +237,13 @@ function StopEditor({
     setDraft((previous) => ({ ...previous, ...fields }));
   }
   const [picking, setPicking] = useState<'initial' | 'change' | null>(stop ? null : 'initial');
-  const [picker_day, setPickerDay] = useState<string | null>(stop ? null : day);
+  const [picker_context, setPickerContext] = useState<{
+    day: string;
+    city?: string;
+    city_id?: string;
+    search_stop?: PlannedStop;
+  } | null>(stop ? null : { day, search_stop: initial_search_stop });
+  const picker_day = picker_context?.day;
   const confirmation =
     picking === 'initial' && addition?.stop.day === picker_day ? addition : undefined;
   const [picker_category, setPickerCategory] = useState<StopSearchCategory>(
@@ -464,7 +471,7 @@ function StopEditor({
       setPickerCategory(
         directory_ref?.provider === 'ourairports' ? 'airport' : search_categories[kind],
       );
-      setPickerDay(search_day);
+      setPickerContext({ day: search_day, city, city_id });
     }
     // Inspecting a result leaves the picker ready for a quick add. Keep edited drafts for review.
     if (mode === 'initial') {
@@ -570,7 +577,9 @@ function StopEditor({
   function resumePicking(saved: PlannedStop) {
     resetDraft(saved.day);
     setReviewPages(['editor']);
-    setPickerDay(saved.day);
+    if (picker_day !== saved.day) {
+      setPickerContext({ day: saved.day, city: saved.city, city_id: saved.city_id });
+    }
     setPicking('initial');
   }
 
@@ -757,7 +766,7 @@ function StopEditor({
         onDismiss={dismiss}
         onBack={!stop && !picking && !discard ? backFromEditor : dismiss}
       >
-        {picker_day !== null && (
+        {picker_context && (
           <div
             ref={picker_pane}
             tabIndex={-1}
@@ -765,17 +774,15 @@ function StopEditor({
             hidden={!picking || picking_dates}
           >
             <StopPlacePicker
-              key={picker_day}
+              key={picker_context.day}
               trip={trip}
               native={native}
               active={Boolean(picking) && !covered && !picking_dates}
-              day={picker_day}
-              initial_city={city}
-              initial_city_id={city_id}
+              day={picker_context.day}
+              initial_city={picker_context.city}
+              initial_city_id={picker_context.city_id}
               initial_category={picker_category}
-              initial_search_stop={
-                picker_day === entry_day.current ? initial_search_stop : undefined
-              }
+              initial_search_stop={picker_context.search_stop}
               editing_stop={
                 stop && picker_day === draft.place_day
                   ? { ...stop, day: draft.place_day, city, city_id, position }
@@ -1075,6 +1082,7 @@ function StopEditor({
           editing_id={stop?.id}
           adding_stay={date_action.from !== 'dates'}
           first={first}
+          last={last}
           hotel={
             date_action.from === 'dates'
               ? title.trim()

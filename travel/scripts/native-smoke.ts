@@ -2160,17 +2160,52 @@ try {
   await sights.click();
   await nara_museum.waitFor();
   const open_results_map = frame.getByRole('button', { name: 'Map of results', exact: true });
+  const result_chooser = frame.getByRole('dialog', { name: 'Places on map', exact: true });
+  const result_choices = result_chooser.getByRole('group', { name: 'Search results', exact: true });
+  const route_choices = result_chooser.getByRole('group', { name: 'Day route', exact: true });
+  function resultMapPin(surface: Locator, entry_label: string) {
+    const pins = surface.getByRole('region', { name: 'Map of place results', exact: true });
+    const counted = pins.getByRole('button', { name: /^Choose from / });
+    // Annexe names can start with the full name of a different result.
+    const member = [
+      `[aria-description=${JSON.stringify(entry_label)}]`,
+      `[aria-description^=${JSON.stringify(entry_label + ' · ')}]`,
+      `[aria-description$=${JSON.stringify(' · ' + entry_label)}]`,
+      `[aria-description*=${JSON.stringify(' · ' + entry_label + ' · ')}]`,
+    ].join(', ');
+    return pins
+      .getByRole('button', { name: entry_label, exact: true })
+      .or(pins.getByRole('button', { name: `Show ${entry_label} on map`, exact: true }))
+      .or(counted.and(pins.locator(member)));
+  }
+  async function pickResultOnMap(surface: Locator, title: string) {
+    const pin = resultMapPin(surface, title);
+    const counted = (await pin.getAttribute('aria-haspopup')) === 'dialog';
+    await pin.press('Enter');
+    if (counted) await result_choices.getByRole('button', { name: title, exact: true }).click();
+  }
   await open_results_map.click();
   const checkout_map = frame.getByRole('dialog', { name: 'Sights near Nara', exact: true });
   await checkout_map.getByRole('button', { name: 'Fit results and day route' }).click();
   const checkout_label = 'Check out of Nara test inn';
-  const checkout_pin = checkout_map.getByRole('button', { name: checkout_label, exact: true });
-  assert.equal(await checkout_pin.getAttribute('data-stop-numbers'), null);
+  const checkout_pin = resultMapPin(checkout_map, checkout_label);
+  assert.match(
+    (await checkout_pin.getAttribute('aria-label')) ?? '',
+    /map results? and 1 day route place$/,
+  );
   await checkout_pin.press('Enter');
-  await checkout_map.getByText(checkout_label, { exact: true }).waitFor();
+  await result_chooser.getByRole('button', { name: 'Show day route', exact: true }).click();
+  const checkout_choice = route_choices.getByRole('button', { name: checkout_label, exact: true });
+  await checkout_choice.click();
   await checkout_map
-    .getByRole('button', { name: 'Show Nara National Museum on map' })
-    .press('Enter');
+    .locator('.leaflet-popup-content')
+    .getByText(checkout_label, { exact: true })
+    .waitFor();
+  assert.equal(await shellBack(), true);
+  await checkout_choice.and(frame.locator(':focus')).waitFor();
+  assert.equal(await shellBack(), true);
+  await checkout_pin.and(frame.locator(':focus')).waitFor();
+  await pickResultOnMap(checkout_map, 'Nara National Museum');
   await checkout_map.getByText(/straight line to hotel · Nara test inn/).waitFor();
   await checkout_map.getByRole('button', { name: 'Review place' }).click();
   await edit_itinerary.click();
@@ -2273,19 +2308,18 @@ try {
   await add_stop.click();
   await kyoto_museum.waitFor();
   const sight_map = frame.getByRole('dialog', { name: 'Sights near Kyoto', exact: true });
-  const result_pins = sight_map.getByRole('region', { name: 'Map of place results', exact: true });
   const results = dialog.getByRole('list', { name: 'Place results', exact: true });
   const sight_names = await results.locator('strong').allTextContents();
   assert.deepEqual([...sight_names].sort(), ['Kyoto history museum', 'Kyoto test museum']);
   const browse_requests = place_requests.length;
   const browse_writes = journal_writes;
+  await results.getByText(sight_names[1], { exact: true }).click();
+  await visitor_sheet.getByRole('heading', { name: sight_names[1], exact: true }).waitFor();
+  await back_to_results.click();
   await open_results_map.click();
-  const shared_results = result_pins.getByRole('button', {
-    name: 'Choose from 2 map results',
-    exact: true,
-  });
-  const result_chooser = frame.getByRole('dialog', { name: 'Places on map', exact: true });
-  const choice = (name: string) => result_chooser.getByRole('button', { name, exact: true });
+  await sight_map.getByRole('heading', { name: sight_names[1], exact: true }).waitFor();
+  const shared_results = resultMapPin(sight_map, sight_names[1]);
+  const choice = (name: string) => result_choices.getByRole('button', { name, exact: true });
   async function chooseKyotoResult(name: string) {
     await shared_results.click();
     await choice(name).click();
@@ -2296,6 +2330,10 @@ try {
   }
   // Two museums occupy the same coordinate, even at the map's maximum zoom.
   await shared_results.waitFor();
+  assert.match(
+    (await shared_results.getAttribute('aria-label')) ?? '',
+    /^Choose from 2 map results\b/,
+  );
   const described_results = await shared_results.getAttribute('aria-description');
   for (const name of sight_names) assert(described_results?.includes(name));
   assert.equal(await shared_results.getAttribute('aria-pressed'), 'true');
@@ -2305,25 +2343,21 @@ try {
   assert(await zoom_in_results.isDisabled());
   await shared_results.click();
   assert.deepEqual(
-    await result_chooser
+    await result_choices
       .locator('button[aria-pressed]')
       .evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label'))),
     sight_names,
   );
-  assert.equal(await choice(sight_names[0]).getAttribute('aria-pressed'), 'true');
-  assert.equal(await choice(sight_names[1]).getAttribute('aria-pressed'), 'false');
+  assert.equal(await choice(sight_names[0]).getAttribute('aria-pressed'), 'false');
+  assert.equal(await choice(sight_names[1]).getAttribute('aria-pressed'), 'true');
   assert.equal(await shellBack(), true);
   await shared_results.and(frame.locator(':focus')).waitFor();
-  await sight_map.getByRole('heading', { name: sight_names[0], exact: true }).waitFor();
+  await sight_map.getByRole('heading', { name: sight_names[1], exact: true }).waitFor();
   await shared_results.press('Enter');
   await choice(sight_names[1]).press('Escape');
   await shared_results.and(frame.locator(':focus')).waitFor();
-  await chooseKyotoResult(sight_names[1]);
-  await sight_map.getByRole('button', { name: 'Previous place' }).click();
-  const nara_route_pin = result_pins.getByRole('button', {
-    name: 'Stop 2, Nara Park',
-    exact: true,
-  });
+  await chooseKyotoResult(sight_names[0]);
+  const nara_route_pin = resultMapPin(sight_map, 'Stop 2, Nara Park');
   assert.equal(await pinWithinMap(nara_route_pin), false, 'Kyoto results open at city scale.');
   await sight_map.getByRole('button', { name: 'Fit results and day route', exact: true }).click();
   assert(await pinWithinMap(nara_route_pin), 'The full day includes the other transfer city.');
@@ -2356,11 +2390,11 @@ try {
     await nara_map.getByRole('button', { name: 'Search in Nara' }).getAttribute('aria-pressed'),
     'true',
   );
-  const nara_pins = nara_map.getByRole('region', { name: 'Map of place results', exact: true });
-  assert.equal(await nara_pins.getByRole('button', { name: /^Show Kyoto / }).count(), 0);
-  await nara_pins.getByRole('button', { name: 'Stop 2, Nara Park', exact: true }).waitFor();
-  const national_pin = nara_pins.getByRole('button', { name: `Show ${museum_name} on map` });
-  await national_pin.click();
+  assert.equal(await resultMapPin(nara_map, sight_names[0]).count(), 0);
+  assert.equal(await resultMapPin(nara_map, sight_names[1]).count(), 0);
+  await resultMapPin(nara_map, 'Stop 2, Nara Park').waitFor();
+  const national_pin = resultMapPin(nara_map, museum_name);
+  await pickResultOnMap(nara_map, museum_name);
   await nara_map.getByText(museum_name, { exact: true }).waitFor();
   await nara_map
     .getByRole('group', { name: 'Selected place' })
@@ -2739,10 +2773,9 @@ try {
   await stay_dates.getByRole('button', { name: 'Choose ' + day_three, exact: true }).click();
   await apply_dates.click();
   await add_another.click();
-  await dialog.getByRole('heading', { name: 'Hotels near Osaka', exact: true }).waitFor();
-  await dialog.getByRole('button', { name: /^Osaka test inn/ }).waitFor();
+  await dialog.getByRole('heading', { name: 'Hotels near Nara', exact: true }).waitFor();
   const osaka = dialog.getByRole('button', { name: 'Search in Osaka', exact: true });
-  assert.equal(await osaka.getAttribute('aria-pressed'), 'true');
+  assert.equal(await nara.getAttribute('aria-pressed'), 'true');
   assert.equal(await hotels.getAttribute('aria-pressed'), 'true');
   await dialog.getByText('Day 3', { exact: true }).waitFor();
   assert.deepEqual(
@@ -2751,9 +2784,9 @@ try {
     ).map((name) => name.trim()),
     ['Nara', 'Osaka'],
   );
-  assert.equal(await place_search.inputValue(), '');
-  await nara.click();
   assert.equal(await place_search.inputValue(), '', 'The previous day’s Nara search is cleared.');
+  await osaka.click();
+  await dialog.getByRole('button', { name: /^Osaka test inn/ }).waitFor();
   await dialog.getByRole('button', { name: 'Done', exact: true }).click();
   await dialog.waitFor({ state: 'hidden' });
   await assertReturnedToStop(`Edit ${reviewed_hotel_name}`);
@@ -2800,12 +2833,9 @@ try {
   assert.equal(await results.getByText('Nara Canal Works').count(), 0);
   await open_results_map.click();
   await garden_map.getByText(/Park · Nara/).waitFor();
-  await garden_map
-    .getByRole('button', { name: 'Show Nara Canal Walk on map', exact: true })
-    .waitFor();
-  assert.equal(
-    await garden_map.getByRole('button', { name: /^Choose from \d+ map results$/ }).count(),
-    0,
+  assert.match(
+    (await resultMapPin(garden_map, 'Nara Canal Walk').getAttribute('aria-label')) ?? '',
+    /^(?:Show Nara Canal Walk on map|Choose from 1 map result and \d+ day route places?)$/,
   );
   await page
     .locator('#applet')
@@ -2963,10 +2993,7 @@ try {
   const nara_card = nara_map.getByRole('group', { name: 'Selected place', exact: true });
   await nara_card.getByRole('heading', { name: museum_name, exact: true }).waitFor();
   await nara_card.getByText(distance_to_park).waitFor();
-  const nara_museum_group = nara_map.getByRole('button', {
-    name: 'Choose from 2 map results',
-    exact: true,
-  });
+  const nara_museum_group = resultMapPin(nara_map, directory_order[2]);
   assert.equal(await nara_museum_group.getAttribute('aria-pressed'), 'false');
   await nara_museum_group.click();
   assert.equal(await choice(directory_order[0]).getAttribute('aria-pressed'), 'false');
@@ -3516,7 +3543,12 @@ try {
   await edit_itinerary.click();
   await dialog.getByLabel('Stop name').fill('Nara station booking');
   await change_dates.click();
+  // The saved Osaka hotel extends the itinerary past its declared May 22 end.
+  await nightOn('2030-05-24').click();
+  assert.equal(await calendar.inputValue(), '2030-05-24');
+  await nightOn(day_three).click();
   await arrival.click();
+  await nightOn('2030-05-24').waitFor();
   await transfer_date.click();
   await apply_dates.click();
   await dialog.getByRole('button', { name: 'Back to visitor details', exact: true }).click();
@@ -3560,6 +3592,8 @@ try {
   await list_schedule.click();
   await stay_dates.getByText(nara_guest, { exact: true }).waitFor();
   await stay_dates.getByText('Nara', { exact: true }).waitFor();
+  await arrival.getByText('Day 2 · Kyoto → Nara', { exact: true }).waitFor();
+  await departure.getByText('Day 3 · Nara → Osaka', { exact: true }).waitFor();
   assert.equal(await calendar.inputValue(), day_three);
   await stay_dates.getByRole('button', { name: 'Set check-out later', exact: true }).click();
   assert.equal(await shellBack(), true);
@@ -3611,7 +3645,7 @@ try {
     .getByRole('button', { name: /^Nara West Annex/ })
     .getByText(/0 m straight line to stop \d+ · Nara East Annex/)
     .waitFor();
-  await schedule(dialog, 'Nara test inn').click();
+  await schedule(dialog, 'Nara West Annex').click();
   await compareStays(async () => {
     await assertNightRange(nara_guest, 'Nara', [day_two]);
     assert.equal(
@@ -3620,6 +3654,10 @@ try {
     );
   });
   await cancel_dates.click();
+  await open_results_map.click();
+  const nara_hotels_map = frame.getByRole('dialog', { name: 'Hotels near Nara', exact: true });
+  await nara_hotels_map.getByRole('heading', { name: 'Nara West Annex', exact: true }).waitFor();
+  await nara_hotels_map.getByRole('button', { name: 'Back to place list', exact: true }).click();
 
   await kyoto.click();
   await chooseType(dialog, 'Lodging', 'Hostels');
@@ -3832,6 +3870,49 @@ try {
   );
   await overviewDay(day_two).click();
 
+  // Nara is the arrival city on Day 2 and the departure city on Day 3.
+  // Moving the visit in either direction should keep the city we selected.
+  const writes_before_transfer_adds = journal_writes;
+  await add_hotel.click();
+  await schedule(dialog, 'Nara test inn').click();
+  await arrival.click();
+  await transfer_date.click();
+  await confirm_stay.click();
+  await dialog.getByText('Day 3', { exact: true }).waitFor();
+  await dialog.getByRole('heading', { name: 'Hotels near Nara', exact: true }).waitFor();
+  assert.equal(await nara.getAttribute('aria-pressed'), 'true');
+  assert.equal(await schedule(dialog, 'Nara test inn').count(), 0);
+  await nara_inn.getByText('On this day', { exact: true }).waitFor();
+  await dialog.getByRole('button', { name: 'Done', exact: true }).click();
+  await assertReturnedToStop('Edit Nara test inn');
+
+  await add_stop.click();
+  await dialog.getByRole('button', { name: /^Nara history museum/ }).click();
+  await edit_itinerary.click();
+  await dialog.getByLabel('Day', { exact: true }).fill(day_two);
+  await add_another.click();
+  await dialog.getByText('Day 2', { exact: true }).waitFor();
+  await dialog.getByRole('heading', { name: 'Sights near Nara', exact: true }).waitFor();
+  assert.equal(await nara.getAttribute('aria-pressed'), 'true');
+  await results
+    .getByRole('button', { name: /^Nara history museum/ })
+    .getByText('On this day', { exact: true })
+    .waitFor();
+  await dialog.getByRole('button', { name: 'Done', exact: true }).click();
+  await assertReturnedToStop('Edit Nara history museum');
+  assert.equal(journal_writes, writes_before_transfer_adds + 2);
+  for (const [title, date] of [
+    ['Nara test inn', day_three],
+    ['Nara history museum', day_two],
+  ]) {
+    assert.deepEqual(
+      journal()
+        .stops.filter((stop) => stop.title === title)
+        .map((stop) => [stop.day, stop.city_id]),
+      [[date, city_locations[1].id]],
+    );
+  }
+
   // A Kyoto checkout and Nara's three route stops are separate search origins on the transfer.
   const [park_origin, station_origin, checkout_origin, nara_lodge] = area_origins;
   const area_fixture = {
@@ -3916,12 +3997,13 @@ try {
   });
   const area_card = area_map.getByRole('group', { name: 'Selected place', exact: true });
   await area_card.getByRole('heading', { name: gallery_annex, exact: true }).waitFor();
-  const park_pin = area_map.getByRole('button', { name: 'Stop 2, Nara Park', exact: true });
-  const station_pin = area_map.getByRole('button', {
-    name: 'Stop 1, JR Nara Station',
-    exact: true,
-  });
-  assert.equal(await park_pin.getAttribute('aria-description'), 'Search near Nara Park');
+  const park_pin = resultMapPin(area_map, 'Stop 2, Nara Park');
+  const station_pin = resultMapPin(area_map, 'Stop 1, JR Nara Station');
+  assert(
+    (await park_pin.getAttribute('aria-description'))
+      ?.split(' · ')
+      .includes('Search near Nara Park'),
+  );
   await area_card.getByRole('button', { name: 'Next place', exact: true }).click();
   await area_card.getByRole('heading', { name: main_gallery, exact: true }).waitFor();
   await area_card.getByText(park_distance).waitFor();
@@ -3939,11 +4021,51 @@ try {
   await area_card
     .getByRole('heading', { name: 'Nara Station gallery annex', exact: true })
     .waitFor();
-  assert.equal(await station_pin.getAttribute('aria-description'), 'Search near JR Nara Station');
-  assert.equal(await park_pin.getAttribute('aria-description'), null);
+  assert(
+    (await station_pin.getAttribute('aria-description'))
+      ?.split(' · ')
+      .includes('Search near JR Nara Station'),
+  );
+  assert(
+    !(await park_pin.getAttribute('aria-description'))
+      ?.split(' · ')
+      .includes('Search near Nara Park'),
+  );
   await chooseArea(area_map, station_origin.title, park_origin.title);
   await area_card.getByRole('heading', { name: main_gallery, exact: true }).waitFor();
   await area_card.getByText('2 of 2', { exact: true }).waitFor();
+  // The whole transfer puts Nara's search results and scheduled stops in the same touch target.
+  await area_map.getByRole('button', { name: 'Fit results and day route' }).click();
+  const mixed_pin = resultMapPin(area_map, 'Stop 2, Nara Park');
+  await mixed_pin.click();
+  const show_route = result_chooser.getByRole('button', { name: 'Show day route', exact: true });
+  const show_results = result_chooser.getByRole('button', {
+    name: 'Show search results',
+    exact: true,
+  });
+  const switch_bounds = await show_route.boundingBox();
+  await show_route.click();
+  assert.deepEqual(
+    await show_route.boundingBox(),
+    switch_bounds,
+    'Keep the switch under the finger.',
+  );
+  const route_choice = result_chooser
+    .getByRole('group', { name: 'Day route', exact: true })
+    .getByRole('button', { name: 'Stop 2, Nara Park', exact: true });
+  await route_choice.click();
+  await area_map
+    .locator('.leaflet-popup')
+    .getByText('Stop 2, Nara Park', { exact: true })
+    .waitFor();
+  await area_card.getByRole('heading', { name: main_gallery, exact: true }).waitFor();
+  assert.equal(await shellBack(), true);
+  await route_choice.and(frame.locator(':focus')).waitFor();
+  assert.deepEqual(await show_route.boundingBox(), switch_bounds);
+  await show_results.click();
+  await choice(gallery_annex).click();
+  await area_card.getByRole('heading', { name: gallery_annex, exact: true }).waitFor();
+  await area_card.getByRole('button', { name: 'Next place', exact: true }).click();
   await area_map.getByRole('button', { name: 'Search in Kyoto', exact: true }).click();
   await sight_map.getByRole('heading', { name: 'Kyoto test museum', exact: true }).waitFor();
   await chooseArea(sight_map, default_area, checkout_origin.title, park_origin.title);
@@ -4406,7 +4528,9 @@ try {
   await arrival.click();
   await stay_dates.getByRole('button', { name: 'Choose ' + day_three, exact: true }).click();
   await confirm_stay.click();
-  await dialog.getByRole('heading', { name: 'Hotels near Osaka', exact: true }).waitFor();
+  await dialog.getByRole('heading', { name: 'Hotels near Nara', exact: true }).waitFor();
+  await areaAction(dialog).getByText(default_area, { exact: true }).waitFor();
+  assert.equal(await nara.getAttribute('aria-pressed'), 'true');
   await dialog.getByRole('button', { name: 'Done', exact: true }).click();
   assert.equal(await group_details.count(), 0);
   const new_day_group = route_pins.getByRole('button', {

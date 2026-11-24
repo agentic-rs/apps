@@ -1,9 +1,9 @@
 import type { Coordinates } from './types';
 
-type PinGroup = { key: string; position: Coordinates };
+type PinGroup = { key: string; position: Coordinates; anchor_y?: number };
 type Pixel = { x: number; y: number };
 
-// The buttons in each map layer share an anchor and a 44 CSS pixel width.
+// Project the top edge of each 44px-wide touch target, including mixed marker shapes.
 const pin_width = 44;
 
 /** Project into the world copy displayed by the map, at the current zoom.
@@ -18,7 +18,8 @@ export function clusterMapPins<T extends PinGroup>(
   // At most one cluster anchor can fit in each touch-target-sized cell.
   const cells = new Map<string, number>();
   for (const group of groups) {
-    const point = project(group.position);
+    const projected = project(group.position);
+    const point = { x: projected.x, y: projected.y - (group.anchor_y ?? 0) };
     const column = Math.floor(point.x / pin_width);
     const row = Math.floor(point.y / pin_height);
     let nearest = -1;

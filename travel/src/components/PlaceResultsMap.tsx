@@ -11,7 +11,6 @@ import { dayMapPlaces, normalizeLongitude, visiblePosition } from '../lib/map';
 import type { DayPlaceResult, DaySearchArea } from '../lib/place-comparison';
 import type { PlannedStop } from '../lib/types';
 import { Icon } from './Icon';
-import { DayPlacePins } from './PlaceMapPins';
 import { ResultMapPins } from './ResultMapPins';
 import type { ContinuingStay } from '../lib/hotel-stays';
 import '../place-map-preview.css';
@@ -91,19 +90,13 @@ export default function PlaceResultsMap({
         role="region"
         aria-label="Map of place results"
       />
-      {map && (
-        <DayPlacePins
-          map={map}
-          groups={groups}
-          shared_locations={result_locations}
-          search_area={area}
-        />
-      )}
       {map && active && (
         <ResultMapPins
           map={map}
           zoom={zoom}
           results={results}
+          day_groups={groups}
+          area={area}
           selected_id={selected_id}
           onSelect={onSelect}
           card_title={card_title}
