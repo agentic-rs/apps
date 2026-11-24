@@ -2,9 +2,9 @@ import { directoryKey } from './directory-format';
 import { distanceKm, formatDistance } from './distance';
 import type { ContinuingStay } from './hotel-stays';
 import { nearestDayPlace } from './map';
-import { matchesPlannedPlace, plannedStopCityIndex, type SearchCity } from './planned-stop-search';
+import { matchesPlannedPlace, searchCityForAnchor, type SearchCity } from './planned-stop-search';
 import type { StopSearchResult } from './stop-lookup';
-import type { Coordinates, PlannedStop } from './types';
+import type { Coordinates, PlannedStop, Trip } from './types';
 
 export interface DaySearchArea {
   id: string;
@@ -14,9 +14,10 @@ export interface DaySearchArea {
 }
 
 export function daySearchAreas(
+  trip: Trip,
   route: readonly PlannedStop[],
   stays: readonly ContinuingStay[],
-  cities: readonly SearchCity[],
+  all_cities: readonly SearchCity[],
   city_index: number | undefined,
   city: string,
   day: string,
@@ -27,7 +28,7 @@ export function daySearchAreas(
     const belongs =
       city_index === undefined
         ? Boolean(city && stop.city && directoryKey(stop.city) === directoryKey(city))
-        : plannedStopCityIndex(stop, cities, day) === city_index;
+        : searchCityForAnchor(trip, stop, all_cities) === city_index;
     if (belongs) areas.push({ id: stop.id, title: stop.title, detail, position: stop.position });
   }
   route.forEach((stop, index) =>

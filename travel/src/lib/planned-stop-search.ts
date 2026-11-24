@@ -1,10 +1,12 @@
 import { sameTripCity } from './cities';
+import { cityIndicesOnDay } from './city-days';
 import { directoryKey } from './directory-format';
 import { distanceKm } from './distance';
+import { isContinuingStay, type ContinuingStay } from './hotel-stays';
 import { placeSearchRadiusKm, planned_place_radius_km } from './place-providers';
 import { matchesPlaceType, type PlaceTypeFilter } from './place-types';
 import { placeNameMatcher, type StopSearchCategory, type StopSearchResult } from './stop-lookup';
-import type { Coordinates, DirectoryRef, PlannedStop, TripCityLocation } from './types';
+import type { Coordinates, DirectoryRef, PlannedStop, Trip, TripCityLocation } from './types';
 
 export interface SearchCity {
   index: number;
@@ -48,7 +50,7 @@ type StopCityFields = Pick<PlannedStop, 'day' | 'city' | 'city_id' | 'position'>
 function matchingStopCities(
   stop: StopCityFields,
   cities: readonly SearchCity[],
-  day: string,
+  day?: string,
 ): readonly SearchCity[] {
   if (stop.city_id) {
     const visits = cities.filter((city) => city.location?.id === stop.city_id);
@@ -75,10 +77,54 @@ function matchingStopCities(
 export function plannedStopCityIndex(
   stop: StopCityFields,
   cities: readonly SearchCity[],
-  day: string,
+  day?: string,
 ): number | undefined {
   const matches = matchingStopCities(stop, cities, day);
   return matches.length === 1 ? matches[0].index : undefined;
+}
+
+/** Resolve a place to its original city visit, even when checkout falls on a later leg. */
+export function searchCityForAnchor(
+  trip: Trip,
+  stop: PlannedStop,
+  all_cities: readonly SearchCity[],
+): number | undefined {
+  if (stop.trip_id !== trip.id) return;
+  const indices = cityIndicesOnDay(trip, stop.day);
+  if (stop.city_id) {
+    const matches = all_cities.filter((city) => city.location?.id === stop.city_id);
+    if (!matches.length) return;
+    const names = new Set(matches.map((city) => directoryKey(city.name)));
+    if (stop.city) names.add(directoryKey(stop.city));
+    // An unresolved namesake can still identify this exact visit once its city center loads.
+    const pending = all_cities.filter(
+      (city) => !city.location && names.has(directoryKey(city.name)),
+    );
+    const candidates = [...matches, ...pending];
+    const original = candidates.filter((city) => indices.includes(city.index));
+    const visits = original.length ? original : candidates;
+    if (visits.length === 1 && visits[0].location) return visits[0].index;
+    return;
+  }
+  const original = all_cities.filter((city) => indices.includes(city.index));
+  return plannedStopCityIndex(stop, original, stop.day) ?? plannedStopCityIndex(stop, all_cities);
+}
+
+/** On a day without a scheduled city, use only a city shared by every hotel on that day. */
+export function unscheduledHotelCity(
+  trip: Trip,
+  cities: readonly SearchCity[],
+  route: readonly PlannedStop[],
+  stays: readonly ContinuingStay[],
+  day: string,
+): number | undefined {
+  if (cityIndicesOnDay(trip, day).length) return;
+  const hotels = [
+    ...route.filter((stop) => stop.kind === 'stay' && stop.day === day),
+    ...stays.filter(({ stop }) => isContinuingStay(stop, day)).map(({ stop }) => stop),
+  ];
+  const matches = new Set(hotels.map((stop) => searchCityForAnchor(trip, stop, cities)));
+  if (matches.size === 1) return matches.values().next().value;
 }
 
 /** Suggest where a new activity fits among the scheduled city visits on its day. */

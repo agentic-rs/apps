@@ -3,7 +3,10 @@ import type { SearchCity } from './planned-stop-search';
 import { resolveSearchCity } from './stop-lookup';
 import type { Trip } from './types';
 
-export function searchCities(trip: Trip, indices: readonly number[]): SearchCity[] {
+export function searchCities(
+  trip: Trip,
+  indices: readonly number[] = trip.cities?.map((_, index) => index) ?? [],
+): SearchCity[] {
   return indices.map((index) => ({
     index,
     name: trip.cities![index],

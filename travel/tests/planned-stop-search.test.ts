@@ -1,18 +1,24 @@
 import { expect, test } from 'bun:test';
 import kansai from '../fixtures/kansai.json';
+import { continuingStays } from '../src/lib/hotel-stays';
 import { daySearchAreas } from '../src/lib/place-comparison';
 import { parseJournal } from '../src/lib/model';
 import {
   matchesPlannedPlace,
   plannedStopCityIndex,
+  searchCityForAnchor,
   searchCityLabel,
   searchPlannedStops,
   suggestRouteAnchor,
+  unscheduledHotelCity,
 } from '../src/lib/planned-stop-search';
 import type { StopSearchResult } from '../src/lib/stop-lookup';
 import type { PlannedStop } from '../src/lib/types';
 
-const { stops } = parseJournal(kansai);
+const {
+  trips: [trip],
+  stops,
+} = parseJournal(kansai);
 const park = stops.find((stop) => stop.title === 'Nara Park')!;
 const nara = {
   id: 'geonames:1855612',
@@ -44,12 +50,110 @@ test('search areas keep route numbers and expose checkout hotels only in their p
   };
   const route = [unlocated, park];
   const stays = [{ stop: hotel, label: 'Check out of Kyoto inn' }];
-  const nara_areas = daySearchAreas(route, stays, cities, 1, 'Nara', park.day);
+  const nara_areas = daySearchAreas(trip, route, stays, cities, 1, 'Nara', park.day);
   expect(nara_areas.map(({ id, detail }) => [id, detail])).toEqual([[park.id, 'Stop 2']]);
-  const kyoto_areas = daySearchAreas(route, stays, cities, 0, 'Kyoto', park.day);
+  const kyoto_areas = daySearchAreas(trip, route, stays, cities, 0, 'Kyoto', park.day);
   expect(kyoto_areas.map(({ id, detail }) => [id, detail])).toEqual([
     ['kyoto-stay', 'Checking out today'],
   ]);
+});
+
+test('an unscheduled night and checkout inherit a saved hotel city until the stay ends', () => {
+  const hotel: PlannedStop = {
+    ...park,
+    kind: 'stay',
+    city_id: nara.id,
+    day: trip.end_date,
+    checkout_date: '2030-05-24',
+  };
+  const active = (day: string) =>
+    unscheduledHotelCity(trip, cities, [park], continuingStays([hotel], day), day);
+  expect(active('2030-05-23')).toBe(1);
+  expect(active('2030-05-24')).toBe(1);
+  expect(active('2030-05-25')).toBeUndefined();
+  expect(unscheduledHotelCity(trip, cities, [hotel], [], trip.end_date)).toBeUndefined();
+  const single_city = { ...trip, cities: ['Nara'], city_arrival_dates: [''] };
+  const checkout = continuingStays([hotel], '2030-05-24');
+  expect(
+    unscheduledHotelCity(single_city, [{ ...cities[1], index: 0 }], [], checkout, '2030-05-24'),
+  ).toBe(0);
+});
+
+test('all arrivals and checkouts on an unscheduled day must identify the same city', () => {
+  const day = '2030-05-24';
+  const arrival = { ...park, day, kind: 'stay' as const, city: 'Nara', position: null };
+  const stays = continuingStays([{ ...arrival, day: park.day, checkout_date: day }], day);
+  expect(unscheduledHotelCity(trip, cities, [arrival], stays, day)).toBe(1);
+  expect(
+    unscheduledHotelCity(trip, cities, [{ ...arrival, city: 'Kyoto' }], stays, day),
+  ).toBeUndefined();
+  expect(
+    unscheduledHotelCity(trip, cities, [{ ...arrival, city: undefined }], stays, day),
+  ).toBeUndefined();
+  expect(
+    unscheduledHotelCity(trip, cities, [{ ...arrival, kind: 'sight' }], [], day),
+  ).toBeUndefined();
+  expect(unscheduledHotelCity(trip, cities, [arrival], [], day)).toBe(1);
+  expect(unscheduledHotelCity(trip, cities, [arrival], [], '2030-05-25')).toBeUndefined();
+});
+
+test('nearby search and checkout areas use the original visit for a repeated city', () => {
+  const loop = { ...trip, cities: ['Kyoto', 'Nara', 'Kyoto'] };
+  const visits = [...cities, { ...cities[0], index: 2 }];
+  const day = '2030-05-24';
+  const hotel: PlannedStop = {
+    ...park,
+    day: trip.start_date,
+    kind: 'stay',
+    position: kyoto,
+    checkout_date: day,
+  };
+  const checkout = continuingStays([hotel], day);
+  expect(searchCityForAnchor(loop, hotel, visits)).toBe(0);
+  expect(unscheduledHotelCity(loop, visits, [], checkout, day)).toBe(0);
+  expect(
+    daySearchAreas(loop, [], checkout, visits, 0, 'Kyoto', day).map((area) => area.id),
+  ).toEqual([hotel.id]);
+  expect(daySearchAreas(loop, [], checkout, visits, 2, 'Kyoto', day)).toEqual([]);
+  expect(searchCityForAnchor(loop, { ...hotel, day, city_id: kyoto.id }, visits)).toBeUndefined();
+});
+
+test('nearby search respects off-leg saved city identities and leaves missing or ambiguous cities unset', () => {
+  const station = { ...park, kind: 'transport' as const, day: trip.start_date };
+  expect(searchCityForAnchor(trip, { ...station, city_id: nara.id }, cities)).toBe(1);
+  expect(searchCityForAnchor(trip, { ...station, city: 'Nara' }, cities)).toBe(1);
+  expect(
+    searchCityForAnchor(trip, { ...station, city: 'Nara', city_id: 'unlisted' }, [
+      cities[0],
+      { index: 1, name: 'Nara' },
+    ]),
+  ).toBeUndefined();
+  expect(searchCityForAnchor(trip, { ...park, position: null }, cities)).toBeUndefined();
+  expect(searchCityForAnchor(trip, { ...park, trip_id: 'different-trip' }, cities)).toBeUndefined();
+  const after = { ...park, day: '2030-05-24' };
+  expect(searchCityForAnchor(trip, after, cities)).toBe(1);
+  expect(searchCityForAnchor(trip, { ...after, position: null }, [cities[0]])).toBeUndefined();
+});
+
+test('a saved city ID waits only for unresolved namesakes that could claim the original visit', () => {
+  const trip_with_namesakes = { ...trip, cities: ['Kyoto', 'Nara', 'Kyoto'] };
+  const hotel = { ...park, day: trip.end_date, city: 'Kyoto', city_id: kyoto.id };
+  const pending = { index: 2, name: 'Kyoto' };
+  const visits = [...cities, pending];
+  expect(searchCityForAnchor(trip_with_namesakes, hotel, visits)).toBeUndefined();
+  expect(
+    searchCityForAnchor(trip_with_namesakes, hotel, [...cities, { ...pending, location: kyoto }]),
+  ).toBe(2);
+  expect(
+    searchCityForAnchor(trip_with_namesakes, hotel, [
+      ...cities,
+      { ...pending, location: { ...kyoto, id: 'another-kyoto' } },
+    ]),
+  ).toBe(0);
+  expect(searchCityForAnchor(trip_with_namesakes, { ...hotel, day: trip.start_date }, visits)).toBe(
+    0,
+  );
+  expect(searchCityForAnchor(trip, hotel, [...cities, { index: 2, name: 'Osaka' }])).toBe(0);
 });
 
 test('an explicit search radius includes saved matches across city boundaries', () => {

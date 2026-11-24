@@ -14,8 +14,10 @@ import { isCalendarDate, itineraryDayLabel } from '../lib/dates';
 import { text_limits } from '../lib/model';
 import {
   matchesPlannedPlace,
+  searchCityForAnchor,
   searchCityLabel,
   searchPlannedStops,
+  unscheduledHotelCity,
 } from '../lib/planned-stop-search';
 import { searchCities, useSearchCityLocations } from '../lib/use-search-cities';
 import { usePlaceSuggestions } from '../lib/use-place-suggestions';
@@ -56,7 +58,8 @@ type SearchInput = {
   submitted: string | null;
   type_filter?: PlaceTypeFilter;
   sort?: PlaceSortOrder;
-  area_id?: string;
+  // Undefined keeps the entry's initial search area. Null explicitly selects the city center.
+  area_id?: string | null;
 };
 const empty_search: SearchInput = { text: '', submitted: '' };
 
@@ -83,6 +86,8 @@ export function StopPlacePicker({
   initial_category = 'sight',
   initial_city,
   initial_city_id,
+  initial_search_stop,
+  editing_stop,
   route,
   stays,
   addition,
@@ -103,6 +108,8 @@ export function StopPlacePicker({
   initial_category?: StopSearchRequest['category'];
   initial_city?: string;
   initial_city_id?: string;
+  initial_search_stop?: PlannedStop;
+  editing_stop?: PlannedStop;
   route: PlannedStop[];
   stays: ContinuingStay[];
   addition?: StopAddition;
@@ -137,13 +144,40 @@ export function StopPlacePicker({
     [route, stays, day],
   );
   const day_indices = useMemo(() => cityIndicesOnDay(trip, day), [trip, day]);
-  const options = useMemo(
-    () => (day_indices.length ? day_indices : (trip.cities ?? []).map((_, index) => index)),
-    [trip.cities, day_indices],
-  );
-  const route_cities = useMemo(() => searchCities(trip, options), [options, trip]);
+  const all_cities = useMemo(() => searchCities(trip), [trip]);
   const [category, setCategory] = useState(initial_category);
+  const airports = category === 'airport';
+  const is_browsable = category === 'sight' || category === 'stay';
+  const anchor =
+    initial_search_stop &&
+    (route.find((stop) => stop.id === initial_search_stop.id) ??
+      stays.find(({ stop }) => stop.id === initial_search_stop.id)?.stop);
+  const source_stop = anchor?.position ? anchor : editing_stop;
+  const needs_centers = Boolean(
+    !airports &&
+      (is_browsable || onEditPlanned || source_stop) &&
+      (source_stop?.city_id ||
+        source_stop?.position ||
+        stays.some(({ stop }) => stop.city_id || stop.position) ||
+        route.some((stop) => stop.city_id || stop.position)),
+  );
+  const resolved = useSearchCityLocations(all_cities, needs_centers);
+  const source_city = source_stop
+    ? searchCityForAnchor(trip, source_stop, resolved.cities)
+    : undefined;
+  const options = useMemo(() => {
+    if (!day_indices.length) return all_cities.map(({ index }) => index);
+    return source_city !== undefined && !day_indices.includes(source_city)
+      ? [...day_indices, source_city]
+      : day_indices;
+  }, [all_cities, day_indices, source_city]);
+  const route_cities = useMemo(
+    () => resolved.cities.filter(({ index }) => options.includes(index)),
+    [resolved.cities, options],
+  );
   const [chosen_city, setChosenCity] = useState<number | undefined>(() => {
+    // Saved stops retain their trip visit even if today's scheduled cities are different.
+    if (initial_search_stop || editing_stop) return undefined;
     if (initial_city_id) {
       const match = options.find((index) => trip.city_locations?.[index]?.id === initial_city_id);
       if (match !== undefined) return match;
@@ -172,14 +206,20 @@ export function StopPlacePicker({
   const input = useRef<HTMLInputElement>(null);
   usePlaceSearchViewport(input);
   const category_strip = useRef<HTMLDivElement>(null);
-  const airports = category === 'airport';
-  const is_browsable = category === 'sight' || category === 'stay';
-  const default_city = category === 'stay' ? day_indices.at(-1) : day_indices[0];
+  const day_city = day_indices.length
+    ? category === 'stay'
+      ? day_indices.at(-1)
+      : day_indices[0]
+    : unscheduledHotelCity(trip, resolved.cities, route, stays, day);
+  const default_city = initial_search_stop ? source_city : (source_city ?? day_city);
   const city_index = chosen_city ?? default_city;
   const city = city_index === undefined ? custom_city.trim() : cities[city_index];
   const location = city_index === undefined ? null : trip.city_locations?.[city_index];
   const scoped_city = airports || !city ? undefined : city;
-  const scoped_id = airports ? undefined : location?.id;
+  // A legacy trip may only store city names while the saved stop still identifies its city.
+  const source_id =
+    city_index !== undefined && city_index === source_city ? source_stop?.city_id : undefined;
+  const scoped_id = airports ? undefined : (location?.id ?? source_id);
   const scope_key = searchKey(category, city_index, city);
   const {
     text: query,
@@ -188,27 +228,25 @@ export function StopPlacePicker({
     sort = 'directory',
     area_id,
   } = searches[scope_key] ?? empty_search;
-  const needs_centers = Boolean(
-    !airports &&
-      (is_browsable || (onEditPlanned && (query.trim() || type_filter))) &&
-      route_cities.some((item) => !item.location) &&
-      (stays.length ||
-        day_stops.some(
-          (stop) =>
-            stop.city_id || (stop.position && (route_cities.length > 1 || stop.day !== day)),
-        )),
-  );
-  const resolved = useSearchCityLocations(route_cities, needs_centers);
   const areas = useMemo(
     () =>
       is_browsable && city
-        ? daySearchAreas(route, stays, resolved.cities, city_index, city, day)
+        ? daySearchAreas(trip, route, stays, resolved.cities, city_index, city, day)
         : [],
-    [is_browsable, route, stays, resolved.cities, city_index, city, day],
+    [is_browsable, trip, route, stays, resolved.cities, city_index, city, day],
   );
-  const area = areas.find((option) => option.id === area_id);
-  const can_search = Boolean(query.trim() && (airports || city));
-  const can_browse = is_browsable && (city_index !== undefined || Boolean(area));
+  const origin_id = area_id === undefined && city_index === source_city ? anchor?.id : area_id;
+  const area = areas.find((option) => option.id === origin_id);
+  // Do not dispatch a city-center search while an entry's saved pin is being located offline.
+  const locating_area =
+    !airports &&
+    resolved.loading &&
+    ((!!source_stop && chosen_city === undefined && source_city === undefined) ||
+      (!!anchor && area_id === undefined && source_city === undefined) ||
+      (!!origin_id && !area) ||
+      (!day_indices.length && city_index === undefined));
+  const can_search = Boolean(!locating_area && query.trim() && (airports || city));
+  const can_browse = !locating_area && is_browsable && (city_index !== undefined || Boolean(area));
   // Saving reparses city objects. Preserve the lookup when its search area hasn't changed.
   const scope = useMemo(
     () => ({
@@ -238,7 +276,7 @@ export function StopPlacePicker({
     query,
     submitted_query,
     can_browse,
-    active,
+    active && !locating_area,
     composing,
   );
   const {
@@ -276,7 +314,7 @@ export function StopPlacePicker({
           day_stops,
           query,
           category,
-          resolved.cities,
+          route_cities,
           city_index,
           day,
           custom_city,
@@ -360,7 +398,7 @@ export function StopPlacePicker({
         text,
         submitted,
         type_filter,
-        area_id: key === scope_key ? previous[key]?.area_id : undefined,
+        area_id: key === scope_key ? previous[key]?.area_id : null,
       },
     }));
   }
@@ -465,7 +503,7 @@ export function StopPlacePicker({
         setSaveError(undefined);
         setSearches((previous) => ({
           ...previous,
-          [scope_key]: { ...(previous[scope_key] ?? empty_search), area_id: id },
+          [scope_key]: { ...(previous[scope_key] ?? empty_search), area_id: id ?? null },
         }));
       }}
     />
@@ -480,7 +518,7 @@ export function StopPlacePicker({
       ) : (
         options.map((index, order) => (
           <Fragment key={index}>
-            {order > 0 && day_indices.length > 0 && <Icon name="arrow" size={16} />}
+            {order > 0 && day_indices.includes(index) && <Icon name="arrow" size={16} />}
             <button
               type="button"
               aria-label={`Search in ${cityLabel(index)}`}
@@ -681,13 +719,15 @@ export function StopPlacePicker({
           )}
           {!suggestions.has_request && (
             <p className="stop-picker-status">
-              {!airports && !city
-                ? options.length
-                  ? 'Choose a city to find places.'
-                  : 'Enter a city and search by place name.'
-                : airports
-                  ? 'Search by airport name, city or code.'
-                  : 'Enter a place name and tap Search.'}
+              {locating_area
+                ? 'Finding the search city…'
+                : !airports && !city
+                  ? options.length
+                    ? 'Choose a city to find places.'
+                    : 'Enter a city and search by place name.'
+                  : airports
+                    ? 'Search by airport name, city or code.'
+                    : 'Enter a place name and tap Search.'}
             </p>
           )}
           {results && results.length > 0 && (

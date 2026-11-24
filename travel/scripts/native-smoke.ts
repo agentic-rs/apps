@@ -59,6 +59,7 @@ const area_origins = [
   { title: 'Nara Park', prefix: 'Parkside', latitude: 34.685453, longitude: 135.843411 },
   { title: 'JR Nara Station', prefix: 'Station', latitude: 34.680661, longitude: 135.819022 },
   { title: 'Kyoto Riverside Inn', prefix: 'Riverside', latitude: 35.008, longitude: 135.766 },
+  { title: 'Nara Park Lodge', prefix: 'Lakeside', latitude: 34.684, longitude: 135.84 },
 ];
 const area_requests: { title: string; query: string }[] = [];
 const visitor_requests: string[] = [];
@@ -1596,10 +1597,11 @@ try {
   await dialog.getByRole('button', { name: 'Clear search' }).click();
   assert(await place_search.evaluate((input) => input === document.activeElement));
   await nara_inn.waitFor();
+  const before_submission = place_requests.length;
   await place_search.fill('test inn');
   assert.equal(
     place_requests.length,
-    before_named,
+    before_submission,
     'Submitting immediately bypasses the debounce.',
   );
   await search.click();
@@ -2112,6 +2114,9 @@ try {
   await continuing_editor.waitFor({ state: 'hidden' });
   assert.equal(await frame.getByLabel('Choose itinerary date').inputValue(), '2030-05-22');
   await assertReturnedToStop('Staying at Nara test inn');
+  await frame
+    .getByRole('button', { name: 'Find sights near Nara test inn', exact: true })
+    .waitFor();
   const add_hotel_entry = frame.getByRole('button', {
     name: 'Add journal entry at Nara test inn',
     exact: true,
@@ -2128,8 +2133,8 @@ try {
   assert.deepEqual(journal(), persisted);
   const writes_before_checkout_maps = journal_writes;
   await add_hotel.click();
-  await nara.click();
   await nara_inn.waitFor();
+  assert.equal(await nara.getAttribute('aria-pressed'), 'true');
   assert.equal(await nara_inn.getByText('On this day', { exact: true }).count(), 0);
   await sights.click();
   await nara_museum.waitFor();
@@ -3757,7 +3762,7 @@ try {
   await overviewDay(day_two).click();
 
   // A Kyoto checkout and Nara's three route stops are separate search origins on the transfer.
-  const [park_origin, station_origin, checkout_origin] = area_origins;
+  const [park_origin, station_origin, checkout_origin, nara_lodge] = area_origins;
   const area_fixture = {
     ...booking_fixture,
     stops: [
@@ -3772,6 +3777,19 @@ try {
         kind: 'stay',
         position: { latitude: checkout_origin.latitude, longitude: checkout_origin.longitude },
         checkout_date: day_two,
+        time: '',
+        notes: '',
+      },
+      {
+        id: 'area-nara-lodge',
+        trip_id: 'example-kansai',
+        day: day_three,
+        title: nara_lodge.title,
+        city: 'Nara',
+        city_id: city_locations[1].id,
+        kind: 'stay',
+        position: { latitude: nara_lodge.latitude, longitude: nara_lodge.longitude },
+        checkout_date: '2030-05-23',
         time: '',
         notes: '',
       },
@@ -3990,6 +4008,124 @@ try {
     journal().stops.find((stop) => stop.title === main_gallery)?.notes,
     'Meet at the east entrance.',
   );
+  const before_nearby = journal();
+  const writes_before_nearby = journal_writes;
+  const nearby_hotels = frame.getByRole('button', {
+    name: 'Find hotels near ' + station_origin.title,
+    exact: true,
+  });
+  await nearby_hotels.click();
+  await results.getByText('Nara Station lodge', { exact: true }).waitFor();
+  assert.equal(await hotels.getAttribute('aria-pressed'), 'true');
+  assert.equal(await nara.getAttribute('aria-pressed'), 'true');
+  await areaAction(dialog).getByText(station_origin.title, { exact: true }).waitFor();
+  assert.equal(await shellBack(), true);
+  await nearby_hotels.and(frame.locator(':focus')).waitFor();
+
+  // The trip ends on May 22. Only the hotel checkout places this next day in Nara.
+  const nearby_sights = frame.getByRole('button', {
+    name: 'Find sights near ' + nara_lodge.title,
+    exact: true,
+  });
+  await frame.getByRole('button', { name: 'Day 3, 22 May', exact: true }).click();
+  await nearby_sights.waitFor();
+  await frame.getByRole('button', { name: 'Next day', exact: true }).click();
+  await frame
+    .getByRole('button', { name: 'Check out of ' + nara_lodge.title, exact: true })
+    .waitFor();
+  await add_stop.click();
+  await nara_museum.waitFor();
+  assert.equal(await sights.getAttribute('aria-pressed'), 'true');
+  assert.equal(await nara.getAttribute('aria-pressed'), 'true');
+  await areaAction(dialog).getByText(default_area, { exact: true }).waitFor();
+  await kyoto.click();
+  await kyoto_museum.waitFor();
+  assert.equal(await kyoto.getAttribute('aria-pressed'), 'true');
+  assert.equal(await shellBack(), true);
+  await add_stop.and(frame.locator(':focus')).waitFor();
+
+  const requests_before_nearby = place_requests.length;
+  const areas_before_nearby = area_requests.length;
+  await nearby_sights.click();
+  const lakeside_gallery = results.getByText('Nara Lakeside gallery', { exact: true });
+  await lakeside_gallery.waitFor();
+  await areaAction(dialog).getByText(nara_lodge.title, { exact: true }).waitFor();
+  assert.equal(await sights.getAttribute('aria-pressed'), 'true');
+  assert.equal(await nara.getAttribute('aria-pressed'), 'true');
+  const first_search = area_requests.slice(areas_before_nearby);
+  assert(
+    first_search.length > 0 && first_search.every((request) => request.title === nara_lodge.title),
+  );
+  assert.equal(
+    place_requests.length - requests_before_nearby,
+    first_search.length,
+    'A direct hotel-area search should only request places near the mapped hotel.',
+  );
+  await kyoto.click();
+  await kyoto_museum.waitFor();
+  await nara.click();
+  await lakeside_gallery.waitFor();
+  await hotels.click();
+  await results.getByText('Nara Lakeside lodge', { exact: true }).waitFor();
+  await sights.click();
+  await chooseArea(dialog, nara_lodge.title, default_area);
+  await nara_museum.waitFor();
+  assert.equal(await lakeside_gallery.count(), 0);
+  await hotels.click();
+  await results.getByText('Nara Lakeside lodge', { exact: true }).waitFor();
+  await sights.click();
+  await nara_museum.waitFor();
+  assert.equal(await shellBack(), true);
+  await nearby_sights.and(frame.locator(':focus')).waitFor();
+  assert.equal(journal_writes, writes_before_nearby);
+  assert.deepEqual(journal(), before_nearby);
+
+  // Extend the Kyoto stay through the Nara–Osaka transfer, then edit a sight added near it.
+  const off_leg_fixture = {
+    ...before_nearby,
+    stops: before_nearby.stops.map((stop) =>
+      stop.id === 'area-checkout' ? { ...stop, checkout_date: '2030-05-23' } : stop,
+    ),
+  };
+  files.set('journal/journal.json', [...new TextEncoder().encode(JSON.stringify(off_leg_fixture))]);
+  await native_frame.goto(native_frame.url(), { waitUntil: 'domcontentloaded' });
+  await frame.getByRole('button', { name: 'Open trip Kansai by rail', exact: true }).click();
+  await frame.getByRole('button', { name: 'Day 3, 22 May', exact: true }).click();
+  await frame
+    .getByRole('button', { name: 'Find sights near ' + checkout_origin.title, exact: true })
+    .click();
+  const off_leg_sight = 'Kyoto Riverside gallery';
+  await results
+    .getByRole('button', { name: 'Add ' + off_leg_sight + ' to day', exact: true })
+    .click();
+  await dialog
+    .getByRole('status')
+    .filter({ hasText: off_leg_sight + ' added to Day 3' })
+    .waitFor();
+  const from_kyoto = journal().stops.find((stop) => stop.title === off_leg_sight);
+  assert(from_kyoto && from_kyoto.city_id === city_locations[0].id && from_kyoto.day === day_three);
+  await dialog.getByRole('button', { name: 'Done', exact: true }).click();
+  await planned_list.getByRole('button', { name: 'Edit ' + off_leg_sight, exact: true }).click();
+  const change_off_leg = dialog.getByRole('button', { name: 'Change place', exact: true });
+  await change_off_leg.click();
+  await kyoto_museum.waitFor();
+  assert.equal(await kyoto.getAttribute('aria-pressed'), 'true');
+  await areaAction(dialog).getByText(default_area, { exact: true }).waitFor();
+  await osaka.click();
+  const osaka_museum = dialog.getByRole('button', { name: /^Osaka test museum/ });
+  await osaka_museum.click();
+  await change_off_leg.click();
+  await osaka_museum.waitFor();
+  assert.equal(await osaka.getAttribute('aria-pressed'), 'true');
+  assert.equal(await shellBack(), true);
+  await dialog.getByRole('button', { name: 'Save changes', exact: true }).click();
+  await dialog.waitFor({ state: 'hidden' });
+  const in_osaka = journal().stops.find((stop) => stop.id === from_kyoto.id);
+  assert(
+    in_osaka && in_osaka.title === 'Osaka test museum' && in_osaka.city_id === city_locations[2].id,
+  );
+  assert.equal(in_osaka.day, day_three);
+  assert.equal(journal_writes, writes_before_nearby + 2);
   assert.deepEqual(errors, [], 'The native applet should not produce uncaught browser errors.');
   for (const method of [
     'photos.pick',
@@ -4039,6 +4175,8 @@ try {
           'city-scoped sight and hotel result maps, coincident venues, pin selection and return to reviewed drafts',
           'transfer-day distance sorting across city, category, list and map with preserved selection',
           'three-kilometre stop and checkout-hotel search areas, scoped search and map selection, and adding a sight or hotel for the chosen city',
+          'named station and checkout-hotel shortcuts, city defaults after the trip, per-category area selection and return to city-center sights',
+          'editing a sight added near a hotel outside the scheduled city leg and preserving its replacement city',
           'undoing the latest sight in the filtered list and a hotel on the map, retrying a failed undo, and preserving the earlier sight after reopening',
           'venue neighborhood and full-day camera framing from visitor details and itinerary editing',
           'rescheduling a new hotel, then continuing at the arrival city on the new day',

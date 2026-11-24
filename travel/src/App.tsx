@@ -54,7 +54,12 @@ const MapView = lazy(() => import('./components/MapView'));
 type View = 'Itinerary' | 'Map' | 'Journal' | 'Toolbox';
 type Editor =
   | { kind: 'new_trip' | 'edit_trip' | 'add_city' | 'overview' }
-  | { kind: 'stop'; stop?: PlannedStop; initial_category?: StopSearchCategory }
+  | {
+      kind: 'stop';
+      stop?: PlannedStop;
+      initial_category?: StopSearchCategory;
+      initial_search_stop?: PlannedStop;
+    }
   | { kind: 'route' | 'reorder' }
   | { kind: 'visit'; visit?: CheckIn; stop?: PlannedStop }
   | { kind: 'photo_events' };
@@ -407,9 +412,9 @@ export function App() {
                   trip_visits={visits}
                   places={journal.places}
                   platform={platform}
-                  onAddStop={(initial_category) => {
+                  onAddStop={(initial_category, initial_search_stop) => {
                     setAddition(undefined);
-                    setEditor({ kind: 'stop', initial_category });
+                    setEditor({ kind: 'stop', initial_category, initial_search_stop });
                   }}
                   onOpenMap={() => setView('Map')}
                   onReorderStops={openStopOrder}
@@ -636,6 +641,7 @@ export function App() {
           first={first}
           stop={editor.stop}
           initial_category={editor.initial_category}
+          initial_search_stop={editor.initial_search_stop}
           onCancel={() => setEditor(null)}
           onDelete={(stop) => confirmRemoval({ kind: 'stop', stop })}
           onUndoAdd={undoAdd}

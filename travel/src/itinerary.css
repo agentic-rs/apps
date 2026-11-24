@@ -185,11 +185,13 @@
 }
 
 .itinerary-stop-tools {
-  justify-content: space-between;
+  flex-wrap: wrap;
+  column-gap: 5px;
   border-top: 1px solid var(--apell-line);
 }
 
 .itinerary-check-in,
+.itinerary-nearby,
 .stop-delete {
   gap: 6px;
   padding-inline: 0 10px;
@@ -200,7 +202,18 @@
   font-size: 0.8rem;
 }
 
+.itinerary-nearby {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+.itinerary-stop-tools > button {
+  padding-inline: 0;
+}
+
 .itinerary-reorder {
+  margin-inline-start: auto;
   margin-right: -7px;
 }
 
@@ -700,6 +713,18 @@
   color: var(--apell-primary);
   font-weight: 550;
   gap: 3px;
+}
+.ongoing-stay-actions.with-nearby {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.ongoing-stay-actions.with-nearby > :first-child {
+  grid-column: 1 / -1;
+  border-bottom: 1px solid var(--apell-line);
+  border-radius: 9px 9px 0 0;
+}
+.ongoing-stay-actions.with-nearby > :not(:first-child) {
+  justify-content: center;
 }
 .stay-journal {
   padding: 4px 8px 2px;

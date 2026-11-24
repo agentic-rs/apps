@@ -42,6 +42,7 @@ interface StopFormProps {
   day: string;
   first: string;
   initial_category?: StopSearchCategory;
+  initial_search_stop?: PlannedStop;
   stop?: PlannedStop;
   native: boolean;
   lookup: StopLookup;
@@ -75,6 +76,7 @@ function stopDraft(day: string, stop?: PlannedStop) {
     directory_ref: stop?.directory_ref,
     city: stop?.city,
     city_id: stop?.city_id,
+    place_day: stop?.day ?? day,
     title: stop?.title ?? '',
     day: stop?.day ?? day,
     before_stop_id: undefined as string | null | undefined,
@@ -179,6 +181,7 @@ export function StopForm(props: StopFormProps) {
           key={planned.id}
           stop={planned}
           initial_category={undefined}
+          initial_search_stop={undefined}
           onFinish={props.onCancel}
           onCancel={() => setPlanned(null)}
         />
@@ -194,6 +197,7 @@ function StopEditor({
   first,
   stop,
   initial_category,
+  initial_search_stop,
   lookup,
   addition,
   onUndoAdd,
@@ -210,6 +214,7 @@ function StopEditor({
   onEditPlanned?(stop: PlannedStop): void;
 }) {
   const [draft, setDraft] = useState(() => stopDraft(day, stop));
+  const entry_day = useRef(day);
   const blank_day = useRef(day);
   const inspected = useRef<{ draft: typeof draft; area?: DaySearchArea } | null>(null);
   const {
@@ -505,6 +510,7 @@ function StopEditor({
       title: place.title,
       city,
       city_id,
+      place_day: stop_day,
       kind: place.kind,
       ...stayDatesFor(place.kind),
       latitude: String(place.position.latitude),
@@ -539,6 +545,7 @@ function StopEditor({
       title: picking === 'change' && !name ? title : name,
       city,
       city_id,
+      place_day: stop_day,
       kind: suggested_kind,
       ...stayDatesFor(suggested_kind),
       directory_ref: undefined,
@@ -766,6 +773,14 @@ function StopEditor({
               initial_city={city}
               initial_city_id={city_id}
               initial_category={picker_category}
+              initial_search_stop={
+                picker_day === entry_day.current ? initial_search_stop : undefined
+              }
+              editing_stop={
+                stop && picker_day === draft.place_day
+                  ? { ...stop, day: draft.place_day, city, city_id, position }
+                  : undefined
+              }
               onCategoryChange={setPickerCategory}
               route={picker_stops}
               stays={picker_stays}
