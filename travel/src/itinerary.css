@@ -191,7 +191,7 @@
 }
 
 .itinerary-check-in,
-.itinerary-nearby,
+.nearby-places-button,
 .stop-delete {
   gap: 6px;
   padding-inline: 0 10px;
@@ -202,7 +202,7 @@
   font-size: 0.8rem;
 }
 
-.itinerary-nearby {
+.nearby-places-button {
   display: inline-flex;
   align-items: center;
   min-height: 44px;

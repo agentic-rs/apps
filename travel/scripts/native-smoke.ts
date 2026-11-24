@@ -1030,7 +1030,7 @@ try {
   await second_stop.click();
   await frame
     .getByRole('region', { name: 'Stops at selected map pin' })
-    .getByRole('button', { name: /Lookout terrace/ })
+    .getByRole('button', { name: 'Edit Lookout terrace', exact: true })
     .click();
   assert.equal(await dialog.getByLabel('Stop name').inputValue(), 'Lookout terrace');
   await dialog.getByRole('button', { name: 'Cancel' }).click();
@@ -4126,6 +4126,143 @@ try {
   );
   assert.equal(in_osaka.day, day_three);
   assert.equal(journal_writes, writes_before_nearby + 2);
+
+  // At the station, the saved gallery shares a pin. Both rows have their own nearby action.
+  const before_map_nearby = journal();
+  const writes_before_map_nearby = journal_writes;
+  await frame.getByRole('button', { name: 'Day 2, 21 May', exact: true }).click();
+  await day_map.click();
+  const route_pins = frame.getByRole('region', { name: 'Map of planned stops in itinerary order' });
+  const pin_details = frame.getByRole('region', { name: 'Stops at selected map pin', exact: true });
+  const shared_pin = route_pins.getByRole('button', {
+    name: /JR Nara Station.*Nara Parkside gallery|Nara Parkside gallery.*JR Nara Station/,
+  });
+  await shared_pin.press('Enter');
+  await pin_details
+    .getByRole('button', { name: 'Find hotels near ' + main_gallery, exact: true })
+    .waitFor();
+  const station_nearby_name = 'Find hotels near ' + station_origin.title;
+  const station_on_pin = pin_details.getByRole('button', {
+    name: station_nearby_name,
+    exact: true,
+  });
+  await station_on_pin.click();
+  await results.getByText('Nara Station lodge', { exact: true }).waitFor();
+  await areaAction(dialog).getByText(station_origin.title, { exact: true }).waitFor();
+  assert.equal(await hotels.getAttribute('aria-pressed'), 'true');
+  assert.equal(await nara.getAttribute('aria-pressed'), 'true');
+  await dialog.getByRole('button', { name: 'Close dialog', exact: true }).click();
+  await station_on_pin.and(frame.locator(':focus')).waitFor();
+  assert.equal(await shared_pin.getAttribute('aria-pressed'), 'true');
+  assert.equal(await shellBack(), true);
+  await pin_details.waitFor({ state: 'hidden' });
+
+  if ((await map_order_toggle.getAttribute('aria-expanded')) === 'false')
+    await map_order_toggle.click();
+  const station_in_list = map_order.getByRole('button', { name: station_nearby_name, exact: true });
+  await station_in_list.click();
+  await results.getByText('Nara Station lodge', { exact: true }).waitFor();
+  assert.equal(await shellBack(), true);
+  await station_in_list.and(frame.locator(':focus')).waitFor();
+  assert.equal(await map_order_toggle.getAttribute('aria-expanded'), 'true');
+  assert.equal(await pin_details.count(), 0);
+
+  // Both the Nara and Kyoto hotels check out after the scheduled trip. The chosen pin supplies the city.
+  const checkout_day = '2030-05-23';
+  await itinerary_date.fill(checkout_day);
+  const map_checkout_pin = route_pins.getByRole('button', {
+    name: 'Check out of ' + nara_lodge.title,
+    exact: true,
+  });
+  await map_checkout_pin.press('Enter');
+  assert.equal(await map_checkout_pin.getAttribute('data-stop-numbers'), null);
+  const checkout_on_pin = pin_details.getByRole('button', {
+    name: 'Find sights near ' + nara_lodge.title,
+    exact: true,
+  });
+  await checkout_on_pin.click();
+  await lakeside_gallery.waitFor();
+  assert.equal(await sights.getAttribute('aria-pressed'), 'true');
+  assert.equal(await nara.getAttribute('aria-pressed'), 'true');
+  await areaAction(dialog).getByText(nara_lodge.title, { exact: true }).waitFor();
+  assert.equal(await shellBack(), true);
+  await checkout_on_pin.and(frame.locator(':focus')).waitFor();
+  assert.equal(await map_checkout_pin.getAttribute('aria-pressed'), 'true');
+  assert.equal(journal_writes, writes_before_map_nearby);
+  assert.deepEqual(journal(), before_map_nearby);
+
+  await checkout_on_pin.click();
+  const colocated_sight = 'Nara Lakeside gallery annex';
+  const add_from_checkout = results.getByRole('button', {
+    name: 'Add ' + colocated_sight + ' to day',
+    exact: true,
+  });
+  await add_from_checkout.click();
+  const undo_from_checkout = dialog.getByRole('button', {
+    name: 'Undo adding ' + colocated_sight,
+    exact: true,
+  });
+  await undo_from_checkout.click();
+  await add_from_checkout.waitFor();
+  assert.deepEqual(journal(), before_map_nearby);
+  await add_from_checkout.click();
+  await undo_from_checkout.waitFor();
+  await dialog.getByRole('button', { name: 'Done', exact: true }).click();
+  await checkout_on_pin.and(frame.locator(':focus')).waitFor();
+  const grouped_checkout_pin = route_pins.getByRole('button', {
+    name: 'Stop 1, ' + colocated_sight + ' · Check out of ' + nara_lodge.title,
+    exact: true,
+  });
+  assert.equal(await grouped_checkout_pin.getAttribute('aria-pressed'), 'true');
+  assert.equal(await itinerary_date.inputValue(), checkout_day);
+  await pin_details
+    .getByRole('button', { name: 'Find hotels near ' + colocated_sight, exact: true })
+    .waitFor();
+  const map_additions = journal().stops.filter(
+    (stop) => !before_map_nearby.stops.some((old) => old.id === stop.id),
+  );
+  assert.deepEqual(
+    map_additions.map((stop) => [stop.title, stop.city_id, stop.day, stop.kind]),
+    [[colocated_sight, city_locations[1].id, checkout_day, 'sight']],
+  );
+  assert.equal(journal_writes, writes_before_map_nearby + 3);
+  await frame.getByRole('button', { name: 'Undo adding ' + colocated_sight, exact: true }).click();
+  await frame
+    .getByRole('status')
+    .filter({ hasText: colocated_sight + ' removed from' })
+    .and(frame.locator(':focus'))
+    .waitFor();
+  assert.deepEqual(journal(), before_map_nearby);
+  assert.equal(await map_checkout_pin.getAttribute('aria-pressed'), 'true');
+  await frame.getByRole('button', { name: 'Dismiss stop confirmation', exact: true }).click();
+  await checkout_on_pin.and(frame.locator(':focus')).waitFor();
+  await checkout_on_pin.click();
+  await add_from_checkout.waitFor();
+  assert.equal(await shellBack(), true);
+  await checkout_on_pin.and(frame.locator(':focus')).waitFor();
+  assert.equal(await itinerary_date.inputValue(), checkout_day);
+  assert.equal(journal_writes, writes_before_map_nearby + 4);
+
+  await itinerary_date.fill(day_two);
+  await shared_pin.press('Enter');
+  await station_on_pin.click();
+  await schedule(dialog, 'Nara Station lodge').click();
+  await arrival.click();
+  await stay_dates.getByRole('button', { name: 'Choose ' + day_three, exact: true }).click();
+  await confirm_stay.click();
+  await dialog.getByRole('heading', { name: 'Hotels near Osaka', exact: true }).waitFor();
+  await dialog.getByRole('button', { name: 'Done', exact: true }).click();
+  await route_pins.getByRole('button', { name: /^Stop \d+, Nara Station lodge$/ }).waitFor();
+  assert.equal(await itinerary_date.inputValue(), day_three);
+  assert.equal(await pin_details.count(), 0);
+  const booked_from_pin = journal().stops.find((stop) => stop.title === 'Nara Station lodge');
+  assert(
+    booked_from_pin &&
+      booked_from_pin.day === day_three &&
+      booked_from_pin.checkout_date === checkout_day,
+  );
+  assert.equal(booked_from_pin.city_id, city_locations[1].id);
+  assert.equal(journal_writes, writes_before_map_nearby + 5);
   assert.deepEqual(errors, [], 'The native applet should not produce uncaught browser errors.');
   for (const method of [
     'photos.pick',
@@ -4177,6 +4314,7 @@ try {
           'three-kilometre stop and checkout-hotel search areas, scoped search and map selection, and adding a sight or hotel for the chosen city',
           'named station and checkout-hotel shortcuts, city defaults after the trip, per-category area selection and return to city-center sights',
           'editing a sight added near a hotel outside the scheduled city leg and preserving its replacement city',
+          'opening nearby hotels and sights from the day map, restoring a grouped pin or route list on Back, and adding or undoing a sight on the checkout day',
           'undoing the latest sight in the filtered list and a hotel on the map, retrying a failed undo, and preserving the earlier sight after reopening',
           'venue neighborhood and full-day camera framing from visitor details and itinerary editing',
           'rescheduling a new hotel, then continuing at the arrival city on the new day',

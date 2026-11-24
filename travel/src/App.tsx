@@ -106,7 +106,8 @@ export function App() {
   const [editor, setEditor] = useState<Editor | null>(null);
   const [saved_stop_id, setSavedStopId] = useState('');
   const [addition, setAddition] = useState<StopAddition>();
-  const itinerary_tab = useRef<HTMLButtonElement>(null);
+  const active_tab = useRef<HTMLButtonElement>(null);
+  const restore_map_opener = useRef<(() => boolean) | undefined>(undefined);
   const [detail_id, setDetailId] = useState('');
   const [open_photo, setOpenPhoto] = useState<{ asset: PhotoAsset; caption: string } | null>(null);
   const [removal, setRemoval] = useState<Removal | null>(null);
@@ -164,6 +165,7 @@ export function App() {
     : undefined;
 
   function openTrip(id: string) {
+    restore_map_opener.current = undefined;
     setTripId(id);
     setAddition(undefined);
     setSavedStopId('');
@@ -209,6 +211,24 @@ export function App() {
 
   function openStopOrder() {
     setEditor({ kind: 'reorder' });
+  }
+
+  function openStopPicker(
+    initial_category: 'sight' | 'stay',
+    initial_search_stop?: PlannedStop,
+    restore_focus?: () => boolean,
+  ) {
+    restore_map_opener.current = restore_focus;
+    setAddition(undefined);
+    setEditor({ kind: 'stop', initial_category, initial_search_stop });
+  }
+
+  function dismissAddition() {
+    if (view !== 'Map' || !restore_map_opener.current?.()) {
+      active_tab.current?.focus({ preventScroll: true });
+    }
+    restore_map_opener.current = undefined;
+    setAddition(undefined);
   }
 
   async function saveDayRoute(
@@ -412,10 +432,7 @@ export function App() {
                   trip_visits={visits}
                   places={journal.places}
                   platform={platform}
-                  onAddStop={(initial_category, initial_search_stop) => {
-                    setAddition(undefined);
-                    setEditor({ kind: 'stop', initial_category, initial_search_stop });
-                  }}
+                  onAddStop={openStopPicker}
                   onOpenMap={() => setView('Map')}
                   onReorderStops={openStopOrder}
                   onEditStop={(stop) => setEditor({ kind: 'stop', stop })}
@@ -436,12 +453,15 @@ export function App() {
                   }
                 >
                   <MapView
+                    trip={trip}
+                    day={day}
                     stops={day_stops}
                     continuing_stays={day_stays}
                     visits={day_visits}
                     places={journal.places}
                     platform={platform}
                     active={editor?.kind !== 'stop' && editor?.kind !== 'reorder'}
+                    onAddStop={openStopPicker}
                     onMoveStop={reorderStop}
                     onReorderStops={openStopOrder}
                     onOptimize={() => setEditor({ kind: 'route' })}
@@ -460,7 +480,7 @@ export function App() {
       {addition &&
         trip?.id === addition.stop.trip_id &&
         addition.stop.day === day &&
-        view === 'Itinerary' &&
+        (view === 'Itinerary' || view === 'Map') &&
         !editor &&
         !detail &&
         !open_photo &&
@@ -470,10 +490,7 @@ export function App() {
               key={addition.stop.id}
               addition={addition}
               onUndo={undoAdd}
-              onDismiss={() => {
-                itinerary_tab.current?.focus({ preventScroll: true });
-                setAddition(undefined);
-              }}
+              onDismiss={dismissAddition}
             />
           </div>
         )}
@@ -483,7 +500,7 @@ export function App() {
             {(Object.keys(views) as View[]).map((tab) => (
               <button
                 key={tab}
-                ref={tab === 'Itinerary' ? itinerary_tab : undefined}
+                ref={tab === view ? active_tab : undefined}
                 aria-current={view === tab ? 'page' : undefined}
                 onClick={() => setView(tab)}
               >

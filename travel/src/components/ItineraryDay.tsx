@@ -1,13 +1,13 @@
-import { useLayoutEffect, useMemo, useRef } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 import { daysBetween, formatVisitDate, formatVisitTime, toVisitInput } from '../lib/dates';
 import { formatEntryCount, visitTitle } from '../lib/model';
 import { distanceKm, formatDistance } from '../lib/distance';
 import { staysForNight, type ContinuingStay } from '../lib/hotel-stays';
-import { searchCityForAnchor } from '../lib/planned-stop-search';
-import { searchCities, useSearchCityLocations } from '../lib/use-search-cities';
+import { useNearbyPlaceSearch } from '../lib/use-nearby-place-search';
 import { stop_kind_labels } from '../lib/types';
 import type { CheckIn, PhotoAsset, Place, PlannedStop, TravelPlatform, Trip } from '../lib/types';
 import { Icon } from './Icon';
+import { NearbyPlacesButton } from './NearbyPlacesButton';
 import { VisitCard } from './VisitCard';
 import { Photo } from './Photo';
 import { StopOrderButtons, useStopOrder, type MoveStop } from './StopOrderButtons';
@@ -66,14 +66,7 @@ export function ItineraryDay({
   onPhoto,
 }: ItineraryDayProps) {
   const { moving, move_error, reorder } = useStopOrder(onMoveStop);
-  const cities = useMemo(() => searchCities(trip), [trip]);
-  const needs_centers = useMemo(() => {
-    if (cities.every((city) => city.location)) return false;
-    const needs_city = (stop: PlannedStop) =>
-      stop.position && searchCityForAnchor(trip, stop, cities) === undefined;
-    return stops.some(needs_city) || continuing_stays.some(({ stop }) => needs_city(stop));
-  }, [cities, trip, stops, continuing_stays]);
-  const { cities: search_cities } = useSearchCityLocations(cities, needs_centers);
+  const nearbyCategory = useNearbyPlaceSearch(trip, stops, continuing_stays);
   const saved_button = useRef<HTMLButtonElement>(null);
   useLayoutEffect(() => {
     if (!reveal_stop_id) return;
@@ -122,28 +115,15 @@ export function ItineraryDay({
     else if (!visit.stop_id || !by_stop.has(visit.stop_id)) journal_entries.push(visit);
   }
 
-  function openPicker(button: HTMLButtonElement, category: 'sight' | 'stay', near?: PlannedStop) {
+  function openPicker(button: HTMLButtonElement, category: 'sight' | 'stay') {
     // Touch WebKit needs an explicit opener to restore focus when the picker closes.
     button.focus({ preventScroll: true });
-    onAddStop(category, near);
+    onAddStop(category);
   }
 
   function nearbyButton(stop: PlannedStop) {
-    if (!stop.position || !['stay', 'sight', 'transport'].includes(stop.kind)) return null;
-    if (searchCityForAnchor(trip, stop, search_cities) === undefined) return null;
-    const from_hotel = stop.kind === 'stay';
-    const label = from_hotel ? 'sights' : 'hotels';
-    return (
-      <button
-        type="button"
-        className="itinerary-nearby"
-        aria-label={`Find ${label} near ${stop.title}`}
-        onClick={(event) => openPicker(event.currentTarget, from_hotel ? 'sight' : 'stay', stop)}
-      >
-        <Icon name={from_hotel ? 'landmark' : 'bed'} size={16} />
-        Nearby {label}
-      </button>
-    );
+    const category = nearbyCategory(stop);
+    return category && <NearbyPlacesButton category={category} stop={stop} onAddStop={onAddStop} />;
   }
 
   function openCheckIn(button: HTMLButtonElement, stop?: PlannedStop) {

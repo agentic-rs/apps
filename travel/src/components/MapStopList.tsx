@@ -1,38 +1,62 @@
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useState, type ReactNode } from 'react';
 import type { ContinuingStay } from '../lib/hotel-stays';
 import { stop_kind_labels, type PlannedStop } from '../lib/types';
 import { Icon } from './Icon';
+import { NearbyPlacesButton } from './NearbyPlacesButton';
 import { StopOrderButtons, useStopOrder, type MoveStop } from './StopOrderButtons';
 
-export function MapStopButton({
+export interface MapNearbyActions {
+  nearbyCategory(stop: PlannedStop): 'sight' | 'stay' | undefined;
+  onAddStop(category: 'sight' | 'stay', near: PlannedStop): void;
+}
+
+export function MapStopRow({
   stop,
   number,
-  label,
+  stay_label,
   onOpen,
-}: {
+  nearbyCategory,
+  onAddStop,
+  order_controls,
+}: MapNearbyActions & {
   stop: PlannedStop;
-  number: number;
-  label?: string;
+  number?: number;
+  stay_label?: string;
   onOpen(id: string): void;
+  order_controls?: ReactNode;
 }) {
+  const category = nearbyCategory(stop);
+  const detail = [
+    ...(stay_label ? [] : [stop.time, stop_kind_labels[stop.kind]]),
+    stop.city,
+    !stop.position && 'No pin',
+  ]
+    .filter(Boolean)
+    .join(' · ');
   return (
-    <button
-      type="button"
-      className="map-stop-row"
-      aria-label={label}
-      onClick={() => onOpen(stop.id)}
-    >
-      <span className="map-stop-number">{number}</span>
-      <span className="map-stop-copy">
-        <strong>{stop.title}</strong>
-        <small>
-          {stop.time && `${stop.time} · `}
-          {stop_kind_labels[stop.kind]}
-          {!stop.position && ' · No pin'}
-        </small>
-      </span>
-      <Icon name="next" size={15} />
-    </button>
+    <div className="map-planned-row" data-map-stop={stop.id}>
+      <button
+        type="button"
+        className="map-stop-row"
+        aria-label={stay_label ?? `Edit ${stop.title}`}
+        onClick={() => onOpen(stop.id)}
+      >
+        {number !== undefined ? (
+          <span className="map-stop-number">{number}</span>
+        ) : (
+          <span className="map-stay-symbol">
+            <Icon name="bed" size={18} />
+          </span>
+        )}
+        <span className="map-stop-copy">
+          <strong>{stay_label ?? stop.title}</strong>
+          {detail && <small>{detail}</small>}
+        </span>
+        <Icon name="next" size={15} />
+      </button>
+      {category && <NearbyPlacesButton stop={stop} category={category} onAddStop={onAddStop} />}
+      {order_controls}
+    </div>
   );
 }
 
@@ -43,7 +67,9 @@ export function MapStopList({
   onMoveStop,
   onReorderStops,
   onOptimize,
-}: {
+  nearbyCategory,
+  onAddStop,
+}: MapNearbyActions & {
   stops: PlannedStop[];
   continuing_stays: ContinuingStay[];
   onOpenStop(id: string): void;
@@ -113,7 +139,13 @@ export function MapStopList({
           <ul className="map-stop-list map-hotel-list" aria-label="Hotel stays">
             {continuing_stays.map((stay) => (
               <li key={stay.stop.id}>
-                <MapStayButton stay={stay} onOpen={onOpenStop} />
+                <MapStopRow
+                  stop={stay.stop}
+                  stay_label={stay.label}
+                  onOpen={onOpenStop}
+                  nearbyCategory={nearbyCategory}
+                  onAddStop={onAddStop}
+                />
               </li>
             ))}
           </ul>
@@ -122,18 +154,21 @@ export function MapStopList({
           <ol className="map-stop-list" aria-label="Day route stops">
             {stops.map((stop, index) => (
               <li key={stop.id}>
-                <MapStopButton
+                <MapStopRow
                   stop={stop}
                   number={index + 1}
-                  label={`Edit ${stop.title}`}
                   onOpen={onOpenStop}
-                />
-                <StopOrderButtons
-                  stop={stop}
-                  count={stops.length}
-                  index={index}
-                  moving={moving}
-                  onMove={reorder}
+                  nearbyCategory={nearbyCategory}
+                  onAddStop={onAddStop}
+                  order_controls={
+                    <StopOrderButtons
+                      stop={stop}
+                      count={stops.length}
+                      index={index}
+                      moving={moving}
+                      onMove={reorder}
+                    />
+                  }
                 />
               </li>
             ))}
@@ -141,35 +176,5 @@ export function MapStopList({
         )}
       </div>
     </section>
-  );
-}
-
-export function MapStayButton({
-  stay,
-  onOpen,
-}: {
-  stay: ContinuingStay;
-  onOpen(id: string): void;
-}) {
-  return (
-    <button
-      type="button"
-      className="map-stop-row"
-      aria-label={stay.label}
-      onClick={() => onOpen(stay.stop.id)}
-    >
-      <span className="map-stay-symbol">
-        <Icon name="bed" size={18} />
-      </span>
-      <span className="map-stop-copy">
-        <strong>{stay.label}</strong>
-        {(!stay.stop.position || stay.stop.city) && (
-          <small>
-            {[stay.stop.city, !stay.stop.position && 'No pin'].filter(Boolean).join(' · ')}
-          </small>
-        )}
-      </span>
-      <Icon name="next" size={15} />
-    </button>
   );
 }

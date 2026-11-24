@@ -381,6 +381,79 @@
   overscroll-behavior: contain;
   padding: 0 16px;
 }
+.map-selection-card.single-stop {
+  max-height: calc(100% - 74px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.single-stop > header {
+  align-items: center;
+  padding-block: 9px;
+}
+.single-stop h2 {
+  margin: 0;
+}
+.single-stop header .map-single-detail {
+  display: block;
+  margin-top: 3px;
+  font-size: 12px;
+}
+.map-single-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 14px;
+  padding: 2px 12px;
+}
+.map-edit-action,
+:is(.map-workspace, .map-selection-card) .nearby-places-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 4px;
+  border: 0;
+  background: transparent;
+  color: var(--apell-primary);
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.map-edit-action svg,
+:is(.map-workspace, .map-selection-card) .nearby-places-button svg {
+  flex: none;
+}
+.map-edit-action {
+  color: var(--apell-muted);
+}
+.map-planned-row {
+  display: grid;
+  align-items: center;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0 8px;
+}
+.map-selection-card,
+.map-stop-list-pane {
+  container-type: inline-size;
+}
+@container (max-width: 27rem) {
+  .map-planned-row:has(.nearby-places-button) .map-stop-row {
+    grid-column: 1 / -1;
+  }
+  .map-planned-row .nearby-places-button {
+    justify-self: start;
+    margin-inline-start: 35px;
+  }
+}
+.map-single-actions {
+  flex-wrap: wrap;
+  row-gap: 0;
+}
+.map-planned-row + .map-planned-row {
+  border-top: 1px solid var(--apell-line);
+}
 .map-visit-row {
   display: flex;
   align-items: flex-start;
@@ -401,9 +474,6 @@
   background: transparent;
   color: var(--apell-text);
   text-align: left;
-}
-.map-stop-row + .map-stop-row {
-  border-top: 1px solid var(--apell-line);
 }
 .map-stop-number {
   display: grid;
@@ -534,12 +604,16 @@
     display: none;
   }
   .map-selection-card {
-    bottom: 40px;
-    right: 72px;
-    max-height: 57%;
+    bottom: 25px;
+    right: 12px;
+    max-height: calc(100% - 80px);
   }
   .map-selection-card > header {
     padding-block: 7px;
+  }
+  .map-selection-card.single-stop {
+    right: 12px;
+    bottom: 25px;
   }
   .map-selection-card h2 {
     margin: 2px 0;
@@ -555,10 +629,14 @@
   }
 }
 .map-workspace {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
   min-height: 0;
+}
+.map-route-panel {
+  display: contents;
 }
 .map-workspace .map-view {
   flex: 1;
@@ -620,19 +698,85 @@
   list-style: none;
 }
 .map-stop-list li {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   margin-inline: 14px 8px;
 }
 .map-stop-list li + li {
   border-top: 1px solid var(--apell-line);
 }
-.map-stop-list .map-stop-row {
+.map-planned-row .map-stop-row {
   min-width: 0;
-  flex: 1;
 }
 .map-stop-list .itinerary-reorder {
-  flex: none;
+  justify-self: end;
   margin: 0;
+}
+.map-stop-list .map-planned-row:has(.nearby-places-button):has(.itinerary-reorder) .map-stop-row {
+  grid-column: 1 / -1;
+}
+.map-stop-list .map-planned-row:has(.itinerary-reorder) .nearby-places-button {
+  justify-self: start;
+  margin-inline-start: 35px;
+}
+.app-content > .map-selection-sheet {
+  inset: auto 4px 4px;
+  display: block;
+  max-width: none;
+  max-height: calc(100% - 8px);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.map-selection-sheet > header {
+  padding: 6px 14px;
+  align-items: center;
+}
+.map-sheet-context {
+  color: var(--apell-muted);
+  font-size: 0.75rem;
+}
+.map-selection-sheet h2 {
+  font-size: 1.05rem;
+  margin: 0;
+}
+.map-selection-sheet .map-selected-visits {
+  overflow: visible;
+}
+@media (orientation: landscape) and (max-height: 480px) {
+  .map-workspace {
+    flex-direction: row;
+  }
+  .map-workspace .map-view {
+    min-width: 0;
+    height: 100%;
+  }
+  .map-route-panel {
+    display: block;
+    flex: 0 0 39%;
+    overflow: auto;
+    border-inline-start: 1px solid var(--apell-line);
+  }
+  .map-route-panel .map-top-tools {
+    position: static;
+    align-items: start;
+    padding: 4px;
+    gap: 2px;
+    pointer-events: auto;
+  }
+  .map-route-panel .map-mode-switch,
+  .map-route-panel .route-action-bar {
+    flex-wrap: wrap;
+  }
+  .map-route-panel .map-mode-switch button {
+    flex: 1;
+    padding-inline: 5px;
+  }
+  .map-zoom-controls {
+    top: 4px;
+    right: 4px;
+  }
+  .map-route-panel .map-stop-list-pane {
+    max-height: none;
+  }
+  .map-route-panel .map-stop-list-scroll {
+    overflow: visible;
+  }
 }

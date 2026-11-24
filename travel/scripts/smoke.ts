@@ -1460,7 +1460,28 @@ try {
   await overnight_pin.click();
   assert.equal(await overnight_pin.getAttribute('data-stop-numbers'), '1');
   const pin_card = page.getByRole('region', { name: 'Stops at selected map pin' });
-  await pin_card.getByRole('button', { name: /Station hall/ }).waitFor();
+  await pin_card.getByRole('button', { name: 'Edit Station hall', exact: true }).waitFor();
+  for (const [action, title, anchor] of [
+    ['Find hotels near Station hall', 'Choose a hotel', 'Station hall'],
+    ['Find sights near Station hotel', 'Choose a sight', 'Station hotel'],
+  ]) {
+    const nearby = pin_card.getByRole('button', { name: action, exact: true });
+    await nearby.click();
+    const picker = page.getByRole('dialog', { name: title, exact: true });
+    await picker
+      .getByRole('button', { name: 'Search area' })
+      .getByText(anchor, { exact: true })
+      .waitFor();
+    assert.equal(
+      await picker
+        .getByRole('button', { name: 'Search in Paris', exact: true })
+        .getAttribute('aria-pressed'),
+      'true',
+    );
+    await picker.getByRole('button', { name: 'Close dialog' }).click();
+    await nearby.and(page.locator(':focus')).waitFor();
+    assert.equal(await overnight_pin.getAttribute('aria-pressed'), 'true');
+  }
   await pin_card.getByRole('button', { name: 'Staying at Station hotel', exact: true }).click();
   await change_dates.click();
   assert.equal(await departure.getAttribute('aria-pressed'), 'true');

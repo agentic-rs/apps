@@ -39,7 +39,7 @@ Tap **Map** beside the results heading. Tap a pin or use the arrows to compare p
 
 From a stop’s review, **View on map** previews the day in the proposed order. The highlighted pin carries the stop’s proposed number. Dashed lines connect consecutive stops with coordinates. The nearest stop or hotel and its straight-line distance help you compare locations before saving. Use **Back** to return to the same route position, dates and notes. The map action is available for directory results and manually entered coordinates.
 
-An overnight or checkout hotel appears with a bed pin on the day map and on the maps used to compare places. Tap it to see whether you are staying or checking out. The day map also lets you reopen the original stay. These pins keep the day's stop numbering and route order intact.
+An overnight or checkout hotel appears with a bed pin on the day map and on the maps used to compare places. Tap it to see whether you are staying or checking out. On the day map, **Nearby sights** searches around the hotel for the day you are viewing. You can also reopen the original stay. These pins keep the day's stop numbering and route order intact.
 
 When a search result says **On this day**, tap it to edit the saved visit or stay, or choose **Add another visit** or **Add another stay**. Typing also searches the day's saved stops in the selected city. If the directory uses a different pin for a sight, you can reopen your original stop under **On this day**. If the directory is unavailable or has no nearby results, the picker shows the city's saved sights or stays even before you type. Hotel stays appear on each night from check-in through the night before check-out.
 
@@ -87,7 +87,7 @@ Before saving, enter any missing times and UTC offsets, or uncheck **Include** t
 
 ## Map
 
-The map opens on **Day route**. Numbered pins show the selected day’s planned stops. A dashed line connects consecutive stops with coordinates in itinerary order. Gaps indicate missing positions. The line represents the planned sequence and provides no turn-by-turn directions. Select a pin to open a stop.
+The map opens on **Day route**. Numbered pins show the selected day’s planned stops. A dashed line connects consecutive stops with coordinates in itinerary order. Gaps indicate missing positions. The line represents the planned sequence and provides no turn-by-turn directions. Select a pin to open a stop, find **Nearby hotels** from a sight or station, or find **Nearby sights** from a hotel. When places share a pin, each has its own actions. The stop list offers the same searches. After adding a place to that day, **Done** returns to the map with the original pin selected. **Undo** removes the addition.
 
 Tap the map button beside **Add stop** to see the day's numbered route. Open **Stop list** to edit or reorder stops while viewing the map. For a suggested order, tap **Optimize route**, choose a starting stop and a finishing stop, then compare the straight-line distances. Each stop needs coordinates for optimization. **Apply order** updates the day’s itinerary and pins together. Scheduled times and journal links stay attached to their stops.
 
