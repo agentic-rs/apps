@@ -7,7 +7,8 @@
 - For future Apell host changes, use a dedicated Git worktree of the sibling Apell repository. Keep applet and host commits in their respective repositories.
 - After each completed change to Recorder or the host features it uses, run `bun run --cwd recorder sync:simulator` against the matching host checkout. Verify the CLI reports the installed Recorder version before handing off.
 - After each completed change to the Fieldnotes applet, run `bun run --cwd travel sim:update` to install and verify the build on the dedicated Apell iPhone simulator.
-- For each Fieldnotes version, add a short bullet to `travel/CHANGELOG.md` with a screenshot of the visible change using sample data. If there is no visible change, the bullet is enough. Mark unfinished versions as in development.
+- For each Fieldnotes version, add a short bullet to `travel/CHANGELOG.md` and include screenshots of visible changes using sample data. Add more screenshots when they show a distinct step or change. Include an earlier capture when one is available and label its version. If there is no visible change, the bullet is enough. Mark unfinished versions as in development.
+- Use 160-pixel-wide WebP previews in `travel/docs/screenshots/thumbnails` that link to the larger captures. Use a Markdown table to show related screenshots side by side.
 - Design Fieldnotes as a mobile Apell app. Use QYER’s 穷游行程助手 iPhone app as the reference for features, navigation, and the sequence of actions within each tool. Modernize the visuals using Apell controls and theme tokens.
 - Never commit personal information, including usernames, email addresses, hostnames, personal absolute paths, or identifying IP addresses. Git commit author names and emails are the exception. Never commit secrets, recordings, downloaded models, or local environment files.
 - Prefer 2-space indentation and prioritize code quality over minimizing changes.
