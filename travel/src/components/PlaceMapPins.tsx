@@ -79,12 +79,29 @@ export function PlaceMapButton({
   );
 }
 
-export function openPlacePopup(map: LeafletMap, position: Coordinates, labels: string[]) {
+export function openPlacePopup(
+  map: LeafletMap,
+  position: Coordinates,
+  labels: string[],
+  action?: { label: string; description: string; onClick(): void },
+) {
   const popup = document.createElement('div');
   for (const label of labels) {
     const line = document.createElement('div');
     line.textContent = label;
     popup.append(line);
+  }
+  if (action) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'place-popup-action';
+    button.textContent = action.label;
+    button.setAttribute('aria-description', action.description);
+    button.addEventListener('click', (event) => {
+      event.stopPropagation();
+      action.onClick();
+    });
+    popup.append(button);
   }
   return leafletPopup({ maxWidth: 220 })
     .setContent(popup)

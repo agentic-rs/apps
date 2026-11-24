@@ -2782,7 +2782,7 @@ try {
     (
       await dialog.getByRole('group', { name: 'Search city' }).getByRole('button').allInnerTexts()
     ).map((name) => name.trim()),
-    ['Nara', 'Osaka'],
+    ['Nara', 'Osaka', 'Kyoto'],
   );
   assert.equal(await place_search.inputValue(), '', 'The previous day’s Nara search is cleared.');
   await osaka.click();
@@ -2933,6 +2933,18 @@ try {
   await nara.click();
   await dialog.getByRole('status').filter({ hasText: 'No nearby places found.' }).waitFor();
   assert.equal(await saved_places.count(), 0);
+  await open_results_map.click();
+  await hotel_map.getByRole('button', { name: 'Fit day route', exact: true }).waitFor();
+  const visible_route = hotel_map
+    .getByRole('region', { name: 'Map of place results' })
+    .getByRole('button', {
+      name: /^(Stop \d+, |Choose from \d+ day route places|Check out of |Staying at )/,
+    });
+  await visible_route.first().waitFor();
+  for (const pin of await visible_route.all()) assert(await pinWithinMap(pin));
+  assert.equal(await hotel_map.getByRole('group', { name: 'Selected place' }).count(), 0);
+  assert.equal(await shellBack(), true);
+  await open_results_map.and(frame.locator(':focus')).waitFor();
 
   // The saved type identifies the park even when its name omits the word "park".
   place_response_mode = 'unavailable';
@@ -3467,8 +3479,10 @@ try {
   assert.equal(journal_writes, writes_before_dates);
   await assertStayDates(day_three, '2030-05-24');
   await change_hotel.click();
-  await dialog.getByRole('heading', { name: 'Hotels near Osaka', exact: true }).waitFor();
-  assert.equal(await kyoto.count(), 0);
+  // The saved Kyoto booking still occupies this night until the draft is saved.
+  await dialog.getByRole('heading', { name: 'Hotels near Kyoto', exact: true }).waitFor();
+  assert.equal(await kyoto.getAttribute('aria-pressed'), 'true');
+  await osaka.click();
   await dialog.getByRole('button', { name: /^Osaka test inn/ }).click();
   assert.equal(await dialog.getByLabel('Notes').inputValue(), old_stay.notes);
   await assertStayDates(day_three, '2030-05-24');
@@ -3707,8 +3721,9 @@ try {
   await confirm_stay.click();
   await stay_dates.waitFor({ state: 'hidden' });
   await guest_map.waitFor({ state: 'hidden' });
-  await dialog.getByRole('heading', { name: 'Hotels near Osaka', exact: true }).waitFor();
-  assert.equal(await osaka.getAttribute('aria-pressed'), 'true');
+  await dialog.getByRole('heading', { name: 'Hotels near Kyoto', exact: true }).waitFor();
+  assert.equal(await kyoto.getAttribute('aria-pressed'), 'true');
+  await osaka.click();
   assert.equal(await place_search.inputValue(), '');
 
   const bookings = journal().stops.filter((stop) => stop.kind === 'stay');
@@ -3968,6 +3983,21 @@ try {
     await areaOption(title).click();
     await trigger.and(surface.locator(':focus')).waitFor();
   }
+  async function searchFromRoutePin(surface: Locator, label: string, action: string) {
+    await surface.getByRole('button', { name: /^Fit (?:results and )?day route$/ }).click();
+    const pin = resultMapPin(surface, label);
+    const grouped = (await pin.getAttribute('aria-haspopup')) === 'dialog';
+    await pin.click();
+    if (grouped) {
+      const route_tab = result_chooser.getByRole('button', { name: 'Show day route', exact: true });
+      if (await route_tab.count()) await route_tab.click();
+      await route_choices.getByRole('button', { name: label, exact: true }).click();
+    }
+    const popup = surface.locator('.leaflet-popup');
+    await popup.getByText(label, { exact: true }).waitFor();
+    await popup.getByRole('button', { name: action, exact: true }).click();
+    await result_chooser.waitFor({ state: 'hidden' });
+  }
   const writes_before_area = journal_writes;
   const default_area = 'City center';
   await kyoto_museum.waitFor();
@@ -4017,7 +4047,11 @@ try {
   });
   await back_to_results.click();
   await review_gallery.and(area_map.locator(':focus')).waitFor();
-  await chooseArea(area_map, park_origin.title, station_origin.title, checkout_origin.title);
+  const find_sights = 'Find sights nearby';
+  const find_hotels = 'Find hotels nearby';
+  await searchFromRoutePin(area_map, 'Stop 1, JR Nara Station', find_sights);
+  await areaAction(area_map).and(frame.locator(':focus')).waitFor();
+  await areaAction(area_map).getByText(station_origin.title, { exact: true }).waitFor();
   await area_card
     .getByRole('heading', { name: 'Nara Station gallery annex', exact: true })
     .waitFor();
@@ -4058,6 +4092,10 @@ try {
     .locator('.leaflet-popup')
     .getByText('Stop 2, Nara Park', { exact: true })
     .waitFor();
+  assert.equal(
+    await area_map.locator('.leaflet-popup').getByRole('button', { name: find_sights }).count(),
+    0,
+  );
   await area_card.getByRole('heading', { name: main_gallery, exact: true }).waitFor();
   assert.equal(await shellBack(), true);
   await route_choice.and(frame.locator(':focus')).waitFor();
@@ -4107,11 +4145,13 @@ try {
   assert.deepEqual(journal(), retained_gallery, 'Undo removes only the latest addition.');
   await hotels.click();
   await nara_inn.waitFor();
-  await kyoto.click();
-  await chooseArea(dialog, default_area, checkout_origin.title, station_origin.title);
   const riverside_lodge = 'Kyoto Riverside lodge';
   await open_results_map.click();
+  await searchFromRoutePin(hotel_map, 'Check out of ' + checkout_origin.title, find_hotels);
   const lodging_map = frame.getByRole('dialog', { name: 'Hotels near Kyoto', exact: true });
+  await areaAction(lodging_map).and(frame.locator(':focus')).waitFor();
+  await areaAction(lodging_map).getByText(checkout_origin.title, { exact: true }).waitFor();
+  assert.deepEqual(journal(), retained_gallery);
   const lodge_schedule = schedule(lodging_map, riverside_lodge);
   await lodge_schedule.click();
   await stay_dates.getByRole('heading', { name: riverside_lodge, exact: true }).waitFor();
@@ -4291,10 +4331,72 @@ try {
       park_checkout,
     ],
   };
-  files.set('journal/journal.json', [...new TextEncoder().encode(JSON.stringify(off_leg_fixture))]);
-  await native_frame.goto(native_frame.url(), { waitUntil: 'domcontentloaded' });
-  await frame.getByRole('button', { name: 'Open trip Kansai by rail', exact: true }).click();
-  await frame.getByRole('button', { name: 'Day 3, 22 May', exact: true }).click();
+  async function openThirdDay(fixture: Journal) {
+    files.set('journal/journal.json', [...new TextEncoder().encode(JSON.stringify(fixture))]);
+    await native_frame.goto(native_frame.url(), { waitUntil: 'domcontentloaded' });
+    await frame.getByRole('button', { name: 'Open trip Kansai by rail', exact: true }).click();
+    await frame.getByRole('button', { name: 'Day 3, 22 May', exact: true }).click();
+  }
+  const checkout_fixture = {
+    ...off_leg_fixture,
+    stops: off_leg_fixture.stops.map((stop) =>
+      stop.id === 'area-checkout' ? { ...stop, checkout_date: day_three } : stop,
+    ),
+  };
+  await openThirdDay(checkout_fixture);
+  const before_origin_search = journal_writes;
+  await add_stop.click();
+  await nara_museum.waitFor();
+  await chooseType(dialog, 'Sight', 'Museums & galleries');
+  await chooseSort(dialog, 'Directory order', 'Nearest to day plan');
+  await place_search.fill('museum');
+  await search.click();
+  await nara_museum.waitFor();
+  await open_results_map.click();
+  await area_map.getByRole('button', { name: 'Next place' }).click();
+  const selected_nara = await area_card.getByRole('heading').innerText();
+  assert.equal(await area_map.getByRole('button', { name: 'Search in Kyoto' }).count(), 1);
+  assert.equal(
+    await area_map.getByRole('button', { name: 'Search in Nara' }).getAttribute('aria-pressed'),
+    'true',
+  );
+  await searchFromRoutePin(area_map, 'Check out of ' + checkout_origin.title, find_sights);
+  const filteredMap = (city: string) =>
+    frame.getByRole('dialog', { name: 'Museums & galleries near ' + city, exact: true });
+  const kyoto_filtered = filteredMap('Kyoto');
+  await areaAction(kyoto_filtered).and(frame.locator(':focus')).waitFor();
+  await areaAction(kyoto_filtered).getByText(checkout_origin.title, { exact: true }).waitFor();
+  await kyoto_filtered.getByText(/No matches within 3 km/).waitFor();
+  assert.equal(await kyoto_filtered.getByRole('group', { name: 'Selected place' }).count(), 0);
+  assert.equal(
+    await kyoto_filtered
+      .getByRole('button', { name: 'Sort places' })
+      .getAttribute('aria-description'),
+    'Nearest to selected place',
+  );
+  assert(
+    area_requests.some(
+      (request) => request.title === checkout_origin.title && request.query === 'museum',
+    ),
+  );
+  place_response_mode = 'unavailable';
+  await searchFromRoutePin(kyoto_filtered, 'Stop 2, Osaka Castle', find_sights);
+  const osaka_filtered = filteredMap('Osaka');
+  await osaka_filtered.getByRole('alert').waitFor();
+  await osaka_filtered.getByRole('region', { name: 'Map of place results' }).waitFor();
+  place_response_mode = 'normal';
+  await osaka_filtered.getByRole('button', { name: 'Try again', exact: true }).click();
+  await osaka_filtered.getByRole('group', { name: 'Selected place' }).waitFor();
+  await areaAction(osaka_filtered).getByText('Osaka Castle', { exact: true }).waitFor();
+  await osaka_filtered.getByRole('button', { name: 'Search in Nara' }).click();
+  await area_card.getByRole('heading', { name: selected_nara, exact: true }).waitFor();
+  await areaAction(area_map).getByText(default_area, { exact: true }).waitFor();
+  await area_map.getByRole('button', { name: 'Back to place list' }).click();
+  assert.equal(await place_search.inputValue(), 'museum');
+  assert.deepEqual(journal(), checkout_fixture);
+  assert.equal(journal_writes, before_origin_search);
+
+  await openThirdDay(off_leg_fixture);
   await frame
     .getByRole('button', { name: 'Find sights near ' + checkout_origin.title, exact: true })
     .click();
@@ -4601,6 +4703,7 @@ try {
           'consecutive sights and hotel browsing in the same city search, clean drafts and exactly-once retry',
           'directly adding two nearby sights, duplicate-tap protection, failed write and retry from the result',
           'city-scoped sight and hotel result maps, coincident venues, pin selection and return to reviewed drafts',
+          'searching for sights or hotels from a route pin, keeping filters across cities and recovering from empty or unavailable searches on the map',
           'transfer-day distance sorting across city, category, list and map with preserved selection',
           'three-kilometre stop and checkout-hotel search areas, scoped search and map selection, and adding a sight or hotel for the chosen city',
           'named station and checkout-hotel shortcuts, city defaults after the trip, per-category area selection and return to city-center sights',

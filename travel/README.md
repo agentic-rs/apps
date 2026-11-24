@@ -31,11 +31,13 @@ On a multi-city trip, the check-in and check-out controls show the route for eac
 
 When another hotel covers a proposed night, tap the **planned stays** count to compare your proposal with each hotel’s full dates and shared nights. The comparison includes the saved city, location, arrival time and notes when available. **Back** returns to your selected dates. A hotel with open checkout counts on its arrival night. A checkout day is available for a new stay. You can keep two hotels for the same night.
 
-If you change the day of a new sight or hotel and continue choosing places, the picker keeps its city when that city is on the revised day’s route. For example, move a Nara hotel from Kyoto → Nara to Nara → Osaka and the next hotel search still opens in Nara. If the city is absent, sights start in the first city and hotels in the last.
+If you change the day of a sight or hotel and continue choosing places, the picker keeps its city when the revised day includes that city in its schedule, saved stops or stays. For example, a Kyoto hotel that spans a Nara → Osaka transfer keeps Kyoto available on that day. If the previous city is absent, sights start in the first scheduled city and hotels in the last.
 
 The sight and hotel lists show each new venue’s straight-line distance to the nearest mapped stop or hotel on that day, including a checkout hotel. **Sort places → Nearest to day plan** orders the current results by that distance and puts already-planned matches last. **Directory order** restores the original suggestions. Each city remembers its sight and lodging sort choices while the picker is open. [行程助手’s city picker with separate sorting and filtering controls](https://www.sohu.com/a/331566931_503432)
 
 Tap **Map** beside the results heading to see the place you last opened in the list. Choose a venue by name and address from a counted pin, or use the arrows to compare results. On a transfer day, each city's search remembers its selection. **Day route** fits the results and the itinerary together. If a pin contains both, switch between **Results** and **Day route** to inspect a sight, a hotel, or a planned stop. Places at the same address remain individually selectable. Closing a route stop returns to its row and keeps your selected result.
+
+Tap a planned stop or checkout hotel on the results map and choose **Find hotels nearby** or **Find sights nearby** to run the current search around that pin. The day, search text, type and sort order carry over when the pin belongs to another city. Cities with a saved stop or stay are also selectable from the city buttons. If the directory is unavailable or returns no matches, the day route remains on the map so you can try another stop.
 
 **Review place** opens the selected venue’s details. Tap its address to open the surrounding neighborhood. **Fit all** shows the day’s mapped places. Back returns to the selected place on the map, then to the list.
 

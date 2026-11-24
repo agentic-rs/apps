@@ -114,7 +114,23 @@
   margin: 8px 0 0;
 }
 .result-map-empty {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  flex: none;
   padding: 8px 16px;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+.result-map-empty p {
+  flex: 1 1 15rem;
+  margin: 0;
+  line-height: 1.35;
+}
+.result-map-empty button {
+  flex: none;
+  min-height: 44px;
 }
 .result-map-loading {
   display: grid;
@@ -153,13 +169,30 @@
     grid-template-rows: auto minmax(0, 1fr);
     overflow: hidden;
   }
-  .result-map-city-bar,
-  .result-map-empty {
-    grid-column: 1 / -1;
-  }
   .result-map-city-bar {
+    grid-column: 1 / -1;
     max-height: 30dvh;
     overflow-y: auto;
+  }
+  .result-map-empty {
+    grid-row: 2;
+    grid-column: 1 / -1;
+    align-items: start;
+    flex-flow: column nowrap;
+    overflow-y: auto;
+  }
+  .result-map-empty p {
+    flex: 0 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+  }
+  .result-map-sheet:has(> .browse-map, > .result-map-loading) .result-map-empty {
+    grid-column: 2;
+  }
+  .result-map-sheet > .browse-map,
+  .result-map-loading {
+    grid-row: 2;
+    grid-column: 1;
   }
   .result-map-sheet > .browse-map,
   .result-map-card {

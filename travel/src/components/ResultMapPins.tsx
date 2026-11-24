@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import type { Map as LeafletMap } from 'leaflet';
 import { useBackLayer } from '../lib/back-navigation';
@@ -33,7 +33,7 @@ type Chooser = {
   section: Pin['kind'];
   focus_id?: string;
 };
-type Inspection = { position: Coordinates; labels: string[] };
+type Inspection = { id: string; position: Coordinates; labels: string[] };
 
 function countLabel(count: number, kind: string) {
   return `${count} ${kind}${count === 1 ? '' : 's'}`;
@@ -46,6 +46,9 @@ export function ResultMapPins({
   day_groups,
   area,
   selected_id,
+  search_near_label,
+  canSearchNear,
+  onSearchNear,
   onSelect,
   card_title,
   disabled,
@@ -55,7 +58,10 @@ export function ResultMapPins({
   results: readonly DayPlaceResult[];
   day_groups: readonly DayPinGroup[];
   area?: DaySearchArea;
-  selected_id: string;
+  selected_id?: string;
+  search_near_label: string;
+  canSearchNear(id: string): boolean;
+  onSearchNear(id: string): void;
   onSelect(id: string): void;
   card_title: RefObject<HTMLHeadingElement | null>;
   disabled: boolean;
@@ -127,18 +133,44 @@ export function ResultMapPins({
     popup_back.current = true;
     map.closePopup();
   });
+  const action_label =
+    inspection && !disabled && area?.id !== inspection.id && canSearchNear(inspection.id)
+      ? search_near_label
+      : undefined;
+  const searchFromPopup = useEffectEvent((id: string) => {
+    if (disabled || area?.id === id || !canSearchNear(id)) return;
+    map.closePopup();
+    onSearchNear(id);
+  });
   useLayoutEffect(() => {
     if (!inspection) return;
     popup_back.current = false;
-    const popup = openPlacePopup(map, inspection.position, inspection.labels);
+    const center = map.getCenter();
+    const zoom = map.getZoom();
+    const popup = openPlacePopup(
+      map,
+      inspection.position,
+      inspection.labels,
+      action_label
+        ? {
+            label: action_label,
+            description: inspection.labels.join(' · '),
+            onClick: () => searchFromPopup(inspection.id),
+          }
+        : undefined,
+    );
     const close = popup
       .getElement()
       ?.querySelector<HTMLAnchorElement>('.leaflet-popup-close-button');
+    const action = popup.getElement()?.querySelector<HTMLButtonElement>('.place-popup-action');
     const rememberBack = () => {
       popup_back.current = true;
     };
     const dismissed = () => {
-      if (!popup_back.current) {
+      if (popup_back.current) {
+        // Leaflet pans tall popups into view. Back returns to the marker's original viewport.
+        if (map.getZoom() === zoom) map.stop().panTo(center, { animate: false });
+      } else {
         // Fitting the map, changing results or tapping another pin supersedes this inspection.
         return_to.current = null;
         setChooser(null);
@@ -146,14 +178,14 @@ export function ResultMapPins({
       setInspection(null);
     };
     close?.addEventListener('click', rememberBack, true);
-    close?.focus({ preventScroll: true });
+    (action ?? close)?.focus({ preventScroll: true });
     popup.on('remove', dismissed);
     return () => {
       popup.off('remove', dismissed);
       close?.removeEventListener('click', rememberBack, true);
       popup.remove();
     };
-  }, [map, inspection]);
+  }, [map, inspection, action_label]);
 
   return (
     <>
@@ -171,7 +203,7 @@ export function ResultMapPins({
               onOpen={(button, labels) => {
                 map.closePopup();
                 return_to.current = { element: button, pin_key: first.key };
-                setInspection({ position, labels });
+                setInspection({ id: first.group.points[0].id, position, labels });
               }}
             />
           );
@@ -259,6 +291,7 @@ export function ResultMapPins({
             onInspect={({ point, label, origin }) => {
               setChooser({ ...chooser, focus_id: point.id });
               setInspection({
+                id: point.id,
                 position: point.position,
                 labels: origin ? [origin, label] : [label],
               });

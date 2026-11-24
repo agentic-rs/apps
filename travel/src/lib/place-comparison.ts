@@ -13,31 +13,40 @@ export interface DaySearchArea {
   position: Coordinates;
 }
 
-export function daySearchAreas(
+export function daySearchPlaces(
   trip: Trip,
   route: readonly PlannedStop[],
   stays: readonly ContinuingStay[],
   all_cities: readonly SearchCity[],
+  day: string,
+) {
+  function entry(stop: PlannedStop, detail: string) {
+    return { stop, detail, city_index: searchCityForAnchor(trip, stop, all_cities) };
+  }
+  return [
+    ...route.map((stop, index) =>
+      entry(stop, `Stop ${index + 1}${stop.kind === 'stay' ? ' · Check-in' : ''}`),
+    ),
+    ...stays.map(({ stop }) =>
+      entry(stop, stop.checkout_date === day ? 'Checking out today' : 'Overnight stay'),
+    ),
+  ];
+}
+
+export function daySearchAreas(
+  places: ReturnType<typeof daySearchPlaces>,
   city_index: number | undefined,
   city: string,
-  day: string,
 ): DaySearchArea[] {
-  const areas: DaySearchArea[] = [];
-  function include(stop: PlannedStop, detail: string) {
-    if (!stop.position) return;
+  return places.flatMap(({ stop, detail, city_index: visit }) => {
     const belongs =
       city_index === undefined
         ? Boolean(city && stop.city && directoryKey(stop.city) === directoryKey(city))
-        : searchCityForAnchor(trip, stop, all_cities) === city_index;
-    if (belongs) areas.push({ id: stop.id, title: stop.title, detail, position: stop.position });
-  }
-  route.forEach((stop, index) =>
-    include(stop, `Stop ${index + 1}${stop.kind === 'stay' ? ' · Check-in' : ''}`),
-  );
-  stays.forEach(({ stop }) =>
-    include(stop, stop.checkout_date === day ? 'Checking out today' : 'Overnight stay'),
-  );
-  return areas;
+        : visit === city_index;
+    return belongs && stop.position
+      ? [{ id: stop.id, title: stop.title, detail, position: stop.position }]
+      : [];
+  });
 }
 
 export interface DayPlaceResult {

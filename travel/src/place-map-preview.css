@@ -97,6 +97,20 @@
 .place-map-canvas .leaflet-popup-content > div > div + div {
   margin-top: 0.4rem;
 }
+.place-popup-action {
+  min-width: 44px;
+  min-height: 44px;
+  max-width: 100%;
+  margin-top: 0.4rem;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--apell-primary);
+  background: var(--apell-primary-soft);
+  font: inherit;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
 .place-stop-badge,
 .place-candidate-tip {
   display: grid;

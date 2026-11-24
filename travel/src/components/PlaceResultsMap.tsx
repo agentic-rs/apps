@@ -32,6 +32,9 @@ export default function PlaceResultsMap({
   stays,
   selected_id,
   onSelect,
+  search_near_label,
+  canSearchNear,
+  onSearchNear,
   card_title,
   saving,
   native,
@@ -41,8 +44,11 @@ export default function PlaceResultsMap({
   area?: DaySearchArea;
   stops: PlannedStop[];
   stays: ContinuingStay[];
-  selected_id: string;
+  selected_id?: string;
   onSelect(id: string): void;
+  search_near_label: string;
+  canSearchNear(id: string): boolean;
+  onSearchNear(id: string): void;
   card_title: RefObject<HTMLHeadingElement | null>;
   saving: boolean;
   native: boolean;
@@ -51,22 +57,23 @@ export default function PlaceResultsMap({
   const { container, map, zoom } = useLeafletMap(0);
   const places = useMemo(() => results.map(({ place }) => place), [results]);
   const { groups } = useMemo(() => dayMapPlaces(stops, stays), [stops, stays]);
-  const result_locations = new Set(
-    places.map(({ position }) => `${position.latitude}/${normalizeLongitude(position.longitude)}`),
+  const has_search_points = Boolean(places.length || area);
+  const fit_points = useMemo(() => {
+    if (area) return [...places, area];
+    return places.length ? places : groups;
+  }, [places, area, groups]);
+  const fit_locations = new Set(
+    fit_points.map(
+      ({ position }) => `${position.latitude}/${normalizeLongitude(position.longitude)}`,
+    ),
   );
-  const fit_points = useMemo(() => (area ? [...places, area] : places), [places, area]);
   const fitResults = useMapFit(
     map,
     active,
-    [
-      area?.id,
-      area?.position.latitude,
-      area?.position.longitude,
-      ...[...result_locations].sort(),
-    ].join(';'),
+    [has_search_points ? 'search' : 'route', area?.id, ...[...fit_locations].sort()].join(';'),
     fit_points,
     resultsPadding,
-    fitSearchArea,
+    has_search_points ? fitSearchArea : fitMapPoints,
   );
   const { tile_failures, retryTiles } = useMapTiles(map, native, active);
   useDayRouteLine(map, stops, active);
@@ -99,6 +106,9 @@ export default function PlaceResultsMap({
           area={area}
           selected_id={selected_id}
           onSelect={onSelect}
+          search_near_label={search_near_label}
+          canSearchNear={canSearchNear}
+          onSearchNear={onSearchNear}
           card_title={card_title}
           disabled={saving}
         />
@@ -112,22 +122,24 @@ export default function PlaceResultsMap({
         </div>
       )}
       <div className="browse-map-tools" role="group" aria-label="Map controls">
-        <button
-          type="button"
-          aria-label="Fit search results"
-          title="Fit search results"
-          onClick={() => {
-            map?.closePopup();
-            fitResults();
-          }}
-        >
-          <Icon name="locate" />
-        </button>
+        {has_search_points && (
+          <button
+            type="button"
+            aria-label={places.length ? 'Fit search results' : 'Fit search area'}
+            title={places.length ? 'Fit search results' : 'Fit search area'}
+            onClick={() => {
+              map?.closePopup();
+              fitResults();
+            }}
+          >
+            <Icon name="locate" />
+          </button>
+        )}
         {groups.length > 0 && (
           <button
             type="button"
-            aria-label="Fit results and day route"
-            title="Fit results and day route"
+            aria-label={places.length ? 'Fit results and day route' : 'Fit day route'}
+            title={places.length ? 'Fit results and day route' : 'Fit day route'}
             onClick={() => {
               if (!map) return;
               map.closePopup();

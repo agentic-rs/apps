@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import kansai from '../fixtures/kansai.json';
 import { continuingStays } from '../src/lib/hotel-stays';
-import { daySearchAreas } from '../src/lib/place-comparison';
+import { daySearchAreas, daySearchPlaces } from '../src/lib/place-comparison';
 import { parseJournal } from '../src/lib/model';
 import {
   matchesPlannedPlace,
@@ -50,9 +50,10 @@ test('search areas keep route numbers and expose checkout hotels only in their p
   };
   const route = [unlocated, park];
   const stays = [{ stop: hotel, label: 'Check out of Kyoto inn' }];
-  const nara_areas = daySearchAreas(trip, route, stays, cities, 1, 'Nara', park.day);
+  const places = daySearchPlaces(trip, route, stays, cities, park.day);
+  const nara_areas = daySearchAreas(places, 1, 'Nara');
   expect(nara_areas.map(({ id, detail }) => [id, detail])).toEqual([[park.id, 'Stop 2']]);
-  const kyoto_areas = daySearchAreas(trip, route, stays, cities, 0, 'Kyoto', park.day);
+  const kyoto_areas = daySearchAreas(places, 0, 'Kyoto');
   expect(kyoto_areas.map(({ id, detail }) => [id, detail])).toEqual([
     ['kyoto-stay', 'Checking out today'],
   ]);
@@ -111,10 +112,9 @@ test('nearby search and checkout areas use the original visit for a repeated cit
   const checkout = continuingStays([hotel], day);
   expect(searchCityForAnchor(loop, hotel, visits)).toBe(0);
   expect(unscheduledHotelCity(loop, visits, [], checkout, day)).toBe(0);
-  expect(
-    daySearchAreas(loop, [], checkout, visits, 0, 'Kyoto', day).map((area) => area.id),
-  ).toEqual([hotel.id]);
-  expect(daySearchAreas(loop, [], checkout, visits, 2, 'Kyoto', day)).toEqual([]);
+  const places = daySearchPlaces(loop, [], checkout, visits, day);
+  expect(daySearchAreas(places, 0, 'Kyoto').map((area) => area.id)).toEqual([hotel.id]);
+  expect(daySearchAreas(places, 2, 'Kyoto')).toEqual([]);
   expect(searchCityForAnchor(loop, { ...hotel, day, city_id: kyoto.id }, visits)).toBeUndefined();
 });
 

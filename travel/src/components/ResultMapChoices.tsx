@@ -24,7 +24,7 @@ export function ResultMapChoices({
 }: {
   section: 'result' | 'route';
   focus_id?: string;
-  selected_id: string;
+  selected_id?: string;
   result_choices: readonly DayPlaceResult[];
   route_choices: readonly RouteMapChoice[];
   onSectionChange(section: 'result' | 'route'): void;
