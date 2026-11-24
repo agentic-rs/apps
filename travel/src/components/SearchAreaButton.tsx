@@ -81,7 +81,7 @@ export function SearchAreaButton({
       {open &&
         createPortal(
           <Dialog title="Search area" onDismiss={() => setOpen(false)}>
-            <div className="search-area-options" role="group" aria-label="Search area">
+            <div className="map-choice-options" role="group" aria-label="Search area">
               {optionButton(city_center)}
               <h3>Within {planned_place_radius_km} km of a planned place</h3>
               {options.map(optionButton)}

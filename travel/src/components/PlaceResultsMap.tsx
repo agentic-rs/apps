@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, type RefObject } from 'react';
 import {
   fitMapPoints,
   useDayRouteLine,
@@ -8,11 +8,11 @@ import {
   type MapPadding,
 } from '../lib/leaflet-map';
 import { dayMapPlaces, normalizeLongitude, visiblePosition } from '../lib/map';
-import type { DaySearchArea } from '../lib/place-comparison';
-import type { StopSearchResult } from '../lib/stop-lookup';
+import type { DayPlaceResult, DaySearchArea } from '../lib/place-comparison';
 import type { PlannedStop } from '../lib/types';
 import { Icon } from './Icon';
-import { DayPlacePins, PlaceMapButton } from './PlaceMapPins';
+import { DayPlacePins } from './PlaceMapPins';
+import { ResultMapPins } from './ResultMapPins';
 import type { ContinuingStay } from '../lib/hotel-stays';
 import '../place-map-preview.css';
 import '../place-results-map.css';
@@ -22,34 +22,35 @@ const resultsPadding = (): MapPadding => ({
   paddingBottomRight: [32, 48],
 });
 
-const kind_icons = {
-  sight: 'landmark',
-  stay: 'bed',
-  food: 'food',
-  transport: 'route',
-  other: 'pin',
-} as const;
+// A search around a station can return a dozen venues within a few blocks.
+const fitSearchArea: typeof fitMapPoints = (map, points, padding) =>
+  fitMapPoints(map, points, padding, 17);
 
 export default function PlaceResultsMap({
-  places,
+  results,
   area,
   stops,
   stays,
   selected_id,
   onSelect,
+  card_title,
+  saving,
   native,
   active,
 }: {
-  places: StopSearchResult[];
+  results: readonly DayPlaceResult[];
   area?: DaySearchArea;
   stops: PlannedStop[];
   stays: ContinuingStay[];
   selected_id: string;
   onSelect(id: string): void;
+  card_title: RefObject<HTMLHeadingElement | null>;
+  saving: boolean;
   native: boolean;
   active: boolean;
 }) {
   const { container, map, zoom } = useLeafletMap(0);
+  const places = useMemo(() => results.map(({ place }) => place), [results]);
   const { groups } = useMemo(() => dayMapPlaces(stops, stays), [stops, stays]);
   const result_locations = new Set(
     places.map(({ position }) => `${position.latitude}/${normalizeLongitude(position.longitude)}`),
@@ -66,6 +67,7 @@ export default function PlaceResultsMap({
     ].join(';'),
     fit_points,
     resultsPadding,
+    fitSearchArea,
   );
   const { tile_failures, retryTiles } = useMapTiles(map, native, active);
   useDayRouteLine(map, stops, active);
@@ -97,24 +99,17 @@ export default function PlaceResultsMap({
           search_area={area}
         />
       )}
-      {map &&
-        places.map((place) => (
-          <PlaceMapButton
-            key={place.id}
-            map={map}
-            position={place.position}
-            label={`Show ${place.title} on map`}
-            selected={place.id === selected_id}
-            onClick={() => {
-              map.closePopup();
-              onSelect(place.id);
-            }}
-          >
-            <span className="browse-pin-badge">
-              <Icon name={kind_icons[place.kind]} size={18} />
-            </span>
-          </PlaceMapButton>
-        ))}
+      {map && active && (
+        <ResultMapPins
+          map={map}
+          zoom={zoom}
+          results={results}
+          selected_id={selected_id}
+          onSelect={onSelect}
+          card_title={card_title}
+          disabled={saving}
+        />
+      )}
       {tile_failures > 0 && active && (
         <div className="place-map-status" role="status">
           Map background unavailable.

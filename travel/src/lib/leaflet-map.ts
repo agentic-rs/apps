@@ -176,6 +176,7 @@ export function fitMapPoints(
   map: LeafletMap,
   points: readonly { position: Coordinates }[],
   padding: MapPadding,
+  max_zoom = 14,
 ) {
   const bounds = fitCoordinates(points);
   if (!bounds) {
@@ -191,7 +192,7 @@ export function fitMapPoints(
     ],
     {
       ...padding,
-      maxZoom: 14,
+      maxZoom: max_zoom,
       animate: false,
     },
   );

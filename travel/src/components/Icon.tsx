@@ -1,6 +1,12 @@
 import type { CSSProperties } from 'react';
 
 const paths = {
+  layers: (
+    <>
+      <path d="m3 8 9-5 9 5-9 5-9-5Z" />
+      <path d="m3 12 9 5 9-5M3 16l9 5 9-5" />
+    </>
+  ),
   info: (
     <>
       <circle cx="12" cy="12" r="9" />

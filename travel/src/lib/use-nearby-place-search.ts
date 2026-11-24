@@ -1,10 +1,10 @@
 import { useMemo } from 'react';
 import type { ContinuingStay } from './hotel-stays';
-import { searchCityForAnchor } from './planned-stop-search';
+import { searchCityForAnchor, searchCityLabel } from './planned-stop-search';
 import type { PlannedStop, Trip } from './types';
 import { searchCities, useSearchCityLocations } from './use-search-cities';
 
-function nearbyCategory(stop: PlannedStop) {
+function categoryForStop(stop: PlannedStop) {
   if (!stop.position) return;
   if (stop.kind === 'stay') return 'sight';
   if (stop.kind === 'sight' || stop.kind === 'transport') return 'stay';
@@ -17,15 +17,28 @@ export function useNearbyPlaceSearch(
   stays: readonly ContinuingStay[],
 ) {
   const cities = useMemo(() => searchCities(trip), [trip]);
+  const day_places = useMemo(() => [...stops, ...stays.map(({ stop }) => stop)], [stops, stays]);
   const needs_centers = useMemo(() => {
     if (cities.every((city) => city.location)) return false;
-    const needs_city = (stop: PlannedStop) =>
-      nearbyCategory(stop) !== undefined && searchCityForAnchor(trip, stop, cities) === undefined;
-    return stops.some(needs_city) || stays.some(({ stop }) => needs_city(stop));
-  }, [cities, trip, stops, stays]);
-  const resolved = useSearchCityLocations(cities, needs_centers);
-  return (stop: PlannedStop) => {
-    const category = nearbyCategory(stop);
-    if (category && searchCityForAnchor(trip, stop, resolved.cities) !== undefined) return category;
+    return day_places.some(
+      (stop) =>
+        stop.position &&
+        (!stop.city || categoryForStop(stop)) &&
+        searchCityForAnchor(trip, stop, cities) === undefined,
+    );
+  }, [cities, trip, day_places]);
+  const { cities: resolved } = useSearchCityLocations(cities, needs_centers);
+  const city_by_stop = useMemo(() => {
+    const labels = new Map<string, string>();
+    for (const stop of day_places) {
+      const index = searchCityForAnchor(trip, stop, resolved);
+      if (index !== undefined) labels.set(stop.id, searchCityLabel(resolved, index));
+    }
+    return labels;
+  }, [day_places, trip, resolved]);
+  return {
+    nearbyCategory: (stop: PlannedStop) =>
+      city_by_stop.has(stop.id) ? categoryForStop(stop) : undefined,
+    nearbyCity: (stop: PlannedStop) => city_by_stop.get(stop.id) ?? stop.city,
   };
 }

@@ -1,7 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { Map as LeafletMap, Point } from 'leaflet';
-import { MapMarker } from './MapMarker';
+import type { Point } from 'leaflet';
+import { mapStopDetail, NearbyMapPlaces } from './NearbyMapPlaces';
+import { JournalMapPin } from './JournalMapPin';
+import { useMapPinClusters } from '../lib/use-map-pin-clusters';
 import { formatTripDates, formatVisitDate, formatVisitTime } from '../lib/dates';
 import { dayMapPlaces, groupPins, mapPoints, visiblePosition, type MapMode } from '../lib/map';
 import type { ContinuingStay } from '../lib/hotel-stays';
@@ -15,7 +17,6 @@ import {
 import '../map.css';
 import { formatCoordinates, formatEntryCount, visitTitle } from '../lib/model';
 import {
-  stop_kind_labels,
   type CheckIn,
   type Place,
   type PlannedStop,
@@ -86,77 +87,6 @@ function focusNearby(scope: Element | null, stop_id: string) {
   return true;
 }
 
-function JournalMapPin({
-  map,
-  group,
-  mode,
-  selected,
-  onSelect,
-}: {
-  map: LeafletMap;
-  group: ReturnType<typeof groupPins>[number] | ReturnType<typeof dayMapPlaces>['groups'][number];
-  mode: MapMode;
-  selected: boolean;
-  onSelect(): void;
-}) {
-  const { latitude, longitude } = group.position;
-  const route = 'numbers' in group ? group : undefined;
-  const hotel = route && !route.numbers.length;
-  const anchor = route ? 21 : 43;
-  const label = route
-    ? route.labels.join(' · ')
-    : `${[...new Set(group.points.map((point) => point.label))].join(', ')}: ${formatEntryCount(group.entry_ids.length)}`;
-  return (
-    <MapMarker
-      map={map}
-      position={group.position}
-      anchor_y={anchor}
-      height={48}
-      z_index={selected ? 1000 : 0}
-    >
-      <button
-        type="button"
-        className={`journal-map-pin ${mode}${hotel ? ' stay' : ''}${selected ? ' selected' : ''}`}
-        title={label}
-        aria-label={label}
-        aria-pressed={selected}
-        data-latitude={latitude}
-        data-longitude={longitude}
-        data-stop-numbers={route?.numbers.length ? route.numbers.join(',') : undefined}
-        data-visit-count={route ? undefined : group.entry_ids.length}
-        onFocus={(event) => {
-          if (event.currentTarget.matches(':focus-visible'))
-            map.panInside(visiblePosition(group.position, map.getCenter().lng), {
-              ...dayMapPadding(map.getSize()),
-              animate: false,
-            });
-        }}
-        onClick={(event) => {
-          event.stopPropagation();
-          onSelect();
-        }}
-      >
-        <span className="map-pin-bubble">
-          <span>
-            {hotel ? (
-              <Icon name="bed" size={18} />
-            ) : route ? (
-              route.numbers[0]
-            ) : (
-              group.entry_ids.length
-            )}
-          </span>
-          {route && group.points.length > 1 && (
-            <small className="map-pin-extra">
-              {route.has_stay && !hotel && <Icon name="bed" size={12} />}+{group.points.length - 1}
-            </small>
-          )}
-        </span>
-      </button>
-    </MapMarker>
-  );
-}
-
 export default function MapView({
   trip,
   day,
@@ -192,38 +122,110 @@ export default function MapView({
   const workspace = useRef<HTMLDivElement>(null);
   const panel = useRef<HTMLElement>(null);
   const nearby_return = useRef<(() => boolean) | null>(null);
+  const pending_focus = useRef<{ target: 'marker' | 'choice' | 'heading'; id: string } | null>(
+    null,
+  );
   const [sheet_host, setSheetHost] = useState<HTMLElement | null>(null);
   const [mode, setMode] = useState<MapMode>('stops');
+  const [restored_camera, setRestoredCamera] = useState<{ route_key: string; fit_key: string }>();
   const [selection, setSelection] = useState<
     | { context: string; kind: 'pin'; key: string; entry_ids: string[]; fit_key: string }
+    | {
+        context: string;
+        kind: 'nearby';
+        entry_ids: string[];
+        chosen_id?: string;
+        last_id?: string;
+        fit_key: string;
+      }
     | { context: string; kind: 'unlocated' }
     | null
   >(null);
-  const nearbyCategory = useNearbyPlaceSearch(trip, stops, continuing_stays);
+  const { nearbyCategory, nearbyCity } = useNearbyPlaceSearch(trip, stops, continuing_stays);
   const data = useMemo(() => {
-    if (mode === 'stops') return dayMapPlaces(stops, continuing_stays);
+    if (mode === 'stops') {
+      const route = dayMapPlaces(stops, continuing_stays);
+      return { ...route, route_groups: route.groups };
+    }
     const data = mapPoints(visits, places, mode);
-    return { ...data, groups: groupPins(data.points) };
+    return { ...data, groups: groupPins(data.points), route_groups: [] };
   }, [stops, continuing_stays, visits, places, mode]);
   const { groups } = data;
   const numbers = useMemo(() => new Map(stops.map((stop, index) => [stop.id, index + 1])), [stops]);
   const context = `${trip.id}/${day}/${mode}`;
-  const fit_key = `${context}:${groups.map((group) => group.key).join(';')}`;
+  const route_key = `${context}:${groups.map((group) => group.key).join(';')}`;
+  const fit_key = restored_camera?.route_key === route_key ? restored_camera.fit_key : route_key;
   const pin = selection?.kind === 'pin' && selection.context === context ? selection : null;
-  const selected =
-    pin &&
-    groups.find(
-      (group) => group.key === pin.key && group.entry_ids.some((id) => pin.entry_ids.includes(id)),
-    );
+  const nearby = selection?.kind === 'nearby' && selection.context === context ? selection : null;
+  const chosen_id = nearby?.chosen_id;
+  const selected = chosen_id
+    ? groups.find((group) => group.entry_ids.includes(chosen_id))
+    : pin &&
+      groups.find(
+        (group) =>
+          group.key === pin.key && group.entry_ids.some((id) => pin.entry_ids.includes(id)),
+      );
+  const day_places = useMemo(
+    () =>
+      new Map(
+        [...stops, ...continuing_stays.map(({ stop }) => stop)].map((stop, index) => [
+          stop.id,
+          { stop, index },
+        ]),
+      ),
+    [stops, continuing_stays],
+  );
+  function placesInRouteOrder(ids: readonly string[]) {
+    return ids
+      .flatMap((id) => {
+        const entry = day_places.get(id);
+        return entry?.stop.position ? [entry] : [];
+      })
+      .sort((a, b) => a.index - b.index)
+      .map(({ stop }) => stop);
+  }
+  const choices = nearby ? placesInRouteOrder(nearby.entry_ids) : [];
+  const choosing = Boolean(nearby && !selected && choices.length);
+  const cluster_input = useMemo(() => {
+    const route = data.route_groups;
+    // A chosen place occupies its actual position when the surrounding pins overlap.
+    const chosen = selected && route.find((group) => group.key === selected.key);
+    return chosen && route[0] !== chosen
+      ? [chosen, ...route.filter((group) => group !== chosen)]
+      : route;
+  }, [data.route_groups, selected]);
+  const route_clusters = useMapPinClusters(map, cluster_input, zoom);
   const unlocated_open =
     selection?.kind === 'unlocated' &&
     selection.context === context &&
     data.unlocated_ids.length > 0;
   function closeSelection() {
+    if (nearby) {
+      if (selected && nearby.chosen_id) {
+        pending_focus.current = { target: 'choice', id: nearby.chosen_id };
+        setSelection({ ...nearby, last_id: nearby.chosen_id, chosen_id: undefined });
+        return;
+      }
+      pending_focus.current = {
+        target: 'marker',
+        id:
+          choices.find((stop) => stop.id === nearby.last_id)?.id ??
+          choices[0]?.id ??
+          nearby.entry_ids[0],
+      };
+      // A place may have been added from this pin. Back keeps the traveler's zoom.
+      if (fit_key !== nearby.fit_key) setRestoredCamera({ route_key, fit_key: nearby.fit_key });
+    }
     setSelection(null);
   }
-  useBackLayer(active && (Boolean(selected) || unlocated_open), closeSelection);
-  const visible_ids = new Set(unlocated_open ? data.unlocated_ids : (selected?.entry_ids ?? []));
+  useBackLayer(active && (Boolean(selected) || choosing || unlocated_open), closeSelection);
+  const visible_ids = new Set(
+    unlocated_open
+      ? data.unlocated_ids
+      : nearby?.chosen_id
+        ? [nearby.chosen_id]
+        : (selected?.entry_ids ?? []),
+  );
   const selected_visits = (mode === 'stops' ? [] : visits)
     .filter((visit) => visible_ids.has(visit.id))
     .sort((a, b) => b.visited_at.localeCompare(a.visited_at));
@@ -246,23 +248,11 @@ export default function MapView({
   const single_category = single_stop && nearbyCategory(single_stop);
   const single_detail =
     single_stop &&
-    [
-      selected_stays.length
-        ? day === single_stop.checkout_date
-          ? 'Check-out'
-          : 'Staying overnight'
-        : single_stop.kind === 'stay'
-          ? 'Check-in'
-          : stop_kind_labels[single_stop.kind],
-      single_stop.city,
-      selected_stops.length ? single_stop.time : undefined,
-    ]
-      .filter(Boolean)
-      .join(' · ');
+    mapStopDetail(single_stop, day, numbers.get(single_stop.id), nearbyCity(single_stop));
 
   useEffect(() => {
-    if (selection && !selected && !unlocated_open) setSelection(null);
-  }, [selection, selected, unlocated_open]);
+    if (selection && !selected && !choosing && !unlocated_open) setSelection(null);
+  }, [selection, selected, choosing, unlocated_open]);
 
   function openNearby(category: 'sight' | 'stay', stop: PlannedStop) {
     const from_card = Boolean(panel.current?.contains(document.activeElement));
@@ -292,6 +282,13 @@ export default function MapView({
         const id = focused.closest<HTMLElement>('[data-map-stop]')?.dataset.mapStop;
         if (id) nearby_return.current = () => focusNearby(panel.current, id);
       }
+      if (
+        focused instanceof HTMLElement &&
+        panel.current?.contains(focused) &&
+        focused.dataset.mapChoice
+      ) {
+        pending_focus.current = { target: 'choice', id: focused.dataset.mapChoice };
+      }
       setSheetHost(next);
     };
     update();
@@ -309,10 +306,35 @@ export default function MapView({
     return () => cancelAnimationFrame(frame);
   }, [active, day, sheet_host]);
 
+  useLayoutEffect(() => {
+    const focus = pending_focus.current;
+    if (!active || !focus) return;
+    const frame = requestAnimationFrame(() => {
+      let target: HTMLElement | null | undefined;
+      if (focus.target === 'marker') {
+        const cluster = route_clusters.find((item) =>
+          item.groups.some((group) => group.entry_ids.includes(focus.id)),
+        );
+        if (cluster)
+          target = workspace.current?.querySelector(
+            `[data-map-pin-key="${CSS.escape(cluster.key)}"]`,
+          );
+      } else if (focus.target === 'choice') {
+        target = panel.current?.querySelector(`[data-map-choice="${CSS.escape(focus.id)}"]`);
+      } else {
+        target = panel.current?.querySelector('h2');
+      }
+      target?.focus({ preventScroll: true });
+      if (focus.target !== 'marker') target?.scrollIntoView({ block: 'nearest' });
+      pending_focus.current = null;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [active, selection, sheet_host, route_clusters]);
+
   const fitPins = useMapFit(
     map,
     active,
-    selected && pin ? pin.fit_key : fit_key,
+    nearby?.fit_key ?? (selected && pin ? pin.fit_key : fit_key),
     data.points,
     dayMapPadding,
   );
@@ -335,15 +357,20 @@ export default function MapView({
 
   function chooseMode(next: MapMode) {
     setMode(next);
-    closeSelection();
+    pending_focus.current = null;
+    setSelection(null);
   }
 
-  const selection_card = (selected || unlocated_open) && (
+  const selection_card = (selected || choosing || unlocated_open) && (
     <section
       className={`map-selection-card${single_stop ? ' single-stop' : ''}${sheet_host ? ' map-selection-sheet' : ''}`}
       hidden={!active}
       ref={panel}
-      aria-label={`${mode === 'stops' ? 'Stops' : 'Entries'} ${unlocated_open ? 'without coordinates' : 'at selected map pin'}`}
+      aria-label={
+        choosing
+          ? 'Nearby places on the map'
+          : `${mode === 'stops' ? 'Stops' : 'Entries'} ${unlocated_open ? 'without coordinates' : 'at selected map pin'}`
+      }
     >
       <header>
         <div>
@@ -352,7 +379,8 @@ export default function MapView({
               {labels.label} · <time dateTime={day}>{formatTripDates(day, day)}</time>
             </span>
           ) : (
-            !single_stop && (
+            !single_stop &&
+            !choosing && (
               <span className="map-card-kicker">
                 {unlocated_open
                   ? 'NOT ON THIS MAP'
@@ -364,16 +392,20 @@ export default function MapView({
               </span>
             )
           )}
-          <h2>
-            {unlocated_open
-              ? 'Missing coordinates'
-              : selected_names.length === 1
-                ? selected_names[0]
-                : mode === 'stops'
-                  ? selected_stays.length
-                    ? 'Places at this position'
-                    : 'Stops at this position'
-                  : 'Moments at this position'}
+          <h2 tabIndex={-1}>
+            {choosing
+              ? 'Nearby places'
+              : single_stop
+                ? single_stop.title
+                : unlocated_open
+                  ? 'Missing coordinates'
+                  : selected_names.length === 1
+                    ? selected_names[0]
+                    : mode === 'stops'
+                      ? selected_stays.length
+                        ? 'Places at this position'
+                        : 'Stops at this position'
+                      : 'Moments at this position'}
           </h2>
           {single_stop ? (
             <p className="map-single-detail">{single_detail}</p>
@@ -394,14 +426,31 @@ export default function MapView({
         </div>
         <button
           type="button"
-          className="icon-button"
-          aria-label="Close map selection"
+          className={nearby && selected ? 'map-nearby-back' : 'icon-button'}
+          aria-label={nearby && selected ? 'Back to nearby places' : 'Close map selection'}
           onClick={closeSelection}
         >
-          <Icon name="close" size={19} />
+          {nearby && selected ? (
+            <>
+              <Icon name="back" size={17} /> Back
+            </>
+          ) : (
+            <Icon name="close" size={19} />
+          )}
         </button>
       </header>
-      {single_stop ? (
+      {choosing && nearby ? (
+        <NearbyMapPlaces
+          stops={choices}
+          numbers={numbers}
+          day={day}
+          nearbyCity={nearbyCity}
+          onChoose={(stop) => {
+            pending_focus.current = { target: 'heading', id: stop.id };
+            setSelection({ ...nearby, chosen_id: stop.id });
+          }}
+        />
+      ) : single_stop ? (
         <div className="map-single-actions" data-map-stop={single_stop.id}>
           <button
             type="button"
@@ -429,6 +478,7 @@ export default function MapView({
               number={numbers.get(stop.id)!}
               onOpen={onOpenStop}
               nearbyCategory={nearbyCategory}
+              nearbyCity={nearbyCity}
               onAddStop={openNearby}
             />
           ))}
@@ -439,6 +489,7 @@ export default function MapView({
               stay_label={stay.label}
               onOpen={onOpenStop}
               nearbyCategory={nearbyCategory}
+              nearbyCity={nearbyCity}
               onAddStop={openNearby}
             />
           ))}
@@ -490,11 +541,14 @@ export default function MapView({
           aria-label={labels.region}
         />
         {map &&
+          mode !== 'stops' &&
           groups.map((group) => (
             <JournalMapPin
               key={group.key}
               map={map}
               group={group}
+              marker_key={group.key}
+              padding={dayMapPadding}
               mode={mode}
               selected={selected?.key === group.key}
               onSelect={() =>
@@ -508,6 +562,53 @@ export default function MapView({
               }
             />
           ))}
+        {map &&
+          mode === 'stops' &&
+          route_clusters.map((cluster) => {
+            const anchor = cluster.groups[0];
+            const is_detailed = selected?.key === anchor.key;
+            const selected_place = is_detailed && nearby && single_stop;
+            const group = selected_place
+              ? dayMapPlaces(selected_stops, selected_stays, numbers).groups[0]
+              : anchor;
+            let counted: { stops: PlannedStop[]; numbers: number[] } | undefined;
+            if (cluster.groups.length > 1 && !is_detailed) {
+              counted = {
+                stops: placesInRouteOrder(cluster.groups.flatMap((group) => group.entry_ids)),
+                numbers: cluster.groups.flatMap((group) => group.numbers).sort((a, b) => a - b),
+              };
+            }
+            return (
+              <JournalMapPin
+                key={cluster.key}
+                map={map}
+                group={group}
+                marker_key={cluster.key}
+                cluster={counted}
+                padding={dayMapPadding}
+                mode={mode}
+                selected={
+                  is_detailed ||
+                  Boolean(choosing && nearby && nearby.entry_ids.includes(anchor.entry_ids[0]))
+                }
+                onSelect={() => {
+                  if (counted) {
+                    const entry_ids = counted.stops.map((stop) => stop.id);
+                    pending_focus.current = { target: 'choice', id: entry_ids[0] };
+                    setSelection({ context, kind: 'nearby', entry_ids, fit_key });
+                  } else if (!is_detailed) {
+                    setSelection({
+                      context,
+                      kind: 'pin',
+                      key: group.key,
+                      entry_ids: group.entry_ids,
+                      fit_key,
+                    });
+                  }
+                }}
+              />
+            );
+          })}
         <div className="map-caption">
           <span className={`map-legend-dot ${mode}`} />
           <span>
@@ -553,7 +654,7 @@ export default function MapView({
             )}
           </div>
         )}
-        {data.unlocated_ids.length > 0 && !selected && !unlocated_open && (
+        {data.unlocated_ids.length > 0 && !selected && !choosing && !unlocated_open && (
           <button
             className="map-missing-button"
             type="button"
@@ -610,6 +711,7 @@ export default function MapView({
             continuing_stays={continuing_stays}
             onOpenStop={onOpenStop}
             nearbyCategory={nearbyCategory}
+            nearbyCity={nearbyCity}
             onAddStop={openNearby}
             onMoveStop={onMoveStop}
             onReorderStops={onReorderStops}

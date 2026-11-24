@@ -8,6 +8,27 @@
   flex: 1 0 var(--result-canvas-min);
   min-height: var(--result-canvas-min);
 }
+.browse-result-count {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 40px;
+  height: 34px;
+  border: 2px solid var(--apell-accent-line);
+  border-radius: 11px;
+  background: var(--apell-surface);
+  color: var(--apell-accent-line);
+  font:
+    700 14px/1 system-ui,
+    sans-serif;
+  box-shadow: 0 1px 4px var(--apell-shadow);
+}
+.browse-place-pin[aria-pressed='true'] .browse-result-count {
+  color: var(--apell-accent-ink);
+  background: var(--apell-accent);
+  outline: 2px solid var(--apell-surface);
+}
 .browse-pin-badge {
   display: grid;
   place-items: center;

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useRef, type ReactNode } from 'react';
+import { lazy, Suspense, useRef, type ReactNode } from 'react';
 import type { ContinuingStay } from '../lib/hotel-stays';
 import type { DayPlaceResult, DaySearchArea } from '../lib/place-comparison';
 import { placeTypeLabel } from '../lib/place-types';
@@ -68,7 +68,6 @@ export function PlaceResultsSheet({
     0,
     results.findIndex(({ place }) => place.id === selected_id),
   );
-  const places = useMemo(() => results.map(({ place }) => place), [results]);
   const result = results[index];
   const place = result?.place;
   const planned = result?.planned ?? [];
@@ -99,7 +98,9 @@ export function PlaceResultsSheet({
               }
             >
               <PlaceResultsMap
-                places={places}
+                results={results}
+                card_title={card_title}
+                saving={saving}
                 area={area}
                 stops={route}
                 stays={stays}
@@ -120,7 +121,7 @@ export function PlaceResultsSheet({
               <div className="result-map-card-heading">
                 <div aria-live="polite" aria-atomic="true">
                   <span className="result-map-count">
-                    {index + 1} of {places.length}
+                    {index + 1} of {results.length}
                   </span>
                   <h3 ref={card_title} tabIndex={-1}>
                     {place.title}
@@ -132,7 +133,7 @@ export function PlaceResultsSheet({
                     className="icon-button"
                     aria-label="Previous place"
                     disabled={index === 0}
-                    onClick={() => onSelect(places[index - 1].id)}
+                    onClick={() => onSelect(results[index - 1].place.id)}
                   >
                     <Icon name="back" />
                   </button>
@@ -140,8 +141,8 @@ export function PlaceResultsSheet({
                     type="button"
                     className="icon-button"
                     aria-label="Next place"
-                    disabled={index === places.length - 1}
-                    onClick={() => onSelect(places[index + 1].id)}
+                    disabled={index === results.length - 1}
+                    onClick={() => onSelect(results[index + 1].place.id)}
                   >
                     <Icon name="next" />
                   </button>

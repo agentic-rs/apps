@@ -28,21 +28,21 @@
 .search-area-name strong {
   font-weight: 600;
 }
-.dialog[open]:has(> .search-area-options) {
+.dialog[open]:has(> .map-choice-options) {
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
-.dialog:has(> .search-area-options) .dialog-header {
+.dialog:has(> .map-choice-options) .dialog-header {
   flex: none;
 }
-.search-area-options {
+.map-choice-options {
   min-height: 0;
   padding: 0 18px calc(12px + var(--safe-area-bottom));
   overflow-y: auto;
   overscroll-behavior: contain;
 }
-.search-area-options button {
+.map-choice-options button {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -55,10 +55,10 @@
   color: var(--apell-text);
   text-align: start;
 }
-.search-area-options button + button {
+.map-choice-options button + button {
   border-top: 1px solid var(--apell-line);
 }
-.search-area-options h3 {
+.map-choice-options h3 {
   margin: 0;
   padding: 14px 4px 4px;
   border-top: 1px solid var(--apell-line);
@@ -66,19 +66,19 @@
   font-size: 0.84rem;
   font-weight: 600;
 }
-.search-area-options button[aria-pressed='true'] {
+.map-choice-options button[aria-pressed='true'] {
   color: var(--apell-primary);
 }
-.search-area-options button > span {
+.map-choice-options button > span {
   display: grid;
   gap: 3px;
   min-width: 0;
   overflow-wrap: anywhere;
 }
-.search-area-options strong {
+.map-choice-options strong {
   font-weight: 550;
 }
-.search-area-options small {
+.map-choice-options small {
   color: var(--apell-muted);
   font-size: 0.82rem;
 }

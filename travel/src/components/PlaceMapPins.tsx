@@ -16,6 +16,8 @@ export function PlaceMapButton({
   shared,
   numbers,
   selected,
+  opens_dialog,
+  disabled,
   onClick,
   children,
 }: {
@@ -27,7 +29,9 @@ export function PlaceMapButton({
   shared?: boolean;
   numbers?: number[];
   selected?: boolean;
-  onClick(): void;
+  opens_dialog?: boolean;
+  disabled?: boolean;
+  onClick(button: HTMLButtonElement): void;
   children: ReactNode;
 }) {
   const route = kind === 'route';
@@ -48,6 +52,8 @@ export function PlaceMapButton({
         aria-label={label}
         title={label}
         aria-pressed={selected}
+        aria-haspopup={opens_dialog ? 'dialog' : undefined}
+        disabled={disabled}
         onFocus={(event) => {
           if (event.currentTarget.matches(':focus-visible'))
             map.panInside(visiblePosition(position, map.getCenter().lng), {
@@ -58,7 +64,7 @@ export function PlaceMapButton({
         }}
         onClick={(event) => {
           event.stopPropagation();
-          onClick();
+          onClick(event.currentTarget);
         }}
       >
         {children}

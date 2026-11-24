@@ -257,6 +257,19 @@
   outline: 3px solid var(--apell-selection-line);
   box-shadow: 0 3px 12px var(--apell-shadow);
 }
+.journal-map-pin.map-pin-cluster .map-pin-bubble {
+  left: 1px;
+  width: 42px;
+  border-radius: 12px;
+  background: var(--apell-text);
+  color: var(--apell-surface);
+}
+.journal-map-pin.map-pin-cluster .map-pin-bubble > span {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-variant-numeric: tabular-nums;
+}
 .journal-map-pin.places.selected .map-pin-bubble {
   outline-color: var(--apell-selection-line);
 }
@@ -374,6 +387,25 @@
 .map-selection-card header .icon-button {
   flex-shrink: 0;
   margin: -3px -6px 0 0;
+}
+.map-nearby-back {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  gap: 3px;
+  min-width: 44px;
+  padding: 4px;
+  background: transparent;
+  color: var(--apell-primary);
+  border: 0;
+  font-size: 0.85rem;
+}
+.map-nearby-choices {
+  margin: 0;
+  list-style: none;
+}
+.map-nearby-choices li + li {
+  border-top: 1px solid var(--apell-line);
 }
 .map-selected-visits {
   min-height: 0;
@@ -499,7 +531,6 @@
 .map-stop-copy small {
   margin-top: 2px;
   color: var(--apell-muted);
-  text-transform: capitalize;
 }
 .map-visit-photo,
 .map-visit-symbol {
@@ -606,7 +637,7 @@
   .map-selection-card {
     bottom: 25px;
     right: 12px;
-    max-height: calc(100% - 80px);
+    max-height: calc(100% - 100px);
   }
   .map-selection-card > header {
     padding-block: 7px;

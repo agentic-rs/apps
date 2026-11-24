@@ -7,6 +7,7 @@ import { StopOrderButtons, useStopOrder, type MoveStop } from './StopOrderButton
 
 export interface MapNearbyActions {
   nearbyCategory(stop: PlannedStop): 'sight' | 'stay' | undefined;
+  nearbyCity(stop: PlannedStop): string | undefined;
   onAddStop(category: 'sight' | 'stay', near: PlannedStop): void;
 }
 
@@ -16,6 +17,7 @@ export function MapStopRow({
   stay_label,
   onOpen,
   nearbyCategory,
+  nearbyCity,
   onAddStop,
   order_controls,
 }: MapNearbyActions & {
@@ -28,7 +30,7 @@ export function MapStopRow({
   const category = nearbyCategory(stop);
   const detail = [
     ...(stay_label ? [] : [stop.time, stop_kind_labels[stop.kind]]),
-    stop.city,
+    nearbyCity(stop),
     !stop.position && 'No pin',
   ]
     .filter(Boolean)
@@ -39,6 +41,7 @@ export function MapStopRow({
         type="button"
         className="map-stop-row"
         aria-label={stay_label ?? `Edit ${stop.title}`}
+        aria-description={detail || undefined}
         onClick={() => onOpen(stop.id)}
       >
         {number !== undefined ? (
@@ -68,6 +71,7 @@ export function MapStopList({
   onReorderStops,
   onOptimize,
   nearbyCategory,
+  nearbyCity,
   onAddStop,
 }: MapNearbyActions & {
   stops: PlannedStop[];
@@ -144,6 +148,7 @@ export function MapStopList({
                   stay_label={stay.label}
                   onOpen={onOpenStop}
                   nearbyCategory={nearbyCategory}
+                  nearbyCity={nearbyCity}
                   onAddStop={onAddStop}
                 />
               </li>
@@ -159,6 +164,7 @@ export function MapStopList({
                   number={index + 1}
                   onOpen={onOpenStop}
                   nearbyCategory={nearbyCategory}
+                  nearbyCity={nearbyCity}
                   onAddStop={onAddStop}
                   order_controls={
                     <StopOrderButtons

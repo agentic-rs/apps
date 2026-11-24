@@ -66,7 +66,7 @@ export function ItineraryDay({
   onPhoto,
 }: ItineraryDayProps) {
   const { moving, move_error, reorder } = useStopOrder(onMoveStop);
-  const nearbyCategory = useNearbyPlaceSearch(trip, stops, continuing_stays);
+  const { nearbyCategory, nearbyCity } = useNearbyPlaceSearch(trip, stops, continuing_stays);
   const saved_button = useRef<HTMLButtonElement>(null);
   useLayoutEffect(() => {
     if (!reveal_stop_id) return;
@@ -237,6 +237,7 @@ export function ItineraryDay({
       {continuing_stays.map(({ stop, label }) => {
         const entries = by_stay.get(stop.id)!;
         const nearby = nearbyButton(stop);
+        const city = nearbyCity(stop);
         return (
           <div className="ongoing-stay" key={stop.id}>
             <div className={`ongoing-stay-actions${nearby ? ' with-nearby' : ''}`}>
@@ -244,13 +245,13 @@ export function ItineraryDay({
                 type="button"
                 ref={stop.id === reveal_stop_id ? saved_button : undefined}
                 aria-label={label}
-                aria-description={stop.city}
+                aria-description={city}
                 onClick={() => onEditStop(stop)}
               >
                 <Icon name="bed" size={17} />
                 <span>
                   {label}
-                  {stop.city && <small>{stop.city}</small>}
+                  {city && <small>{city}</small>}
                 </span>
                 <Icon name="next" size={15} />
               </button>
@@ -281,6 +282,7 @@ export function ItineraryDay({
         <ol className="itinerary-stops" aria-label="Planned stops">
           {stops.map((stop, index) => {
             const linked = by_stop.get(stop.id)!;
+            const city = nearbyCity(stop);
             const next_position = stops[index + 1]?.position;
             const nights = stop.checkout_date ? daysBetween(stop.day, stop.checkout_date) : 0;
             return (
@@ -291,7 +293,7 @@ export function ItineraryDay({
                 <div className="itinerary-stop-body">
                   <div className="itinerary-stop-meta">
                     <span>{stop_kind_labels[stop.kind]}</span>
-                    {stop.city && <span>{stop.city}</span>}
+                    {city && <span>{city}</span>}
                     {stop.checkout_date && (
                       <span>
                         {nights} {nights === 1 ? 'night' : 'nights'}
