@@ -30,6 +30,10 @@
   padding: 8px clamp(12px, 4vw, 24px);
 }
 .stay-date-hotel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
   margin-bottom: 12px;
   overflow-wrap: anywhere;
 }
@@ -39,7 +43,7 @@
   line-height: 1.25;
 }
 .stay-date-hotel p {
-  margin: 3px 0 0;
+  margin: 0;
   color: var(--apell-muted);
   font-size: 0.85rem;
 }
@@ -85,7 +89,8 @@
 .stay-date-summary > span,
 .stay-date-calendar,
 .stay-date-page,
-.stay-date-page > div,
+.stay-date-paging,
+.stay-date-paging button,
 .stay-date-days button {
   display: flex;
   align-items: center;
@@ -101,7 +106,7 @@
   font-size: 0.88rem;
 }
 .stay-date-summary button,
-.stay-date-page button {
+.stay-date-paging button {
   min-width: 44px;
   border: 0;
   border-radius: 8px;
@@ -113,14 +118,16 @@
   font-size: 0.85rem;
 }
 .stay-date-calendar {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   position: relative;
-  gap: 7px;
-  min-height: 48px;
-  padding: 0 10px;
-  border: 1px solid var(--apell-line);
-  border-radius: 10px;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 6px;
+  border-radius: 8px;
+  background: var(--apell-primary-soft);
+  color: var(--apell-primary);
   font-size: 0.9rem;
 }
 .stay-date-calendar input {
@@ -136,14 +143,7 @@
   color: var(--apell-primary);
   font: inherit;
 }
-.stay-date-calendar-arrow {
-  display: none;
-  color: var(--apell-primary);
-}
 @media (pointer: coarse) {
-  .stay-date-calendar-arrow {
-    display: flex;
-  }
   .stay-date-calendar input {
     position: absolute;
     inset: 0;
@@ -158,14 +158,23 @@
 .stay-date-page {
   justify-content: space-between;
   min-height: 44px;
-  margin-top: 8px;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin: 12px 0 6px;
 }
 .stay-date-page h3 {
+  flex: 1 1 7em;
   margin: 0;
   font-size: 1rem;
 }
-.stay-date-page > div {
-  gap: 2px;
+.stay-date-paging {
+  justify-content: space-between;
+  gap: 8px;
+  border-top: 1px solid var(--apell-line);
+}
+.stay-date-paging button {
+  gap: 4px;
+  padding-inline: 8px;
 }
 .stay-date-days {
   list-style: none;
@@ -196,49 +205,49 @@
   overflow-wrap: anywhere;
 }
 .stay-night-count,
-.stay-night-plan h3 {
+.stay-date-days .stay-date-row-end {
   display: flex;
   align-items: center;
   gap: 6px;
 }
+.stay-date-days .stay-date-row-end {
+  justify-content: flex-end;
+  text-align: end;
+}
 .stay-night-count svg,
-.stay-night-plan h3 svg {
+.stay-date-row-end svg {
   flex: none;
 }
 .stay-night-plan {
-  margin-top: 14px;
-  padding: 12px;
-  border-radius: 12px;
+  width: 100%;
+  min-height: 44px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 10px;
   background: var(--apell-subtle);
+  text-align: start;
   overflow-wrap: anywhere;
 }
-.stay-night-plan h3 {
-  margin: 0;
-  font-size: 0.88rem;
-  font-weight: 600;
-}
-.stay-night-plan h3 svg {
+.stay-night-plan svg {
   color: var(--apell-muted);
 }
-.stay-night-plan ul {
-  list-style: none;
-  margin: 8px 0 0;
-  padding: 0;
-}
-.stay-night-plan li {
+.stay-night-plan > span {
   display: grid;
+  min-width: 0;
   gap: 2px;
 }
-.stay-night-plan li + li {
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--apell-line);
-}
-.stay-night-plan li strong {
-  font-size: 0.93rem;
+.stay-night-plan strong {
+  font-size: 0.9rem;
   font-weight: 600;
 }
-.stay-night-plan li small {
+.stay-night-plan small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--apell-muted);
   font-size: 0.82rem;
 }

@@ -1314,14 +1314,40 @@ try {
   });
   const change_dates = dialog.getByRole('button', { name: 'Change stay dates', exact: true });
   const stay_dates = frame.getByRole('dialog', { name: 'Stay dates', exact: true });
-  const planned_nights = stay_dates.getByRole('region', { name: 'Planned for these nights' });
+  const planned_nights = frame.getByRole('dialog', { name: 'Planned stays', exact: true });
+  const compare_stays = stay_dates.getByRole('button', { name: /^\d+ planned stays?\b/ });
+  async function compareStays(inspect: () => Promise<void>, native_back = false) {
+    const selected_date = await calendar.inputValue();
+    const candidate = await stay_dates.getByRole('heading', { level: 3 }).first().innerText();
+    const writes = journal_writes;
+    const lookups = place_requests.length + visitor_requests.length;
+    await compare_stays.click();
+    await planned_nights.waitFor();
+    await planned_nights
+      .getByRole('region', { name: 'Proposed stay', exact: true })
+      .getByText(candidate, { exact: true })
+      .waitFor();
+    await inspect();
+    if (native_back) assert.equal(await shellBack(), true);
+    else
+      await planned_nights.getByRole('button', { name: 'Back to stay dates', exact: true }).click();
+    await compare_stays.and(stay_dates.locator(':focus')).waitFor();
+    assert.equal(await calendar.inputValue(), selected_date, 'Returning keeps the draft date.');
+    assert.equal(journal_writes, writes, 'Comparing hotels never saves a draft.');
+    assert.equal(
+      place_requests.length + visitor_requests.length,
+      lookups,
+      'Use the saved hotel details.',
+    );
+  }
   async function assertNightRange(title: string, city: string, dates: string[]) {
-    const row = planned_nights.getByRole('listitem').filter({ hasText: title });
-    await row.getByText(title, { exact: true }).waitFor();
-    assert((await row.innerText()).includes(city), 'Show the planning city for ' + title);
+    const row = planned_nights.getByRole('article', { name: title, exact: true });
+    await row.getByRole('heading', { name: title, exact: true }).waitFor();
+    await row.getByText(city, { exact: true }).waitFor();
     assert.deepEqual(
       await row
-        .locator('time')
+        .locator('dt', { hasText: /^Shared nights?$/ })
+        .locator('+ dd time')
         .evaluateAll((times) => times.map((time) => time.getAttribute('datetime'))),
       dates,
       'Show the overlapping occupied nights for ' + title,
@@ -1884,17 +1910,31 @@ try {
   await overviewDay(day_two).click();
   await add_hotel.click();
   await dialog.getByRole('button', { name: 'Choose stay dates for Nara West Annex' }).click();
-  await assertNightRange(inn.title, 'Nara', [day_two]);
+  await compareStays(async () => {
+    await assertNightRange(inn.title, 'Nara', [day_two]);
+    const hotel = planned_nights.getByRole('article', { name: inn.title, exact: true });
+    for (const [label, value] of [
+      ['Check-in', day_two],
+      ['Check-out', '2030-05-23'],
+    ]) {
+      assert.equal(
+        await hotel.getByText(label, { exact: true }).locator('+ dd time').getAttribute('datetime'),
+        value,
+      );
+    }
+  }, true);
   const nightOn = (day: string) =>
     stay_dates.getByRole('button', { name: 'Choose ' + day, exact: true });
-  await nightOn('2030-05-22').getByText('1 stay that night', { exact: true }).waitFor();
+  assert.equal(await nightOn(day_two).count(), 0);
+  await nightOn('2030-05-22').getByText('1 night', { exact: true }).waitFor();
+  await nightOn('2030-05-23').getByText('2 nights', { exact: true }).waitFor();
   assert.doesNotMatch(
     (await nightOn('2030-05-23').getAttribute('aria-description')) ?? '',
     /stay that night/,
     'The departure date is free for another hotel.',
   );
   await calendar.fill('2030-05-24');
-  await assertNightRange(inn.title, 'Nara', [day_two, '2030-05-22']);
+  await compareStays(() => assertNightRange(inn.title, 'Nara', [day_two, '2030-05-22']));
   await cancel_dates.click();
   await dialog.getByRole('button', { name: 'Close dialog', exact: true }).click();
   assert.deepEqual(
@@ -3496,7 +3536,13 @@ try {
     .getByText(/0 m straight line to stop \d+ · Nara East Annex/)
     .waitFor();
   await schedule(dialog, 'Nara test inn').click();
-  await assertNightRange(nara_guest, 'Nara', [day_two]);
+  await compareStays(async () => {
+    await assertNightRange(nara_guest, 'Nara', [day_two]);
+    assert.equal(
+      await planned_nights.getByText('Check-out', { exact: true }).locator('+ dd').innerText(),
+      'Open',
+    );
+  });
   await cancel_dates.click();
 
   await kyoto.click();
@@ -3509,7 +3555,7 @@ try {
   const map_schedule = schedule(hostels_map, kyoto_hostel);
   await map_schedule.click();
   await stay_dates.getByText(kyoto_hostel, { exact: true }).waitFor();
-  await assertNightRange(nara_guest, 'Nara', [day_two]);
+  await compareStays(() => assertNightRange(nara_guest, 'Nara', [day_two]));
   assert.equal(await confirm_stay.isEnabled(), true, 'Multiple planned hotels remain possible.');
   await cancel_dates.click();
   await map_schedule.and(hostels_map.locator(':focus')).waitFor();
@@ -3527,14 +3573,17 @@ try {
   const guest_map = frame.getByRole('dialog', { name: 'Guest houses near Kyoto', exact: true });
   const kyoto_guest = 'Kyoto East Annex';
   await schedule(guest_map, kyoto_guest).click();
-  await planned_nights.getByText(nara_guest, { exact: true }).waitFor();
-  await planned_nights.getByText(kyoto_hostel, { exact: true }).waitFor();
-  await nightOn(day_two).getByText('2 stays that night', { exact: true }).waitFor();
+  await compareStays(async () => {
+    await assertNightRange(nara_guest, 'Nara', [day_two]);
+    await assertNightRange(kyoto_hostel, 'Kyoto', [day_two]);
+  });
+  assert.equal(await nightOn(day_two).count(), 0, 'Checkout choices begin after check-in.');
   await arrival.click();
+  await nightOn(day_two).getByText('2 stays that night', { exact: true }).waitFor();
   await transfer_date.click();
   assert.equal(await calendar.inputValue(), '2030-05-23');
   assert.equal(
-    await planned_nights.count(),
+    await compare_stays.count(),
     0,
     'A checkout and a prior open stay occupy no new night.',
   );
@@ -3583,8 +3632,13 @@ try {
   await dialog.getByLabel('Notes').fill('Request a quiet room.');
   await add_another.click();
   await stay_dates.getByText('Osaka test inn', { exact: true }).waitFor();
-  await assertNightRange(kyoto_guest, 'Kyoto', [day_three]);
-  assert.equal(await planned_nights.getByText(kyoto_hostel, { exact: true }).count(), 0);
+  await compareStays(async () => {
+    await assertNightRange(kyoto_guest, 'Kyoto', [day_three]);
+    assert.equal(
+      await planned_nights.getByRole('article', { name: kyoto_hostel, exact: true }).count(),
+      0,
+    );
+  });
   await confirm_stay.click();
   await stay_dates.waitFor({ state: 'hidden' });
   await dialog.getByRole('heading', { name: 'Hotels near Osaka', exact: true }).waitFor();
@@ -3645,8 +3699,10 @@ try {
   await checkVisitorMap('Nara West Annex', /^Nara 0 m straight line to Nara East Annex$/, 'button');
   await inspect_stay_dates.click();
   await stay_dates.getByRole('heading', { name: 'Nara West Annex', exact: true }).waitFor();
-  await planned_nights.getByText(nara_guest, { exact: true }).waitFor();
-  await planned_nights.getByText(kyoto_hostel, { exact: true }).waitFor();
+  await compareStays(async () => {
+    await assertNightRange(nara_guest, 'Nara', [day_two]);
+    await assertNightRange(kyoto_hostel, 'Kyoto', [day_two]);
+  });
   await confirm_stay.click();
   await stay_dates.waitFor({ state: 'hidden' });
   await visitor_sheet.waitFor({ state: 'hidden' });
@@ -3663,13 +3719,24 @@ try {
   const before_overlap_edit = journal();
   await planned_list.getByRole('button', { name: 'Edit Nara West Annex', exact: true }).click();
   await change_dates.click();
-  await planned_nights.getByText(kyoto_hostel, { exact: true }).waitFor();
-  assert.equal(await planned_nights.getByText('Nara West Annex', { exact: true }).count(), 0);
-  assert.equal(await planned_nights.getByText(kyoto_guest, { exact: true }).count(), 0);
+  await compareStays(async () => {
+    await assertNightRange(kyoto_hostel, 'Kyoto', [day_two]);
+    assert.equal(
+      await planned_nights.getByRole('article', { name: 'Nara West Annex', exact: true }).count(),
+      0,
+    );
+    assert.equal(
+      await planned_nights.getByRole('article', { name: kyoto_guest, exact: true }).count(),
+      0,
+    );
+  });
   await calendar.fill('2030-05-23');
-  await assertNightRange(kyoto_guest, 'Kyoto', [day_three]);
-  await assertNightRange('Osaka test inn', 'Osaka', [day_three]);
-  await assertNightRange(nara_guest, 'Nara', [day_two]);
+  await compareStays(async () => {
+    await assertNightRange(kyoto_guest, 'Kyoto', [day_three]);
+    await assertNightRange('Osaka test inn', 'Osaka', [day_three]);
+    await assertNightRange(nara_guest, 'Nara', [day_two]);
+    await planned_nights.getByText('Request a quiet room.', { exact: true }).waitFor();
+  });
   await cancel_dates.click();
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
   assert.deepEqual(journal(), before_overlap_edit);
@@ -3984,6 +4051,7 @@ try {
           'whole-day reordering from itinerary and map with drag, tap, cancel, persistence and retry',
           'paired hotel dates, preserved nights, saved booking moves, and finding places after a day change',
           'day-end lodging in the arrival city, hotel status in the overview, and planned nights and checkout focus when choosing stay dates',
+          'valid checkout dates with night counts and read-only comparison of saved hotel dates, notes and shared nights across transfer cities',
           'scheduling named hotel results from list and map, and adding named sights with their city and directory identity',
           'city-scoped live sight and hotel suggestions, IME composition, explicit search and offline airport completion',
           'exact venue details, regional lookup, admission and access, offline reopen, draft return, and adding a sight or hotel from its listing',

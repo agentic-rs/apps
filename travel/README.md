@@ -27,7 +27,9 @@ When you finish adding places, the itinerary brings the last saved stop into vie
 
 Tap **Stay dates** when adding or editing a hotel to see check-in and check-out together. Pick a day by its date and scheduled cities, or use the calendar for a date farther away. Moving check-in carries the number of nights forward. You can also leave check-out open. **Done** returns the selected dates to the hotel review, where you can save the stay. [行程助手’s hotel date screen](https://pic.downxia.com/upload/2020/0429/20200429122045718.jpg)
 
-As you select dates, the sheet lists other hotels already in the trip for those nights, including hotels in another city. The checkout day is available for a new stay. A hotel with open checkout counts on its arrival night. You can keep two hotels for the same night.
+Check-out choices start the day after arrival. Each row shows the trip’s cities that day and the number of nights you would stay. Tap the calendar beside the day list to choose a date farther away.
+
+When another hotel covers a proposed night, tap the **planned stays** count to compare your proposal with each hotel’s full dates and shared nights. The comparison includes the saved city, location, arrival time and notes when available. **Back** returns to your selected dates. A hotel with open checkout counts on its arrival night. A checkout day is available for a new stay. You can keep two hotels for the same night.
 
 If you change the day while reviewing a new stop or hotel, **Back** opens results for the revised day. The selected city carries over when it is on that day’s route.
 

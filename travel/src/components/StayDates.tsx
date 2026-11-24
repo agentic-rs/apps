@@ -11,6 +11,7 @@ import {
 import type { PlannedStop, Trip } from '../lib/types';
 import { Dialog } from './Dialog';
 import { Icon } from './Icon';
+import { PlannedStays } from './PlannedStays';
 import '../stay-dates.css';
 
 type Field = 'check_in' | 'check_out';
@@ -27,6 +28,10 @@ const row_date = new Intl.DateTimeFormat(undefined, {
   day: 'numeric',
   timeZone: 'UTC',
 });
+
+function nightCount(nights: number) {
+  return `${nights} ${nights === 1 ? 'night' : 'nights'}`;
+}
 
 export function StayDates({
   trip,
@@ -62,6 +67,7 @@ export function StayDates({
   });
   const [field, setField] = useState<Field>(isCalendarDate(check_in) ? initial_field : 'check_in');
   const [page_day, setPageDay] = useState('');
+  const [comparing_stays, setComparingStays] = useState(false);
   // Keep a partially edited native input separate from the last valid range.
   const [invalid_input, setInvalidInput] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -86,12 +92,15 @@ export function StayDates({
     .at(-1)!;
   const active_date = dates[field];
   const focus = page_day || active_date || min_checkout || dates.check_in;
-  const page = stayDayPage(earliest, last, focus);
+  const first_choice = field === 'check_out' ? min_checkout : earliest;
+  const page = first_choice ? stayDayPage(first_choice, last, focus) : undefined;
   const nights = dates.check_out ? daysBetween(dates.check_in, dates.check_out) : 0;
   const overlaps = useMemo(
     () => staysInRange(trip_stops, dates.check_in, dates.check_out, editing_id),
     [trip_stops, dates.check_in, dates.check_out, editing_id],
   );
+  const planned_label =
+    overlaps.length === 1 ? '1 planned stay' : `${overlaps.length} planned stays`;
   const error =
     invalid_input === null
       ? ''
@@ -107,6 +116,14 @@ export function StayDates({
     target?.focus({ preventScroll: true });
     target?.scrollIntoView({ block: 'nearest' });
   }, [dates]);
+
+  useLayoutEffect(() => {
+    if (!page_day) return;
+    // Paging moves the cursor into the new week without changing the proposed stay.
+    const target = day_rows.current?.querySelector('button');
+    target?.focus({ preventScroll: true });
+    target?.scrollIntoView({ block: 'nearest' });
+  }, [page_day]);
 
   useLayoutEffect(() => {
     const viewport = scroll_area.current;
@@ -174,210 +191,208 @@ export function StayDates({
   }
 
   return (
-    <Dialog
-      title="Stay dates"
-      full_screen
-      dismiss_disabled={saving}
-      onDismiss={cancel}
-      leading_action={
-        <button className="stay-date-nav" type="button" disabled={saving} onClick={cancel}>
-          Cancel
-        </button>
-      }
-      trailing_action={
-        <button
-          className="stay-date-nav"
-          type="button"
-          disabled={Boolean(error) || saving}
-          onClick={() => void apply()}
-        >
-          {saving ? 'Saving…' : adding_stay ? 'Add stay' : 'Done'}
-        </button>
-      }
-    >
-      {save_error && (
-        <p className="stay-date-save-error form-error" role="alert">
-          {save_error}
-        </p>
-      )}
-      <div className="stay-date-scroll" ref={scroll_area}>
-        <fieldset className="stay-date-fields" disabled={saving}>
-          <div className="stay-date-body">
-            <div className="stay-date-range">
-              {hotel && (
-                <header className="stay-date-hotel">
-                  <h3>{hotel.title}</h3>
-                  {hotel.city && <p>{hotel.city}</p>}
-                </header>
-              )}
-              <div className="stay-date-endpoints" role="group" aria-label="Stay endpoints">
-                {(['check_in', 'check_out'] as const).map((item) => {
-                  const value = dates[item];
-                  const formatted = value
-                    ? full_date.format(new Date(value + 'T00:00:00Z'))
-                    : 'Not set';
-                  return (
-                    <button
-                      key={item}
-                      type="button"
-                      ref={item === 'check_out' ? departure : undefined}
-                      aria-label={fields[item]}
-                      aria-pressed={field === item}
-                      aria-description={value ? `${formatted} · ${dayLabel(value)}` : formatted}
-                      onClick={() => selectField(item)}
-                    >
-                      <span>{fields[item]}</span>
-                      <strong>{formatted}</strong>
-                      {value && <small>{dayLabel(value)}</small>}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="stay-date-summary">
-                <span role="status" aria-atomic="true">
-                  <Icon name="bed" size={17} />
-                  <span>
-                    {nights > 0
-                      ? `${nights} ${nights === 1 ? 'night' : 'nights'}`
-                      : 'Open check-out'}
+    <>
+      <Dialog
+        title="Stay dates"
+        full_screen
+        dismiss_disabled={saving}
+        onDismiss={cancel}
+        leading_action={
+          <button className="stay-date-nav" type="button" disabled={saving} onClick={cancel}>
+            Cancel
+          </button>
+        }
+        trailing_action={
+          <button
+            className="stay-date-nav"
+            type="button"
+            disabled={Boolean(error) || saving}
+            onClick={() => void apply()}
+          >
+            {saving ? 'Saving…' : adding_stay ? 'Add stay' : 'Done'}
+          </button>
+        }
+      >
+        {save_error && (
+          <p className="stay-date-save-error form-error" role="alert">
+            {save_error}
+          </p>
+        )}
+        <div className="stay-date-scroll" ref={scroll_area}>
+          <fieldset className="stay-date-fields" disabled={saving}>
+            <div className="stay-date-body">
+              <div className="stay-date-range">
+                {hotel && (
+                  <header className="stay-date-hotel">
+                    <h3>{hotel.title}</h3>
+                    {hotel.city && <p>{hotel.city}</p>}
+                  </header>
+                )}
+                <div className="stay-date-endpoints" role="group" aria-label="Stay endpoints">
+                  {(['check_in', 'check_out'] as const).map((item) => {
+                    const value = dates[item];
+                    const formatted = value
+                      ? full_date.format(new Date(value + 'T00:00:00Z'))
+                      : 'Not set';
+                    return (
+                      <button
+                        key={item}
+                        type="button"
+                        ref={item === 'check_out' ? departure : undefined}
+                        aria-label={fields[item]}
+                        aria-pressed={field === item}
+                        aria-description={value ? `${formatted} · ${dayLabel(value)}` : formatted}
+                        onClick={() => selectField(item)}
+                      >
+                        <span>{fields[item]}</span>
+                        <strong>{formatted}</strong>
+                        {value && <small>{dayLabel(value)}</small>}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="stay-date-summary">
+                  <span role="status" aria-atomic="true">
+                    <Icon name="bed" size={17} />
+                    <span>{nights > 0 ? nightCount(nights) : 'Open check-out'}</span>
+                    {!error && overlaps.length > 0 && (
+                      <span className="sr-only">{planned_label}</span>
+                    )}
                   </span>
-                  {!error && overlaps.length > 0 && (
-                    <span className="sr-only">
-                      {overlaps.length === 1
-                        ? '1 stay already planned.'
-                        : `${overlaps.length} stays already planned.`}
-                    </span>
+                  {field === 'check_out' && (
+                    <button type="button" onClick={() => chooseDate('')}>
+                      Set check-out later
+                    </button>
                   )}
-                </span>
-                {field === 'check_out' && (
-                  <button type="button" onClick={() => chooseDate('')}>
-                    Set check-out later
+                </div>
+                {!error && overlaps.length > 0 && (
+                  <button
+                    className="stay-night-plan"
+                    type="button"
+                    aria-haspopup="dialog"
+                    onClick={(event) => {
+                      event.currentTarget.focus({ preventScroll: true });
+                      setComparingStays(true);
+                    }}
+                  >
+                    <Icon name="bed" size={17} />
+                    <span>
+                      <strong>{planned_label}</strong>
+                      <small>
+                        {overlaps
+                          .slice(0, 2)
+                          .map(({ stop }) => stop.title)
+                          .join(' · ')}
+                      </small>
+                    </span>
+                    <Icon name="next" size={17} />
                   </button>
                 )}
               </div>
-              <label className="stay-date-calendar">
-                <Icon name="calendar" size={19} />
-                <span>Choose calendar date</span>
-                <span className="stay-date-calendar-arrow">
-                  <Icon name="next" size={17} />
-                </span>
-                <input
-                  type="date"
-                  aria-label="Choose calendar date"
-                  aria-invalid={Boolean(error)}
-                  min={field === 'check_out' ? min_checkout || undefined : undefined}
-                  max="9999-12-31"
-                  disabled={field === 'check_out' && !min_checkout}
-                  value={invalid_input ?? active_date}
-                  onChange={(e) => chooseDate(e.currentTarget.value)}
-                />
-              </label>
-              {error && (
-                <p className="form-error" role="alert">
-                  {error}
-                </p>
-              )}
-              {!error && overlaps.length > 0 && (
-                <section className="stay-night-plan" aria-label="Planned for these nights">
-                  <h3>
-                    <Icon name="bed" size={17} />
-                    {nights > 1
-                      ? 'Already planned for these nights'
-                      : 'Already planned for this night'}
-                  </h3>
-                  <ul>
-                    {overlaps.map(({ stop, first_night, last_night }) => (
-                      <li key={stop.id}>
-                        <strong>{stop.title}</strong>
-                        <small>
-                          {stop.city && <>{stop.city} · </>}
-                          {first_night === last_night ? 'Night of ' : 'Nights of '}
-                          <time dateTime={first_night}>
-                            {row_date.format(new Date(first_night + 'T00:00:00Z'))}
-                          </time>
-                          {first_night !== last_night && (
-                            <>
-                              {' '}
-                              –{' '}
-                              <time dateTime={last_night}>
-                                {row_date.format(new Date(last_night + 'T00:00:00Z'))}
-                              </time>
-                            </>
-                          )}
-                        </small>
+              <section aria-label="Trip days">
+                <div className="stay-date-page">
+                  <h3>{fields[field]} day</h3>
+                  <label className="stay-date-calendar" title="Choose calendar date">
+                    <Icon name="calendar" size={19} />
+                    <input
+                      type="date"
+                      aria-label="Choose calendar date"
+                      aria-invalid={Boolean(error)}
+                      min={field === 'check_out' ? min_checkout || undefined : undefined}
+                      max="9999-12-31"
+                      disabled={!first_choice}
+                      value={invalid_input ?? active_date}
+                      onChange={(e) => chooseDate(e.currentTarget.value)}
+                    />
+                  </label>
+                </div>
+                {error && (
+                  <p className="form-error" role="alert">
+                    {error}
+                  </p>
+                )}
+                {!first_choice && (
+                  <p className="field-help">
+                    Check-out is open. Choose an earlier check-in to set a departure date.
+                  </p>
+                )}
+                <ul className="stay-date-days" ref={day_rows}>
+                  {page?.dates.map((date) => {
+                    const selected = date === active_date;
+                    const description = [dayLabel(date), citiesOnDay(trip, date).join(' → ')]
+                      .filter(Boolean)
+                      .join(' · ');
+                    const count =
+                      field === 'check_in' ? staysForNight(trip_stops, date, editing_id).length : 0;
+                    const duration_label =
+                      field === 'check_out' ? nightCount(daysBetween(dates.check_in, date)) : '';
+                    const occupancy = count
+                      ? `${count} ${count === 1 ? 'stay' : 'stays'} that night`
+                      : '';
+                    return (
+                      <li key={date}>
+                        <button
+                          type="button"
+                          aria-label={`Choose ${date}`}
+                          aria-description={[fields[field], description, occupancy, duration_label]
+                            .filter(Boolean)
+                            .join('. ')}
+                          ref={date === (active_date || min_checkout) ? active_day_row : undefined}
+                          aria-pressed={selected}
+                          onClick={() => chooseDate(date, true)}
+                        >
+                          <span>
+                            <strong>{row_date.format(new Date(date + 'T00:00:00Z'))}</strong>
+                            <small>{description}</small>
+                            {occupancy && (
+                              <small className="stay-night-count">
+                                <Icon name="bed" size={14} />
+                                {occupancy}
+                              </small>
+                            )}
+                          </span>
+                          <span className="stay-date-row-end">
+                            {duration_label && <small>{duration_label}</small>}
+                            {selected && <Icon name="check" size={19} />}
+                          </span>
+                        </button>
                       </li>
-                    ))}
-                  </ul>
-                </section>
-              )}
-            </div>
-            <section aria-label="Trip days">
-              <div className="stay-date-page">
-                <h3>{field === 'check_in' ? 'Choose check-in day' : 'Choose check-out day'}</h3>
-                {(page.previous || page.next) && (
-                  <div>
+                    );
+                  })}
+                </ul>
+                {page && (page.previous || page.next) && (
+                  <div className="stay-date-paging" role="group" aria-label="Trip day pages">
                     <button
                       type="button"
-                      aria-label="Previous days"
                       disabled={!page.previous}
                       onClick={() => setPageDay(page.previous!)}
                     >
-                      <Icon name="back" size={17} />
+                      <Icon name="back" size={17} /> Previous days
                     </button>
                     <button
                       type="button"
-                      aria-label="Next days"
                       disabled={!page.next}
                       onClick={() => setPageDay(page.next!)}
                     >
-                      <Icon name="next" size={17} />
+                      Next days <Icon name="next" size={17} />
                     </button>
                   </div>
                 )}
-              </div>
-              <ul className="stay-date-days" ref={day_rows}>
-                {page.dates.map((date) => {
-                  const selected = date === active_date;
-                  const description = [dayLabel(date), citiesOnDay(trip, date).join(' → ')]
-                    .filter(Boolean)
-                    .join(' · ');
-                  const count = staysForNight(trip_stops, date, editing_id).length;
-                  const occupancy = count
-                    ? `${count} ${count === 1 ? 'stay' : 'stays'} that night`
-                    : '';
-                  return (
-                    <li key={date}>
-                      <button
-                        type="button"
-                        aria-label={`Choose ${date}`}
-                        aria-description={[fields[field], description, occupancy]
-                          .filter(Boolean)
-                          .join('. ')}
-                        ref={date === (active_date || min_checkout) ? active_day_row : undefined}
-                        aria-pressed={selected}
-                        disabled={field === 'check_out' && date <= dates.check_in}
-                        onClick={() => chooseDate(date, true)}
-                      >
-                        <span>
-                          <strong>{row_date.format(new Date(date + 'T00:00:00Z'))}</strong>
-                          <small>{description}</small>
-                          {occupancy && (
-                            <small className="stay-night-count">
-                              <Icon name="bed" size={14} />
-                              {occupancy}
-                            </small>
-                          )}
-                        </span>
-                        {selected && <Icon name="check" size={19} />}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </section>
-          </div>
-        </fieldset>
-      </div>
-    </Dialog>
+              </section>
+            </div>
+          </fieldset>
+        </div>
+      </Dialog>
+      {comparing_stays && (
+        <PlannedStays
+          trip={trip}
+          hotel={hotel}
+          check_in={dates.check_in}
+          check_out={dates.check_out}
+          overlaps={overlaps}
+          onClose={() => setComparingStays(false)}
+        />
+      )}
+    </>
   );
 }

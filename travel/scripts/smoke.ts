@@ -1355,8 +1355,16 @@ try {
   await change_dates.click();
   assert.equal(await calendar.inputValue(), '');
   assert.equal(
-    await stay_dates.getByRole('button', { name: 'Choose 2031-03-11', exact: true }).isDisabled(),
-    true,
+    await stay_dates.getByRole('button', { name: 'Choose 2031-03-11', exact: true }).count(),
+    0,
+    'The check-in date cannot be picked as the checkout date.',
+  );
+  assert.equal(
+    await stay_dates
+      .getByRole('button', { name: /^Choose \d{4}-/ })
+      .first()
+      .getAttribute('aria-label'),
+    'Choose 2031-03-12',
   );
   await stay_dates.getByRole('button', { name: 'Choose 2031-03-13', exact: true }).click();
   await apply_dates.click();
