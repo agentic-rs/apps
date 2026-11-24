@@ -2,6 +2,8 @@
 
 Fieldnotes is a local-first itinerary planner for Apell. Open a trip, choose a day, and arrange the places you want to visit. Photos and check-ins keep a record of what happened along the way.
 
+See what changed in each version in the [illustrated development log](CHANGELOG.md).
+
 The mobile interaction reference is QYER’s 穷游行程助手. Its separate day actions for sightseeing and lodging, day-map route optimizer and trip toolbox guide the corresponding Fieldnotes flows. [Illustrated walkthrough of the day actions (step 8)](https://jingyan.baidu.com/article/a501d80c1d38a5ec630f5e29.html) · [Apple’s walkthrough of the iPhone app](https://apps.apple.com/cn/iphone/story/id1469876186)
 
 ## Plan a trip
@@ -151,7 +153,7 @@ For initial shell setup, run `apell dev --target 'Apell iPhone 16 Pro'` from the
 - Deletion requires confirmation. Cleanup of previously saved photos runs after the metadata save succeeds. Deleting a stop detaches its check-ins and preserves their photos. Deleting a trip removes its stops, visits and photos. Reusable named places stay available. A cleanup failure leaves a notice and unused files; saved entries are not rolled back.
 - This version has no backup/export or synchronization. Clearing browser storage or removing native applet data can erase the journal. The journal is not uploaded; a system photo picker may retrieve a cloud-backed photo selected by the user.
 
-Generated packages, dependencies, screenshots, local SDK links, and environment files are excluded from Git. The [example trips](fixtures/README.md) contain published itineraries with fixed test dates and map coordinates. Test visits and photos are synthetic.
+Generated packages, dependencies, raw QA screenshots, local SDK links, and environment files are excluded from Git. The [example trips](fixtures/README.md) contain published itineraries with fixed test dates and map coordinates. Test visits and photos are synthetic.
 
 ## Verification
 
